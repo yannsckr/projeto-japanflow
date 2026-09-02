@@ -1,0 +1,1 @@
+ALTER TABLE public.motoboy_assignments ADD COLUMN task_id uuid DEFAULT NULL;

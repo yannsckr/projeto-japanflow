@@ -1,0 +1,1 @@
+ALTER TABLE public.warranty_claims ADD COLUMN IF NOT EXISTS product_images jsonb NOT NULL DEFAULT '[]'::jsonb;

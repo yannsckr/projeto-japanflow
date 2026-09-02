@@ -1,0 +1,1 @@
+ALTER TABLE public.calendar_events ADD COLUMN target_users jsonb NOT NULL DEFAULT '[]'::jsonb;

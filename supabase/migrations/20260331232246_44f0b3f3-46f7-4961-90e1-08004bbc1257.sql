@@ -1,0 +1,1 @@
+ALTER TABLE public.tasks ADD COLUMN image_url text DEFAULT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE public.motoboy_assignments ALTER COLUMN assigned_to DROP NOT NULL;

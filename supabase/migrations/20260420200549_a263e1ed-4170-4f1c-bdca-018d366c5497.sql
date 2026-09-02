@@ -1,0 +1,1 @@
+ALTER TABLE public.motoboy_assignments ADD COLUMN IF NOT EXISTS scheduled_for timestamptz;

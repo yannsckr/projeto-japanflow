@@ -1,0 +1,1 @@
+ALTER TABLE public.tasks ALTER COLUMN previous_assignee_id TYPE text USING previous_assignee_id::text;
