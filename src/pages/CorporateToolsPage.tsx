@@ -28,6 +28,8 @@ import AdminPopupComposer from '@/components/AdminPopupComposer';
 import CarriersPanel from '@/components/CarriersPanel';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { db } from '@/lib/firebase';
+import { addDoc, collection, Timestamp } from 'firebase/firestore';
 
 const CorporateToolsPage = () => {
   const { currentUser, users } = useApp();
@@ -108,10 +110,14 @@ body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; background: #fff
     if (!bulkMsg.trim()) return;
     const employees = users.filter((u) => u.role === 'employee');
     for (const emp of employees) {
-      await (await import('@/integrations/supabase/client')).supabase.from('messages').insert({
-        sender_username: currentUser.username,
-        receiver_username: emp.username,
+      await addDoc(collection(db, 'messages'), {
+        senderId: currentUser.id,
+        receiverId: emp.id,
         content: `📢 ${bulkMsg.trim()}`,
+        timestamp: Timestamp.now(),
+        read: false,
+        edited: false,
+        deleted: false,
       });
     }
     toast.success(`Aviso enviado para ${employees.length} funcionários`);

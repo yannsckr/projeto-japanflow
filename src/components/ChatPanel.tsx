@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useSupabaseChat, DbMessage, useReadStatus } from '@/hooks/useSupabaseChat';
+import { useSupabaseChat } from '@/hooks/useSupabaseChat';
+import { ChatMessage } from '@/types';
 
 interface ChatPanelProps {
   otherUser: User;
@@ -31,7 +32,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
     currentUser?.username || null,
     otherUser.username
   );
-  const lastReadAt = useReadStatus(currentUser?.username || null, otherUser.username);
+
   const [text, setText] = useState('');
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -156,16 +157,20 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   };
 
 
-  const isMessageRead = (msg: DbMessage) => {
-    if (msg.sender_username !== currentUser.username) return false;
-    if (!lastReadAt) return false;
-    return new Date(msg.created_at) <= new Date(lastReadAt);
+  const isMessageRead = (msg: ChatMessage) => {
+    if (msg.senderId !== currentUser.id) return false;
+
+    return msg.read;
   };
 
-  const renderMessage = (msg: DbMessage) => {
-    const isMe = msg.sender_username === currentUser.username;
-    const senderUser = users.find((u) => u.username === msg.sender_username);
-    const read = isMe && isMessageRead(msg);
+  const renderMessage = (msg: ChatMessage) => {
+  const isMe = msg.senderId === currentUser.id;
+
+  const senderUser = users.find(
+    (u) => u.id === msg.senderId
+  );
+
+  const read = isMe && isMessageRead(msg);
 
     return (
       <div key={msg.id} className={cn('flex group', isMe ? 'justify-end' : 'justify-start')}>
@@ -180,7 +185,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
         >
           {!isMe && (
             <p className="text-[10px] font-semibold mb-0.5 opacity-70">
-              {senderUser?.name || msg.sender_username}
+              {senderUser?.name || 'Usuário'}
             </p>
           )}
 
@@ -242,11 +247,11 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
               </p>
               <div className="flex items-center gap-1 mt-1">
                 <span className={cn('text-[10px]', isMe ? 'opacity-60' : 'text-muted-foreground')}>
-                  {new Date(msg.created_at).toLocaleDateString('pt-BR', {
+                  {new Date(msg.timestamp).toLocaleDateString('pt-BR', {
                     day: '2-digit',
                     month: '2-digit',
                   })}{' '}
-                  {new Date(msg.created_at).toLocaleTimeString('pt-BR', {
+                  {new Date(msg.timestamp).toLocaleTimeString('pt-BR', {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, limit, onSnapshot, addDoc, updateDoc, doc, deleteDoc, where, getDocs, Timestamp } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, deleteDoc, where, Timestamp } from "firebase/firestore";
 import { useApp } from "@/contexts/AppContext";
 import { ChatMessage } from "@/types";
 import { sendPushToUser } from "./usePushNotifications";

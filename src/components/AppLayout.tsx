@@ -19,7 +19,6 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import logoImg from '@/assets/logo_japanflow.png';
 import { useState, useEffect } from 'react';
-import { preloadAllChats } from '@/hooks/useSupabaseChat';
 import { getClientPublicIp, isIpAllowed } from '@/lib/networkGuard';
 import { userCanAccessExternally } from '@/lib/externalAccess';
 
@@ -33,21 +32,12 @@ const AppLayout = () => {
   const isChatRoute = location.pathname === '/chat';
   const { updatePresence } = usePresence(currentUser?.id || null);
   usePushNotifications(currentUser?.username || null, currentUser?.id || null);
-  const { totalUnread: unreadMessages } = useUnreadMessages(currentUser?.username || null);
+  const { totalUnread: unreadMessages } =
+  useUnreadMessages(currentUser?.id || null);
   const unreadNotifs = currentUser
     ? notifications.filter((n) => n.userId === currentUser.id && !n.read).length
     : 0;
   useTabTitleNotifications(unreadNotifs + unreadMessages);
-
-  // Progressivamente carrega o histórico de chats em background após login,
-  // salvando no localStorage para não recarregar tudo ao abrir a tela de Chats.
-  useEffect(() => {
-    if (!currentUser?.username) return;
-    const t = setTimeout(() => {
-      preloadAllChats(currentUser.username);
-    }, 2000);
-    return () => clearTimeout(t);
-  }, [currentUser?.username]);
 
   // Bloqueio por rede: funcionários (não-admins) só podem usar o app
   // a partir da rede da empresa. Admins têm acesso irrestrito.

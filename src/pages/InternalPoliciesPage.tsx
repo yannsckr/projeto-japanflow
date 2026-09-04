@@ -1,6 +1,16 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+} from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -53,33 +63,47 @@ const InternalPoliciesPage = () => {
   const isAdmin = currentUser?.role === 'admin';
 
   const fetchDocs = async () => {
-    const { data, error } = await supabase
-      .from('internal_policies' as never)
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
-      toast.error('Erro ao carregar documentos');
-      setLoading(false);
-      return;
-    }
-    setDocs((data || []) as unknown as PolicyDoc[]);
-    setLoading(false);
+    // Mantido por compatibilidade; o listener abaixo já mantém os documentos atualizados.
   };
 
   useEffect(() => {
-    fetchDocs();
-    const ch = supabase
-      .channel('internal_policies_rt')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'internal_policies' },
-        () => fetchDocs()
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const docsQuery = query(
+      collection(db, 'internal_policies'),
+      orderBy('created_at', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(
+      docsQuery,
+      (snapshot) => {
+        setDocs(
+          snapshot.docs.map((policyDoc) => {
+            const data = policyDoc.data();
+            return {
+              id: policyDoc.id,
+              title: data.title || '',
+              description: data.description || null,
+              file_url: data.file_url || '',
+              file_name: data.file_name || '',
+              file_type: data.file_type || null,
+              file_size: typeof data.file_size === 'number' ? data.file_size : null,
+              created_by: data.created_by || '',
+              created_by_name: data.created_by_name || null,
+              created_at: data.created_at?.toDate
+                ? data.created_at.toDate().toISOString()
+                : data.created_at || '',
+            } as PolicyDoc;
+          })
+        );
+        setLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        toast.error('Erro ao carregar documentos');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const visibleDocs = useMemo(() => {
@@ -112,7 +136,7 @@ const InternalPoliciesPage = () => {
         uploadedBy: currentUser.id,
         preserve: true,
       });
-      const { error } = await supabase.from('internal_policies' as never).insert({
+      await addDoc(collection(db, 'internal_policies'), {
         title: title.trim(),
         description: description.trim() || null,
         file_url: publicUrl,
@@ -121,11 +145,11 @@ const InternalPoliciesPage = () => {
         file_size: file.size,
         created_by: currentUser.id,
         created_by_name: currentUser.name,
-      } as never);
-      if (error) throw error;
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
 
-      // Pop-up para todos os usuários avisando do novo documento
-      await supabase.from('admin_popups' as never).insert({
+      await addDoc(collection(db, 'admin_popups'), {
         title: '📄 Nova Política Interna disponível',
         content: `<p>Um novo documento foi disponibilizado na aba <strong>Políticas Internas</strong>:</p><p><strong>${title.trim()}</strong></p>${
           description.trim() ? `<p>${description.trim()}</p>` : ''
@@ -135,7 +159,8 @@ const InternalPoliciesPage = () => {
         target_sectors: [],
         target_users: [],
         attachments: [],
-      } as never);
+        created_at: Timestamp.now(),
+      });
 
       toast.success('Documento publicado e usuários notificados!');
       resetForm();
@@ -152,11 +177,10 @@ const InternalPoliciesPage = () => {
   const handleDelete = async (doc: PolicyDoc) => {
     if (!isAdmin) return toast.error('Apenas administradores podem excluir');
     if (!confirm(`Excluir "${doc.title}"?`)) return;
-    const { error } = await supabase
-      .from('internal_policies' as never)
-      .delete()
-      .eq('id', doc.id);
-    if (error) {
+    try {
+      await deleteDoc(doc(db, 'internal_policies', doc.id));
+    } catch (error) {
+      console.error(error);
       toast.error('Erro ao excluir');
       return;
     }

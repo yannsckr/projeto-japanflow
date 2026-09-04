@@ -3,7 +3,14 @@ import { Coffee, UtensilsCrossed, Play, Pause, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  doc,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
 
 const PAUSE_DURATIONS = {
   almoco: 60 * 60,
@@ -31,36 +38,40 @@ const PauseButton = ({ updatePresence }: PauseButtonProps) => {
   const startPause = useCallback(
     async (type: 'almoco' | 'cafe') => {
       if (!currentUser) return;
+
+      const startedAt = new Date();
+
       setPauseType(type);
       setIsPaused(true);
       setRemainingSeconds(PAUSE_DURATIONS[type]);
       setOvertimeSeconds(0);
-      setPauseStartTime(new Date());
+      setPauseStartTime(startedAt);
       setShowDialog(false);
 
       await updatePresence('paused', type);
 
-      const { data } = await supabase
-        .from('pause_history')
-        .insert({
-          user_id: currentUser.id,
-          pause_type: type,
-          started_at: new Date().toISOString(),
-        })
-        .select('id')
-        .single();
+      const pauseRef = await addDoc(collection(db, 'pause_history'), {
+        user_id: currentUser.id,
+        pause_type: type,
+        started_at: Timestamp.fromDate(startedAt),
+        ended_at: null,
+        duration_seconds: null,
+        overtime_seconds: null,
+        created_at: Timestamp.now(),
+      });
 
-      if (data) pauseHistoryIdRef.current = data.id;
+      pauseHistoryIdRef.current = pauseRef.id;
     },
     [currentUser, updatePresence]
   );
 
   const endPause = useCallback(async () => {
-    // Immediately update UI state first to unblock the interface
     setIsPaused(false);
+
     const savedPauseType = pauseType;
     const savedPauseStartTime = pauseStartTime;
     const savedHistoryId = pauseHistoryIdRef.current;
+
     setPauseType(null);
     setRemainingSeconds(0);
     setOvertimeSeconds(0);
@@ -68,6 +79,7 @@ const PauseButton = ({ updatePresence }: PauseButtonProps) => {
     pauseHistoryIdRef.current = null;
 
     if (!currentUser) return;
+
     const now = new Date();
     const totalDuration = savedPauseStartTime
       ? Math.floor((now.getTime() - savedPauseStartTime.getTime()) / 1000)
@@ -77,15 +89,14 @@ const PauseButton = ({ updatePresence }: PauseButtonProps) => {
 
     try {
       if (savedHistoryId) {
-        await supabase
-          .from('pause_history')
-          .update({
-            ended_at: now.toISOString(),
-            duration_seconds: totalDuration,
-            overtime_seconds: overtime,
-          })
-          .eq('id', savedHistoryId);
+        await updateDoc(doc(db, 'pause_history', savedHistoryId), {
+          ended_at: Timestamp.fromDate(now),
+          duration_seconds: totalDuration,
+          overtime_seconds: overtime,
+          updated_at: Timestamp.now(),
+        });
       }
+
       await updatePresence('online');
     } catch (e) {
       console.error('Error ending pause:', e);
@@ -123,7 +134,6 @@ const PauseButton = ({ updatePresence }: PauseButtonProps) => {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Small header indicator when paused
   const headerIndicator = isPaused ? (
     <div className="flex items-center gap-2">
       <div
@@ -170,7 +180,6 @@ const PauseButton = ({ updatePresence }: PauseButtonProps) => {
     <>
       {headerIndicator}
 
-      {/* Large pause timer overlay - 50% of screen */}
       {isPaused && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-[90vw] max-w-lg h-[50vh] rounded-2xl bg-card border border-border shadow-2xl flex flex-col items-center justify-center gap-6 relative p-6">
@@ -220,7 +229,6 @@ const PauseButton = ({ updatePresence }: PauseButtonProps) => {
         </div>
       )}
 
-      {/* Pause type selection dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="sm:max-w-xs">
           <DialogHeader>

@@ -33,7 +33,18 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  Timestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import { uploadImage } from '@/lib/uploadImage';
 import { sendPushToUser } from '@/hooks/usePushNotifications';
 import { useFeaturePermissions } from '@/hooks/useFeaturePermissions';
@@ -114,59 +125,71 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
   const assignee = users.find((u) => u.id === task.assigneeId);
   const creator = users.find((u) => u.id === task.createdBy);
 
-  // Fetch comments from database
+  // Comentários e extras da tarefa em tempo real via Firestore
   useEffect(() => {
     if (!open) return;
-    const fetchComments = async () => {
-      const { data } = await supabase
-        .from('task_comments')
-        .select('*')
-        .eq('task_id', task.id)
-        .order('created_at', { ascending: true });
-      if (data) setDbComments(data);
-    };
-    fetchComments();
 
-    const fetchTaskExtras = async () => {
-      const { data } = await supabase
-        .from('tasks')
-        .select('response_attachments, response_likes' as any)
-        .eq('id', task.id)
-        .single();
-      if (data) {
-        const d = data as any;
-        setResponseAttachments(Array.isArray(d.response_attachments) ? d.response_attachments : []);
-        setResponseLikes(Array.isArray(d.response_likes) ? d.response_likes : []);
-      }
-    };
-    fetchTaskExtras();
+    const commentsQuery = query(
+      collection(db, 'task_comments'),
+      where('task_id', '==', task.id)
+    );
 
-    const channel = supabase
-      .channel(`task-comments-${task.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'task_comments', filter: `task_id=eq.${task.id}` },
-        () => {
-          fetchComments();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'tasks', filter: `id=eq.${task.id}` },
-        (payload) => {
-          const n = payload.new as any;
-          setResponseAttachments(
-            Array.isArray(n.response_attachments) ? n.response_attachments : []
+    const unsubscribeComments = onSnapshot(
+      commentsQuery,
+      (snapshot) => {
+        const comments = snapshot.docs
+          .map((commentDoc) => {
+            const data = commentDoc.data();
+            const createdAt =
+              data.created_at?.toDate?.().toISOString?.() ||
+              (typeof data.created_at === 'string' ? data.created_at : '');
+
+            return {
+              id: commentDoc.id,
+              user_id: data.user_id || '',
+              content: data.content || '',
+              created_at: createdAt,
+            };
+          })
+          .sort(
+            (a, b) =>
+              new Date(a.created_at || 0).getTime() -
+              new Date(b.created_at || 0).getTime()
           );
-          setResponseLikes(Array.isArray(n.response_likes) ? n.response_likes : []);
-          if (typeof n.response === 'string' || n.response === null)
-            setLocalResponse(n.response || '');
+
+        setDbComments(comments);
+      },
+      (error) => {
+        console.error('Erro ao acompanhar comentários da tarefa:', error);
+      }
+    );
+
+    const taskRef = doc(db, 'tasks', task.id);
+
+    const unsubscribeTask = onSnapshot(
+      taskRef,
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+
+        const data = snapshot.data();
+
+        setResponseAttachments(
+          Array.isArray(data.response_attachments) ? data.response_attachments : []
+        );
+        setResponseLikes(Array.isArray(data.response_likes) ? data.response_likes : []);
+
+        if (typeof data.response === 'string' || data.response === null) {
+          setLocalResponse(data.response || '');
         }
-      )
-      .subscribe();
+      },
+      (error) => {
+        console.error('Erro ao acompanhar extras da tarefa:', error);
+      }
+    );
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribeComments();
+      unsubscribeTask();
     };
   }, [open, task.id]);
   const isOverdue = new Date(task.deadline) < new Date() && task.status !== 'done';
@@ -243,9 +266,12 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
     }
 
     setNewComment('');
-    await supabase
-      .from('task_comments')
-      .insert({ task_id: task.id, user_id: currentUser.id, content });
+    await addDoc(collection(db, 'task_comments'), {
+      task_id: task.id,
+      user_id: currentUser.id,
+      content,
+      created_at: Timestamp.now(),
+    });
   };
 
   const handleSaveEdit = async () => {
@@ -264,12 +290,12 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
       } catch {}
     }
 
-    // Update image_url directly via supabase
+    // Atualiza a imagem diretamente no Firestore
     if (imageUrl !== task.imageUrl) {
-      await supabase
-        .from('tasks')
-        .update({ image_url: imageUrl || null } as any)
-        .eq('id', task.id);
+      await updateDoc(doc(db, 'tasks', task.id), {
+        image_url: imageUrl || null,
+        updated_at: Timestamp.now(),
+      });
     }
 
     updateTask(task.id, {
@@ -548,18 +574,17 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                           ? responseLikes.filter((id) => id !== currentUser.id)
                           : [...responseLikes, currentUser.id];
                         setResponseLikes(next);
-                        await supabase
-                          .from('tasks')
-                          .update({
-                            response_likes: next as any,
-                            updated_at: new Date().toISOString(),
-                          })
-                          .eq('id', task.id);
+                        await updateDoc(doc(db, 'tasks', task.id), {
+                          response_likes: next,
+                          updated_at: Timestamp.now(),
+                        });
                         if (!already && task.assigneeId && task.assigneeId !== currentUser.id) {
-                          await supabase.from('notifications').insert({
+                          await addDoc(collection(db, 'notifications'), {
                             user_id: task.assigneeId,
                             message: `${currentUser.name} curtiu sua resposta na tarefa "${task.title}"`,
                             type: 'task_created',
+                            read: false,
+                            created_at: Timestamp.now(),
                           });
                         }
                       }}
@@ -738,24 +763,22 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                         // Ping-pong: return task to whoever previously interacted with it
                         // (or to the creator on the first response). Track current assignee
                         // as the new "previous" so the next response bounces back here.
-                        const { data: currentRow } = await supabase
-                          .from('tasks')
-                          .select('previous_assignee_id, assignee_id, created_by' as any)
-                          .eq('id', task.id)
-                          .single();
+                        const currentSnapshot = await getDoc(doc(db, 'tasks', task.id));
+                        const currentRow = currentSnapshot.exists() ? currentSnapshot.data() : null;
+
                         const prevAssignee =
-                          (currentRow as any)?.previous_assignee_id ||
-                          (currentRow as any)?.created_by ||
+                          currentRow?.previous_assignee_id ||
+                          currentRow?.created_by ||
                           task.createdBy;
                         const currentAssignee =
-                          (currentRow as any)?.assignee_id || task.assigneeId;
+                          currentRow?.assignee_id || task.assigneeId;
                         const targetUser = prevAssignee;
                         const shouldTransfer =
                           !!targetUser && currentUser?.id !== targetUser;
                         const updatePayload: any = {
                           response_attachments: newAttachments,
                           response: finalResponse || null,
-                          updated_at: new Date().toISOString(),
+                          updated_at: Timestamp.now(),
                         };
                         if (shouldTransfer) {
                           updatePayload.assignee_id = targetUser;
@@ -763,7 +786,7 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                           updatePayload.status = 'todo';
                         }
 
-                        await supabase.from('tasks').update(updatePayload).eq('id', task.id);
+                        await updateDoc(doc(db, 'tasks', task.id), updatePayload);
                         setResponseAttachments(newAttachments);
                         setLocalResponse(finalResponse);
                         setResponsePastedImages([]);
@@ -776,10 +799,12 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                         );
 
                         if (shouldTransfer && targetUser && currentUser) {
-                          await supabase.from('notifications').insert({
+                          await addDoc(collection(db, 'notifications'), {
                             user_id: targetUser,
                             message: `${currentUser.name} respondeu à tarefa "${task.title}" — verifique a resposta`,
                             type: 'task_created',
+                            read: false,
+                            created_at: Timestamp.now(),
                           });
                           await sendPushToUser(
                             targetUser,
@@ -887,14 +912,11 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                             toast.error(`Erro ao enviar ${file.name}`);
                           }
                         }
-                        await supabase
-                          .from('tasks')
-                          .update({
-                            image_urls: currentUrls as any,
-                            image_url: currentUrls[0] || null,
-                            updated_at: new Date().toISOString(),
-                          })
-                          .eq('id', task.id);
+                        await updateDoc(doc(db, 'tasks', task.id), {
+                          image_urls: currentUrls,
+                          image_url: currentUrls[0] || null,
+                          updated_at: Timestamp.now(),
+                        });
                         toast.success('Arquivo(s) anexado(s) com sucesso!');
                       } catch (err) {
                         toast.error('Erro ao anexar arquivo');
@@ -919,12 +941,11 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                       variant="default"
                       className="gap-1.5"
                       onClick={async () => {
-                        // Fetch latest task data from DB to get newly uploaded files
-                        const { data: freshTask } = await supabase
-                          .from('tasks')
-                          .select('image_urls, image_url')
-                          .eq('id', task.id)
-                          .single();
+                        // Busca os anexos mais recentes diretamente no Firestore
+                        const freshTaskSnapshot = await getDoc(doc(db, 'tasks', task.id));
+                        const freshTask = freshTaskSnapshot.exists()
+                          ? freshTaskSnapshot.data()
+                          : null;
                         const freshImageUrls = freshTask
                           ? Array.isArray(freshTask.image_urls)
                             ? (freshTask.image_urls as string[])
@@ -943,7 +964,7 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                           );
                           return;
                         }
-                        await supabase.from('tasks').insert({
+                        await addDoc(collection(db, 'tasks'), {
                           title: `📄 ${task.title}`,
                           description: `Encaminhado do Financeiro.\n\n${task.description}`,
                           status: 'todo',
@@ -953,15 +974,19 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                           deadline: task.deadline,
                           sector: null,
                           image_url: allImages[0] || null,
-                          image_urls: allImages as any,
+                          image_urls: allImages,
                           status_history: [
                             { status: 'todo', enteredAt: new Date().toISOString() },
-                          ] as any,
+                          ],
+                          created_at: Timestamp.now(),
+                          updated_at: Timestamp.now(),
                         });
-                        await supabase.from('notifications').insert({
+                        await addDoc(collection(db, 'notifications'), {
                           user_id: 'emp-1',
                           message: `Tarefa "${task.title}" encaminhada do Financeiro para impressão`,
                           type: 'task_created',
+                          read: false,
+                          created_at: Timestamp.now(),
                         });
                         await sendPushToUser(
                           'emp-1',
@@ -1073,18 +1098,17 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                           size="sm"
                           disabled={!transferTarget}
                           onClick={async () => {
-                            await supabase
-                              .from('tasks')
-                              .update({
-                                assignee_id: transferTarget,
-                                updated_at: new Date().toISOString(),
-                              })
-                              .eq('id', task.id);
+                            await updateDoc(doc(db, 'tasks', task.id), {
+                              assignee_id: transferTarget,
+                              updated_at: Timestamp.now(),
+                            });
                             const targetUser = users.find((u) => u.id === transferTarget);
-                            await supabase.from('notifications').insert({
+                            await addDoc(collection(db, 'notifications'), {
                               user_id: transferTarget,
                               message: `Tarefa "${task.title}" foi transferida para você por ${currentUser?.name}`,
                               type: 'task_created',
+                              read: false,
+                              created_at: Timestamp.now(),
                             });
                             await sendPushToUser(
                               transferTarget,

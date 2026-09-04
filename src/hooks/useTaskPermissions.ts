@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+} from 'firebase/firestore';
 
 export interface TaskPermission {
   id: string;
@@ -8,84 +18,87 @@ export interface TaskPermission {
   targetValue: string;
 }
 
+interface TaskPermissionFirestore {
+  granterId: string;
+  targetType: 'employee' | 'sector';
+  targetValue: string;
+  createdAt?: Timestamp;
+}
+
 export const useTaskPermissions = () => {
   const [permissions, setPermissions] = useState<TaskPermission[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetch = async () => {
-      const { data, error } = await supabase
-        .from('task_permissions')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && data) {
-        setPermissions(
-          data.map((r: any) => ({
-            id: r.id,
-            granterId: r.granter_id,
-            targetType: r.target_type as 'employee' | 'sector',
-            targetValue: r.target_value,
-          }))
-        );
-      }
-      setLoading(false);
-    };
-    fetch();
-  }, []);
+    const permissionsQuery = query(
+      collection(db, 'task_permissions'),
+      orderBy('createdAt', 'desc')
+    );
 
-  useEffect(() => {
-    const channel = supabase
-      .channel('task-permissions-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'task_permissions' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const r = payload.new as any;
-            setPermissions((prev) => {
-              if (prev.find((p) => p.id === r.id)) return prev;
-              return [
-                {
-                  id: r.id,
-                  granterId: r.granter_id,
-                  targetType: r.target_type,
-                  targetValue: r.target_value,
-                },
-                ...prev,
-              ];
-            });
-          } else if (payload.eventType === 'DELETE') {
-            const id = (payload.old as any).id;
-            setPermissions((prev) => prev.filter((p) => p.id !== id));
+    const unsubscribe = onSnapshot(
+      permissionsQuery,
+      (snapshot) => {
+        const nextPermissions: TaskPermission[] = snapshot.docs.map(
+          (permissionDoc) => {
+            const data = permissionDoc.data() as TaskPermissionFirestore;
+
+            return {
+              id: permissionDoc.id,
+              granterId: data.granterId,
+              targetType: data.targetType,
+              targetValue: data.targetValue,
+            };
           }
-        }
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+        );
+
+        setPermissions(nextPermissions);
+        setLoading(false);
+      },
+      (error) => {
+        console.error(
+          'Erro ao acompanhar permissões de tarefas:',
+          error
+        );
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const addPermission = useCallback(
-    async (granterId: string, targetType: 'employee' | 'sector', targetValue: string) => {
-      const { error } = await supabase.from('task_permissions').insert({
-        granter_id: granterId,
-        target_type: targetType,
-        target_value: targetValue,
-      });
-      if (error) console.error('Error adding permission:', error);
+    async (
+      granterId: string,
+      targetType: 'employee' | 'sector',
+      targetValue: string
+    ) => {
+      try {
+        await addDoc(collection(db, 'task_permissions'), {
+          granterId,
+          targetType,
+          targetValue,
+          createdAt: Timestamp.now(),
+        });
+      } catch (error) {
+        console.error('Erro ao adicionar permissão:', error);
+      }
     },
     []
   );
 
   const removePermission = useCallback(async (id: string) => {
-    const { error } = await supabase.from('task_permissions').delete().eq('id', id);
-    if (error) console.error('Error removing permission:', error);
+    try {
+      await deleteDoc(doc(db, 'task_permissions', id));
+    } catch (error) {
+      console.error('Erro ao remover permissão:', error);
+    }
   }, []);
 
   const getPermissionsForUser = useCallback(
     (userId: string) => {
-      return permissions.filter((p) => p.granterId === userId);
+      return permissions.filter(
+        (permission) => permission.granterId === userId
+      );
     },
     [permissions]
   );
@@ -93,10 +106,10 @@ export const useTaskPermissions = () => {
   const canAssignToEmployee = useCallback(
     (granterId: string, targetEmployeeId: string) => {
       return permissions.some(
-        (p) =>
-          p.granterId === granterId &&
-          p.targetType === 'employee' &&
-          p.targetValue === targetEmployeeId
+        (permission) =>
+          permission.granterId === granterId &&
+          permission.targetType === 'employee' &&
+          permission.targetValue === targetEmployeeId
       );
     },
     [permissions]
@@ -105,7 +118,10 @@ export const useTaskPermissions = () => {
   const canAssignToSector = useCallback(
     (granterId: string, sector: string) => {
       return permissions.some(
-        (p) => p.granterId === granterId && p.targetType === 'sector' && p.targetValue === sector
+        (permission) =>
+          permission.granterId === granterId &&
+          permission.targetType === 'sector' &&
+          permission.targetValue === sector
       );
     },
     [permissions]

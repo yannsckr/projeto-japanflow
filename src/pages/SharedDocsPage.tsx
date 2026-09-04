@@ -1,6 +1,16 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+} from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -67,36 +77,49 @@ const SharedDocsPage = () => {
   const isAdmin = currentUser?.role === 'admin';
 
   const fetchDocs = async () => {
-    const { data, error } = await supabase
-      .from('shared_documents' as never)
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
-      toast.error('Erro ao carregar documentos');
-      setLoading(false);
-      return;
-    }
-    setDocs(((data || []) as unknown as SharedDoc[]).map((d) => ({
-      ...d,
-      shared_with: Array.isArray(d.shared_with) ? d.shared_with : [],
-    })));
-    setLoading(false);
+    // Mantido por compatibilidade; o listener abaixo já mantém os documentos atualizados.
   };
 
   useEffect(() => {
-    fetchDocs();
-    const ch = supabase
-      .channel('shared_documents_rt')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'shared_documents' },
-        () => fetchDocs()
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const docsQuery = query(
+      collection(db, 'shared_documents'),
+      orderBy('created_at', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(
+      docsQuery,
+      (snapshot) => {
+        setDocs(
+          snapshot.docs.map((sharedDoc) => {
+            const data = sharedDoc.data();
+            return {
+              id: sharedDoc.id,
+              owner_id: data.owner_id || '',
+              owner_name: data.owner_name || null,
+              title: data.title || '',
+              description: data.description || null,
+              file_url: data.file_url || '',
+              file_name: data.file_name || '',
+              file_type: data.file_type || null,
+              file_size: typeof data.file_size === 'number' ? data.file_size : null,
+              shared_with: Array.isArray(data.shared_with) ? data.shared_with : [],
+              share_all: data.share_all === true,
+              created_at: data.created_at?.toDate
+                ? data.created_at.toDate().toISOString()
+                : data.created_at || '',
+            } as SharedDoc;
+          })
+        );
+        setLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        toast.error('Erro ao carregar documentos');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const visibleDocs = useMemo(() => {
@@ -148,7 +171,7 @@ const SharedDocsPage = () => {
         uploadedBy: currentUser.id,
         preserve: true,
       });
-      const { error } = await supabase.from('shared_documents' as never).insert({
+      await addDoc(collection(db, 'shared_documents'), {
         owner_id: currentUser.id,
         owner_name: currentUser.name,
         title: title.trim(),
@@ -159,8 +182,9 @@ const SharedDocsPage = () => {
         file_size: file.size,
         shared_with: shareAll ? [] : sharedWith,
         share_all: shareAll,
-      } as never);
-      if (error) throw error;
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
       toast.success('Documento compartilhado!');
       resetForm();
       setDialogOpen(false);
@@ -179,11 +203,10 @@ const SharedDocsPage = () => {
       return toast.error('Apenas o dono ou administrador pode excluir');
     }
     if (!confirm(`Excluir "${doc.title}"?`)) return;
-    const { error } = await supabase
-      .from('shared_documents' as never)
-      .delete()
-      .eq('id', doc.id);
-    if (error) {
+    try {
+      await deleteDoc(doc(db, 'shared_documents', doc.id));
+    } catch (error) {
+      console.error(error);
       toast.error('Erro ao excluir');
       return;
     }

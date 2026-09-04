@@ -14,7 +14,14 @@ import {
 } from '@/components/ui/select';
 import { RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  doc,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
 
 interface Props {
   task: Task;
@@ -37,45 +44,58 @@ const ReactivateTaskDialog = ({ task, open, onOpenChange, onReactivated }: Props
       toast.error('Selecione um responsável');
       return;
     }
-    setSaving(true);
-    const now = new Date().toISOString();
-    const history = Array.isArray(task.statusHistory) ? [...task.statusHistory] : [];
-    if (history.length > 0 && !history[history.length - 1].exitedAt) {
-      history[history.length - 1] = { ...history[history.length - 1], exitedAt: now };
-    }
-    history.push({ status: 'todo', enteredAt: now });
 
-    const { error } = await supabase
-      .from('tasks')
-      .update({
+    setSaving(true);
+
+    try {
+      const nowIso = new Date().toISOString();
+      const history = Array.isArray(task.statusHistory) ? [...task.statusHistory] : [];
+
+      if (history.length > 0 && !history[history.length - 1].exitedAt) {
+        history[history.length - 1] = {
+          ...history[history.length - 1],
+          exitedAt: nowIso,
+        };
+      }
+
+      history.push({
+        status: 'todo',
+        enteredAt: nowIso,
+      });
+
+      await updateDoc(doc(db, 'tasks', task.id), {
         title,
         description,
         priority,
         deadline,
         assignee_id: assigneeId,
         status: 'todo',
-        status_history: history as any,
-        updated_at: now,
-      })
-      .eq('id', task.id);
-
-    setSaving(false);
-    if (error) {
-      toast.error('Erro ao reativar tarefa');
-      return;
-    }
-    const target = users.find((u) => u.id === assigneeId);
-    toast.success(`Tarefa reativada${target ? ` para ${target.name}` : ''}`);
-    // Notification
-    if (assigneeId && assigneeId !== currentUser?.id) {
-      await supabase.from('notifications').insert({
-        user_id: assigneeId,
-        message: `Tarefa reativada: ${title}`,
-        type: 'task_created',
+        status_history: history,
+        updated_at: Timestamp.now(),
       });
+
+      const target = users.find((u) => u.id === assigneeId);
+
+      toast.success(`Tarefa reativada${target ? ` para ${target.name}` : ''}`);
+
+      if (assigneeId !== currentUser?.id) {
+        await addDoc(collection(db, 'notifications'), {
+          user_id: assigneeId,
+          message: `Tarefa reativada: ${title}`,
+          type: 'task_created',
+          read: false,
+          created_at: Timestamp.now(),
+        });
+      }
+
+      onReactivated?.();
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Erro ao reativar tarefa:', error);
+      toast.error('Erro ao reativar tarefa');
+    } finally {
+      setSaving(false);
     }
-    onReactivated?.();
-    onOpenChange(false);
   };
 
   return (
@@ -86,11 +106,13 @@ const ReactivateTaskDialog = ({ task, open, onOpenChange, onReactivated }: Props
             <RotateCcw className="w-5 h-5" /> Reativar Tarefa
           </DialogTitle>
         </DialogHeader>
+
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium mb-1 block">Título</label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
+
           <div>
             <label className="text-xs font-medium mb-1 block">Descrição</label>
             <Textarea
@@ -99,6 +121,7 @@ const ReactivateTaskDialog = ({ task, open, onOpenChange, onReactivated }: Props
               rows={3}
             />
           </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-xs font-medium mb-1 block">Prioridade</label>
@@ -113,11 +136,17 @@ const ReactivateTaskDialog = ({ task, open, onOpenChange, onReactivated }: Props
                 </SelectContent>
               </Select>
             </div>
+
             <div>
               <label className="text-xs font-medium mb-1 block">Prazo</label>
-              <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              <Input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
             </div>
           </div>
+
           <div>
             <label className="text-xs font-medium mb-1 block">Encaminhar para</label>
             <Select value={assigneeId} onValueChange={setAssigneeId}>
@@ -133,12 +162,15 @@ const ReactivateTaskDialog = ({ task, open, onOpenChange, onReactivated }: Props
               </SelectContent>
             </Select>
           </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
+
             <Button onClick={handleReactivate} disabled={saving} className="gap-1.5">
-              <RotateCcw className="w-4 h-4" /> {saving ? 'Reativando...' : 'Reativar'}
+              <RotateCcw className="w-4 h-4" />
+              {saving ? 'Reativando...' : 'Reativar'}
             </Button>
           </div>
         </div>

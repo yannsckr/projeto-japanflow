@@ -1,5 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  Timestamp,
+} from 'firebase/firestore';
 
 export interface FinancialForecast {
   id: string;
@@ -20,72 +32,64 @@ export interface CardDueDate {
   createdAt: string;
 }
 
+const toIso = (value: any): string => {
+  if (!value) return '';
+  if (value?.toDate) return value.toDate().toISOString();
+  if (typeof value === 'string') return value;
+  return '';
+};
+
 export function useSupabaseFinancial() {
   const [forecasts, setForecasts] = useState<FinancialForecast[]>([]);
   const [cardDueDates, setCardDueDates] = useState<CardDueDate[]>([]);
 
-  const fetchForecasts = useCallback(async () => {
-    const { data } = await supabase
-      .from('financial_forecasts')
-      .select('*')
-      .order('day_date', { ascending: true });
-    if (data) {
-      setForecasts(
-        data.map((d: any) => ({
-          id: d.id,
-          weekStartDate: d.week_start_date,
-          dayLabel: d.day_label,
-          dayDate: d.day_date,
-          predictedCash: Number(d.predicted_cash),
-          predictedExpenses: Number(d.predicted_expenses),
-          createdBy: d.created_by,
-          createdAt: d.created_at,
-        }))
-      );
-    }
-  }, []);
-
-  const fetchCardDueDates = useCallback(async () => {
-    const { data } = await supabase
-      .from('card_due_dates')
-      .select('*')
-      .order('due_date', { ascending: true });
-    if (data) {
-      setCardDueDates(
-        data.map((d: any) => ({
-          id: d.id,
-          dueDate: d.due_date,
-          description: d.description,
-          createdBy: d.created_by,
-          createdAt: d.created_at,
-        }))
-      );
-    }
-  }, []);
-
   useEffect(() => {
-    fetchForecasts();
-    fetchCardDueDates();
+    const unsubForecasts = onSnapshot(
+      query(collection(db, 'financial_forecasts'), orderBy('day_date', 'asc')),
+      (snapshot) => {
+        setForecasts(
+          snapshot.docs.map((row) => {
+            const d = row.data();
+            return {
+              id: row.id,
+              weekStartDate: d.week_start_date || '',
+              dayLabel: d.day_label || '',
+              dayDate: d.day_date || '',
+              predictedCash: Number(d.predicted_cash) || 0,
+              predictedExpenses: Number(d.predicted_expenses) || 0,
+              createdBy: d.created_by || '',
+              createdAt: toIso(d.created_at),
+            };
+          })
+        );
+      },
+      (error) => console.error('Erro em financial_forecasts:', error)
+    );
 
-    const ch1 = supabase
-      .channel('financial-forecasts-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_forecasts' }, () =>
-        fetchForecasts()
-      )
-      .subscribe();
-
-    const ch2 = supabase
-      .channel('card-due-dates-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'card_due_dates' }, () =>
-        fetchCardDueDates()
-      )
-      .subscribe();
+    const unsubCards = onSnapshot(
+      query(collection(db, 'card_due_dates'), orderBy('due_date', 'asc')),
+      (snapshot) => {
+        setCardDueDates(
+          snapshot.docs.map((row) => {
+            const d = row.data();
+            return {
+              id: row.id,
+              dueDate: d.due_date || '',
+              description: d.description || '',
+              createdBy: d.created_by || '',
+              createdAt: toIso(d.created_at),
+            };
+          })
+        );
+      },
+      (error) => console.error('Erro em card_due_dates:', error)
+    );
 
     return () => {
-      supabase.removeChannel(ch1);
-      supabase.removeChannel(ch2);
+      unsubForecasts();
+      unsubCards();
     };
-  }, [fetchForecasts, fetchCardDueDates]);
+  }, []);
 
   const addOrUpdateForecast = useCallback(
     async (
@@ -96,51 +100,50 @@ export function useSupabaseFinancial() {
       predictedExpenses: number,
       createdBy: string
     ) => {
-      // Check if entry exists for this day_date
-      const { data: existing } = await supabase
-        .from('financial_forecasts')
-        .select('id')
-        .eq('day_date', dayDate)
-        .eq('week_start_date', weekStartDate)
-        .maybeSingle();
+      const forecastId = `${weekStartDate}__${dayDate}`;
+      const forecastRef = doc(db, 'financial_forecasts', forecastId);
+      const existing = await getDoc(forecastRef);
 
-      if (existing) {
-        await supabase
-          .from('financial_forecasts')
-          .update({
-            predicted_cash: predictedCash,
-            predicted_expenses: predictedExpenses,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
-      } else {
-        await supabase.from('financial_forecasts').insert({
+      await setDoc(
+        forecastRef,
+        {
           week_start_date: weekStartDate,
           day_label: dayLabel,
           day_date: dayDate,
           predicted_cash: predictedCash,
           predicted_expenses: predictedExpenses,
           created_by: createdBy,
-        });
-      }
+          ...(existing.exists() ? {} : { created_at: Timestamp.now() }),
+          updated_at: Timestamp.now(),
+        },
+        { merge: true }
+      );
     },
     []
   );
 
   const addCardDueDate = useCallback(
     async (dueDate: string, description: string, createdBy: string) => {
-      await supabase.from('card_due_dates').insert({
+      await addDoc(collection(db, 'card_due_dates'), {
         due_date: dueDate,
-        description: description,
+        description,
         created_by: createdBy,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
     },
     []
   );
 
   const deleteCardDueDate = useCallback(async (id: string) => {
-    await supabase.from('card_due_dates').delete().eq('id', id);
+    await deleteDoc(doc(db, 'card_due_dates', id));
   }, []);
 
-  return { forecasts, cardDueDates, addOrUpdateForecast, addCardDueDate, deleteCardDueDate };
+  return {
+    forecasts,
+    cardDueDates,
+    addOrUpdateForecast,
+    addCardDueDate,
+    deleteCardDueDate,
+  };
 }

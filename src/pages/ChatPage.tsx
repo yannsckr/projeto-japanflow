@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { preloadAllChats } from '@/hooks/useSupabaseChat';
 import ChatPanel from '@/components/ChatPanel';
 import GroupChatPanel from '@/components/GroupChatPanel';
 import { User, Sector, SECTOR_LABELS } from '@/types';
@@ -44,7 +43,6 @@ const ChatPage = () => {
   // Aqui apenas garantimos que se o usuário entrar direto no /chat, o preload rode também.
   useEffect(() => {
     if (currentUser?.username) {
-      preloadAllChats(currentUser.username);
     }
   }, [currentUser?.username]);
 

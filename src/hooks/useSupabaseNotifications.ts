@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
 import { Notification } from '@/types';
 
 interface NotifRow {
@@ -8,8 +18,15 @@ interface NotifRow {
   message: string;
   read: boolean;
   type: string;
-  created_at: string;
+  created_at: any;
 }
+
+const toIso = (value: any): string => {
+  if (!value) return '';
+  if (value?.toDate) return value.toDate().toISOString();
+  if (typeof value === 'string') return value;
+  return '';
+};
 
 const rowToNotif = (row: NotifRow): Notification => ({
   id: row.id,
@@ -17,7 +34,7 @@ const rowToNotif = (row: NotifRow): Notification => ({
   message: row.message,
   read: row.read,
   type: row.type as Notification['type'],
-  timestamp: row.created_at,
+  timestamp: toIso(row.created_at),
 });
 
 export const useSupabaseNotifications = (enabled = true) => {
@@ -29,49 +46,46 @@ export const useSupabaseNotifications = (enabled = true) => {
       return;
     }
 
-    const fetch = async () => {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) {
-        console.error('Error fetching notifications:', error);
-        return;
-      }
-      setNotifications(data.map((r: any) => rowToNotif(r)));
-    };
-    fetch();
+    const notificationsQuery = query(
+      collection(db, 'notifications'),
+      orderBy('created_at', 'desc')
+    );
 
-    const channel = supabase
-      .channel('notifications-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const n = rowToNotif(payload.new as NotifRow);
-            setNotifications((prev) => (prev.find((x) => x.id === n.id) ? prev : [n, ...prev]));
-          } else if (payload.eventType === 'UPDATE') {
-            const n = rowToNotif(payload.new as NotifRow);
-            setNotifications((prev) => prev.map((x) => (x.id === n.id ? n : x)));
-          }
-        }
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const unsubscribe = onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        setNotifications(
+          snapshot.docs.map((notificationDoc) =>
+            rowToNotif({
+              id: notificationDoc.id,
+              ...(notificationDoc.data() as Omit<NotifRow, 'id'>),
+            })
+          )
+        );
+      },
+      (error) => {
+        console.error('Error fetching notifications:', error);
+      }
+    );
+
+    return () => unsubscribe();
   }, [enabled]);
 
   const addNotification = useCallback(
     async (userId: string, message: string, type: Notification['type']) => {
-      await supabase.from('notifications').insert({ user_id: userId, message, type });
+      await addDoc(collection(db, 'notifications'), {
+        user_id: userId,
+        message,
+        type,
+        read: false,
+        created_at: Timestamp.now(),
+      });
     },
     []
   );
 
   const markRead = useCallback(async (id: string) => {
-    await supabase.from('notifications').update({ read: true }).eq('id', id);
+    await updateDoc(doc(db, 'notifications', id), { read: true });
   }, []);
 
   return { notifications, addNotification, markRead };

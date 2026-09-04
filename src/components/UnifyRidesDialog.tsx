@@ -10,7 +10,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Layers, Bike } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  Timestamp,
+} from 'firebase/firestore';
 import { toast } from 'sonner';
 import { MotoboyAssignment } from '@/hooks/useSupabaseDepartmental';
 import { cn } from '@/lib/utils';
@@ -122,8 +130,12 @@ const UnifyRidesDialog = ({
         // Fetch originals to derive priority/deadline/status
         let baseTasks: any[] = [];
         if (originalTaskIds.length > 0) {
-          const { data: ts } = await supabase.from('tasks').select('*').in('id', originalTaskIds);
-          baseTasks = ts || [];
+          const taskSnapshots = await Promise.all(
+            originalTaskIds.map((taskId) => getDoc(doc(db, 'tasks', taskId)))
+          );
+          baseTasks = taskSnapshots
+            .filter((snapshot) => snapshot.exists())
+            .map((snapshot) => ({ id: snapshot.id, ...snapshot.data() }));
         }
         // Highest priority wins (high > medium > low)
         const priorityRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
@@ -147,28 +159,27 @@ const UnifyRidesDialog = ({
         const statuses = Array.from(new Set(baseTasks.map((t) => t.status)));
         const taskStatus = statuses.length === 1 ? statuses[0] : 'todo';
 
-        const { data: newTask, error: taskInsertErr } = await supabase
-          .from('tasks')
-          .insert({
-            title: `🔗 Corrida unificada (${selectedRides.length}) — ${unifiedClient.slice(0, 80) || 'Motoboy'}`,
-            description: `Corrida unificada de ${selectedRides.length} entregas:\n\n${descriptions.map((d, i) => `${i + 1}. ${d}`).join('\n')}${unifiedLocation ? `\n\n📍 ${unifiedLocation}` : ''}\n\n💰 Valor: ${formatCurrency(unifiedValue)}`,
-            status: taskStatus,
-            priority,
-            assignee_id: currentGroup.motoboyId,
-            created_by: currentUserId,
-            deadline,
-            sector: 'motoboys',
-            status_history: [{ status: taskStatus, enteredAt: now }] as any,
-          })
-          .select('id')
-          .single();
+        const newTaskRef = await addDoc(collection(db, 'tasks'), {
+          title: `🔗 Corrida unificada (${selectedRides.length}) — ${unifiedClient.slice(0, 80) || 'Motoboy'}`,
+          description: `Corrida unificada de ${selectedRides.length} entregas:\n\n${descriptions.map((d, i) => `${i + 1}. ${d}`).join('\n')}${unifiedLocation ? `\n\n📍 ${unifiedLocation}` : ''}\n\n💰 Valor: ${formatCurrency(unifiedValue)}`,
+          status: taskStatus,
+          priority,
+          assignee_id: currentGroup.motoboyId,
+          created_by: currentUserId,
+          deadline,
+          sector: 'motoboys',
+          status_history: [{ status: taskStatus, enteredAt: now }],
+          created_at: Timestamp.now(),
+          updated_at: Timestamp.now(),
+        });
 
-        if (taskInsertErr) throw taskInsertErr;
-        unifiedTaskId = newTask?.id || null;
+        unifiedTaskId = newTaskRef.id;
 
         // Delete the original Kanban tasks so they collapse into the unified one
         if (originalTaskIds.length > 0) {
-          await supabase.from('tasks').delete().in('id', originalTaskIds);
+          await Promise.all(
+            originalTaskIds.map((taskId) => deleteDoc(doc(db, 'tasks', taskId)))
+          );
         }
       }
 
@@ -194,16 +205,15 @@ const UnifyRidesDialog = ({
       let finalRideStatus = 'pending';
       if (allCompleted) finalRideStatus = 'completed';
       else if (unifiedTaskId) {
-        const { data: t } = await supabase
-          .from('tasks')
-          .select('status')
-          .eq('id', unifiedTaskId)
-          .single();
-        finalRideStatus = rideStatusMap[t?.status || 'todo'] || 'pending';
+        const taskSnapshot = await getDoc(doc(db, 'tasks', unifiedTaskId));
+        const unifiedStatus = taskSnapshot.exists()
+          ? String(taskSnapshot.data().status || 'todo')
+          : 'todo';
+        finalRideStatus = rideStatusMap[unifiedStatus] || 'pending';
       }
 
       // Insert new unified ride (linked to the unified task when applicable)
-      const { error: insertErr } = await supabase.from('motoboy_assignments').insert({
+      await addDoc(collection(db, 'motoboy_assignments'), {
         description: unifiedDesc,
         assigned_to: currentGroup.motoboyId,
         assigned_by: currentUserId,
@@ -218,15 +228,15 @@ const UnifyRidesDialog = ({
             : null,
         completed_at: finalRideStatus === 'completed' ? now : null,
         created_at: selectedRides[0].createdAt,
+        updated_at: Timestamp.now(),
         task_id: unifiedTaskId,
-      } as any);
-
-      if (insertErr) throw insertErr;
+      });
 
       // Delete originals
       const ids = selectedRides.map((r) => r.id);
-      const { error: delErr } = await supabase.from('motoboy_assignments').delete().in('id', ids);
-      if (delErr) throw delErr;
+      await Promise.all(
+        ids.map((id) => deleteDoc(doc(db, 'motoboy_assignments', id)))
+      );
 
       toast.success(
         `${selectedRides.length} corridas unificadas em uma de ${formatCurrency(unifiedValue)}`

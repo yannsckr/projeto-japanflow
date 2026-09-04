@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { useTaskPermissions } from '@/hooks/useTaskPermissions';
-import { useSupabaseDepartmental } from '@/hooks/useSupabaseDepartmental';
 import { Priority, Sector, SECTOR_LABELS } from '@/types';
 import {
   Dialog,
@@ -24,7 +23,16 @@ import { Plus, ImagePlus, X, Package, ScanText, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+} from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -37,13 +45,11 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
   const {
     currentUser,
     users,
-    addTask,
     sectorAssignEnabled,
     nfToCarolEnabled,
     nfBoletoToCarolEnabled,
   } = useApp();
   const { permissions, loading: permissionsLoading } = useTaskPermissions();
-  const dept = useSupabaseDepartmental();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -81,23 +87,31 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
   const [carriers, setCarriers] = useState<{ id: string; name: string; blocked: boolean }[]>([]);
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      const { data } = await supabase
-        .from('carriers' as any)
-        .select('id, name, blocked')
-        .order('name');
-      if (!cancelled && data) setCarriers(data as any);
-    };
-    load();
-    const ch = supabase
-      .channel('carriers-dialog-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'carriers' }, () => load())
-      .subscribe();
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(ch);
-    };
+    const carriersQuery = query(
+      collection(db, 'carriers'),
+      orderBy('name', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(
+      carriersQuery,
+      (snapshot) => {
+        setCarriers(
+          snapshot.docs.map((carrierDoc) => {
+            const data = carrierDoc.data();
+            return {
+              id: carrierDoc.id,
+              name: data.name || '',
+              blocked: data.blocked === true,
+            };
+          })
+        );
+      },
+      (error) => {
+        console.error('Erro ao carregar transportadoras:', error);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const activeCarriers = useMemo(() => carriers.filter((c) => !c.blocked), [carriers]);
@@ -277,10 +291,13 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
           setOcrImage(base64);
           setOcrLoading(true);
           try {
-            const resp = await supabase.functions.invoke('transcribe-image', {
-              body: { imageBase64: base64 },
-            });
-            if (resp.error) throw resp.error;
+            const functions = getFunctions();
+            const transcribeImage = httpsCallable<
+              { imageBase64: string },
+              { text?: string }
+            >(functions, 'transcribeImage');
+
+            const resp = await transcribeImage({ imageBase64: base64 });
             const transcribed = resp.data?.text || '';
             setDescription((prev) => (prev ? `${prev}\n\n${transcribed}` : transcribed));
             toast.success('Texto transcrito com sucesso!');
@@ -382,12 +399,14 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
       finalDescription += `\n\n💳 Comprovante(s) de Pagamento:\n${proofUrls.map((u) => `• ${u}`).join('\n')}`;
     }
 
-    // Insert task with image_urls via supabase directly for multi-image support
+    // Cria a tarefa principal no Firestore.
     const now = new Date().toISOString();
     const statusHistory = [{ status: 'todo', enteredAt: now }];
-    const { data: insertedTask, error: insertError } = await supabase
-      .from('tasks')
-      .insert({
+
+    let insertedTaskId: string;
+
+    try {
+      const insertedTask = await addDoc(collection(db, 'tasks'), {
         title: isSeparacao && enderecoDiferente ? `🚨 ENDEREÇO DIFERENTE - ${title}` : title,
         description: finalDescription,
         priority,
@@ -397,14 +416,15 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         created_by: currentUser.id,
         sector: effectiveAssignMode === 'sector' ? (sector as Sector) : null,
         image_url: firstImageUrl || null,
-        image_urls: allImageUrls as any,
-        status_history: statusHistory as any,
-      })
-      .select('id')
-      .single();
+        image_urls: allImageUrls,
+        status_history: statusHistory,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
 
-    if (insertError) {
-      console.error('Error creating task:', insertError);
+      insertedTaskId = insertedTask.id;
+    } catch (error) {
+      console.error('Error creating task:', error);
       toast.error('Erro ao criar tarefa');
       setUploading(false);
       return;
@@ -412,10 +432,12 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
 
     // Send notification for assigned user
     if (effectiveAssignMode === 'employee' && assigneeId) {
-      await supabase.from('notifications').insert({
+      await addDoc(collection(db, 'notifications'), {
         user_id: assigneeId,
         message: `Nova tarefa atribuída: ${title}`,
         type: 'task_created',
+        read: false,
+        created_at: Timestamp.now(),
       });
     }
 
@@ -435,7 +457,7 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         .join(' | ');
       const infoTag = buildOrderInfoNotes();
       const fullNotes = [separacaoDetails, infoTag].filter(Boolean).join(' ');
-      await supabase.from('motoboy_assignments').insert({
+      await addDoc(collection(db, 'motoboy_assignments'), {
         description: enderecoDiferente
           ? `🚨 ENDEREÇO DIFERENTE - Entrega: ${title}`
           : `Entrega: ${title}`,
@@ -446,7 +468,10 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         location: '',
         notes: fullNotes,
         status: 'pending_approval',
-      } as any);
+        task_id: null,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
       toast.info('Corrida criada aguardando aprovação de Patrícia');
     }
 
@@ -476,7 +501,7 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
       const deadlinePatricia = new Date();
       deadlinePatricia.setHours(23, 59, 59, 999);
       const patStatusHistory = [{ status: 'todo', enteredAt: new Date().toISOString() }];
-      await supabase.from('tasks').insert({
+      await addDoc(collection(db, 'tasks'), {
         title: `${enderecoDiferente ? '🚨 ENDEREÇO DIFERENTE - ' : ''}🚛 Transportadora ${transpLabel}: ${title}`,
         description: patriciaTaskDesc,
         status: 'todo',
@@ -485,14 +510,18 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         created_by: currentUser.id,
         deadline: deadlinePatricia.toISOString().split('T')[0],
         sector: null,
-        status_history: patStatusHistory as any,
+        status_history: patStatusHistory,
         image_url: firstImageUrl || null,
-        image_urls: uploadedUrls as any,
+        image_urls: uploadedUrls,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
-      await supabase.from('notifications').insert({
+      await addDoc(collection(db, 'notifications'), {
         user_id: 'emp-1',
         message: `Transportadora ${transpLabel}: ${title}`,
         type: 'task_created',
+        read: false,
+        created_at: Timestamp.now(),
       });
       toast.info(`Tarefa de transportadora ${transpLabel} criada para Patrícia`);
     }
@@ -521,15 +550,17 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         ]
           .filter(Boolean)
           .join('\n');
-        await supabase.from('pickups' as any).insert({
+        await addDoc(collection(db, 'pickups'), {
           order_title: title,
           delivery_type: isBalcao ? 'balcao' : 'transportadora',
           carrier_name: isBalcao ? null : transpLabelPickup,
           details: pickupDetails || null,
-          task_id: insertedTask?.id || null,
+          task_id: insertedTaskId,
           created_by: currentUser.id,
           status: 'pending',
-        } as any);
+          created_at: Timestamp.now(),
+          updated_at: Timestamp.now(),
+        });
         toast.info(
           isBalcao ? 'Retirada de Balcão registrada' : 'Retirada PH Transportes registrada'
         );
@@ -565,7 +596,7 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
       const deadlineForWilliam = new Date();
       deadlineForWilliam.setHours(23, 59, 59, 999);
       const statusHistory = [{ status: 'todo', enteredAt: new Date().toISOString() }];
-      await supabase.from('tasks').insert({
+      await addDoc(collection(db, 'tasks'), {
         title: `${enderecoDiferente ? '🚨 ENDEREÇO DIFERENTE - ' : ''}📮 Etiqueta ${modalLabel}: ${title}`,
         description: williamTaskDesc,
         status: 'todo',
@@ -574,9 +605,11 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         created_by: currentUser.id,
         deadline: deadlineForWilliam.toISOString().split('T')[0],
         sector: 'expedicao',
-        status_history: statusHistory as any,
+        status_history: statusHistory,
         image_url: firstImageUrl || null,
-        image_urls: uploadedUrls as any,
+        image_urls: uploadedUrls,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
       toast.info(`Tarefa de etiqueta ${modalLabel} criada para William`);
     }
@@ -654,7 +687,7 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
           : boletoOnly
             ? `${enderecoPrefix}${trocaPrefix}📄 Boleto: ${title}`
             : `${enderecoPrefix}🔄 TROCA: ${title}`;
-      await supabase.from('tasks').insert({
+      await addDoc(collection(db, 'tasks'), {
         title: finTitle,
         description: financialTaskDesc,
         status: 'todo',
@@ -662,16 +695,20 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         assignee_id: targetAssignee,
         created_by: currentUser.id,
         deadline: deadlineFinanceiro.toISOString().split('T')[0],
-        sector: targetSector as any,
-        status_history: finStatusHistory as any,
+        sector: targetSector,
+        status_history: finStatusHistory,
         image_url: firstImageUrl || null,
-        image_urls: uploadedUrls as any,
+        image_urls: uploadedUrls,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
       if (targetAssignee) {
-        await supabase.from('notifications').insert({
+        await addDoc(collection(db, 'notifications'), {
           user_id: targetAssignee,
           message: `${finTitle}`,
           type: 'task_created',
+          read: false,
+          created_at: Timestamp.now(),
         });
       }
       const labelParts = financialParts.length > 0 ? financialParts.join(' e ') : 'TROCA';
@@ -714,7 +751,7 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
       const deadlineBaixa = new Date();
       deadlineBaixa.setHours(23, 59, 59, 999);
       const baixaHistory = [{ status: 'todo', enteredAt: new Date().toISOString() }];
-      await supabase.from('tasks').insert({
+      await addDoc(collection(db, 'tasks'), {
         title: `${enderecoDiferente ? '🚨 ENDEREÇO DIFERENTE - ' : ''}${baixaTitlePrefix}: ${title}`,
         description: baixaDesc,
         status: 'todo',
@@ -723,9 +760,11 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         created_by: currentUser.id,
         deadline: deadlineBaixa.toISOString().split('T')[0],
         sector: 'financeiro',
-        status_history: baixaHistory as any,
+        status_history: baixaHistory,
         image_url: proofUrls[0] || firstImageUrl || null,
-        image_urls: combinedImageUrls as any,
+        image_urls: combinedImageUrls,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
       toast.info(
         usarCreditos

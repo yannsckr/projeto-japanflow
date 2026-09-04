@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  Timestamp,
+} from 'firebase/firestore';
 
 export interface ChatPreview {
   partnerUsername: string;
@@ -8,216 +15,269 @@ export interface ChatPreview {
   unreadCount: number;
 }
 
+const toIso = (value: any): string => {
+  if (!value) return '';
+  if (value?.toDate) return value.toDate().toISOString();
+  if (typeof value === 'string') return value;
+  return '';
+};
+
 export function useChatPreviews(currentUsername: string | null) {
   const [previews, setPreviews] = useState<ChatPreview[]>([]);
 
-  const fetchPreviews = useCallback(async () => {
-    if (!currentUsername) return;
+  const [usersMap, setUsersMap] = useState<{
+    idToUsername: Map<string, string>;
+    usernameToId: Map<string, string>;
+  }>({
+    idToUsername: new Map(),
+    usernameToId: new Map(),
+  });
 
-    // Get all messages involving current user
-    const { data: msgData } = await supabase
-      .from('messages')
-      .select('*')
-      .or(`sender_username.eq.${currentUsername},receiver_username.eq.${currentUsername}`)
-      .order('created_at', { ascending: false });
+  const [messagesSnapshot, setMessagesSnapshot] = useState<any[]>([]);
+  const [readStatuses, setReadStatuses] = useState<any[]>([]);
 
-    // Get read statuses
-    const { data: readData } = await supabase
-      .from('chat_read_status')
-      .select('*')
-      .eq('username', currentUsername);
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, 'app_users'),
+      (snapshot) => {
+        const idToUsername = new Map<string, string>();
+        const usernameToId = new Map<string, string>();
 
-    if (!msgData) return;
+        snapshot.docs.forEach((userDoc) => {
+          const data = userDoc.data();
+          const username = String(data.username || '').trim();
 
-    const readMap = new Map<string, string>();
-    if (readData) {
-      for (const r of readData) {
-        readMap.set(r.partner_username, r.last_read_at);
+          if (!username) return;
+
+          idToUsername.set(userDoc.id, username);
+          usernameToId.set(username, userDoc.id);
+        });
+
+        setUsersMap({
+          idToUsername,
+          usernameToId,
+        });
+      },
+      (error) => {
+        console.error('Erro ao carregar usuários para previews do chat:', error);
       }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribeMessages = onSnapshot(
+      collection(db, 'messages'),
+      (snapshot) => {
+        setMessagesSnapshot(
+          snapshot.docs.map((messageDoc) => ({
+            id: messageDoc.id,
+            ...messageDoc.data(),
+          }))
+        );
+      },
+      (error) => {
+        console.error('Erro ao carregar mensagens para previews:', error);
+      }
+    );
+
+    const unsubscribeReadStatus = onSnapshot(
+      collection(db, 'chat_read_status'),
+      (snapshot) => {
+        setReadStatuses(
+          snapshot.docs.map((statusDoc) => ({
+            id: statusDoc.id,
+            ...statusDoc.data(),
+          }))
+        );
+      },
+      (error) => {
+        console.error('Erro ao carregar status de leitura:', error);
+      }
+    );
+
+    return () => {
+      unsubscribeMessages();
+      unsubscribeReadStatus();
+    };
+  }, []);
+
+  const rebuildPreviews = useCallback(() => {
+    if (!currentUsername) {
+      setPreviews([]);
+      return;
     }
 
-    // Group by chat partner
-    const chatMap = new Map<string, { lastMsg: any; unread: number }>();
+    const currentUserId = usersMap.usernameToId.get(currentUsername) || null;
 
-    for (const msg of msgData) {
-      const partner =
-        msg.sender_username === currentUsername ? msg.receiver_username : msg.sender_username;
-      if (!chatMap.has(partner)) {
-        chatMap.set(partner, { lastMsg: msg, unread: 0 });
+    const readMap = new Map<string, string>();
+
+    for (const row of readStatuses) {
+      if (row.username !== currentUsername) continue;
+
+      const partnerUsername =
+        row.partner_username ||
+        (row.partnerId ? usersMap.idToUsername.get(row.partnerId) : undefined);
+
+      if (!partnerUsername) continue;
+
+      readMap.set(
+        partnerUsername,
+        toIso(row.last_read_at || row.lastReadAt)
+      );
+    }
+
+    const relevantMessages = messagesSnapshot
+      .map((message) => {
+        // Suporta tanto o schema antigo quanto o schema Firestore atual.
+        const senderUsername =
+          message.sender_username ||
+          (message.senderId
+            ? usersMap.idToUsername.get(message.senderId)
+            : undefined);
+
+        const receiverUsername =
+          message.receiver_username ||
+          (message.receiverId
+            ? usersMap.idToUsername.get(message.receiverId)
+            : undefined);
+
+        const senderId = message.senderId || null;
+        const receiverId = message.receiverId || null;
+
+        const createdAt = toIso(
+          message.created_at ||
+          message.timestamp ||
+          message.createdAt
+        );
+
+        return {
+          ...message,
+          senderUsername,
+          receiverUsername,
+          senderId,
+          receiverId,
+          createdAt,
+          content: String(message.content || ''),
+          deleted: message.deleted === true,
+        };
+      })
+      .filter((message) => {
+        const byUsername =
+          message.senderUsername === currentUsername ||
+          message.receiverUsername === currentUsername;
+
+        const byId =
+          !!currentUserId &&
+          (message.senderId === currentUserId ||
+            message.receiverId === currentUserId);
+
+        return byUsername || byId;
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() -
+          new Date(a.createdAt).getTime()
+      );
+
+    const chatMap = new Map<
+      string,
+      {
+        lastMsg: any;
+        unread: number;
       }
-      // Count unread: messages FROM partner, not deleted, after last_read_at
-      if (msg.sender_username !== currentUsername && !msg.deleted) {
-        const lastRead = readMap.get(partner);
-        if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
-          chatMap.get(partner)!.unread++;
+    >();
+
+    for (const message of relevantMessages) {
+      const partnerUsername =
+        message.senderUsername === currentUsername
+          ? message.receiverUsername
+          : message.senderUsername;
+
+      if (!partnerUsername) continue;
+
+      if (!chatMap.has(partnerUsername)) {
+        chatMap.set(partnerUsername, {
+          lastMsg: message,
+          unread: 0,
+        });
+      }
+
+      const isFromPartner =
+        message.senderUsername !== currentUsername;
+
+      if (isFromPartner && !message.deleted) {
+        const lastRead = readMap.get(partnerUsername);
+
+        if (
+          !lastRead ||
+          new Date(message.createdAt) > new Date(lastRead)
+        ) {
+          chatMap.get(partnerUsername)!.unread += 1;
         }
       }
     }
 
     const result: ChatPreview[] = [];
-    chatMap.forEach((val, partner) => {
+
+    chatMap.forEach((value, partnerUsername) => {
       result.push({
-        partnerUsername: partner,
-        lastMessageAt: val.lastMsg.created_at,
-        lastMessageContent: val.lastMsg.deleted ? 'Mensagem apagada' : val.lastMsg.content,
-        unreadCount: val.unread,
+        partnerUsername,
+        lastMessageAt: value.lastMsg.createdAt,
+        lastMessageContent: value.lastMsg.deleted
+          ? 'Mensagem apagada'
+          : value.lastMsg.content,
+        unreadCount: value.unread,
       });
     });
 
     result.sort(
-      (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+      (a, b) =>
+        new Date(b.lastMessageAt).getTime() -
+        new Date(a.lastMessageAt).getTime()
     );
+
     setPreviews(result);
-  }, [currentUsername]);
-
-  // Atualização incremental a partir do payload do Realtime.
-  // Evita refazer a query pesada de "todas as mensagens" a cada evento.
-  const applyIncomingMessage = useCallback(
-    (msg: {
-      id: string;
-      sender_username: string;
-      receiver_username: string;
-      content: string;
-      created_at: string;
-      deleted: boolean;
-    }) => {
-      if (!currentUsername) return;
-      const partner =
-        msg.sender_username === currentUsername ? msg.receiver_username : msg.sender_username;
-      if (!partner) return;
-
-      setPreviews((prev) => {
-        const idx = prev.findIndex((p) => p.partnerUsername === partner);
-        const existing = idx >= 0 ? prev[idx] : null;
-        const isNewer =
-          !existing || new Date(msg.created_at) >= new Date(existing.lastMessageAt);
-        const shouldCountUnread =
-          msg.sender_username !== currentUsername && !msg.deleted;
-
-        const next = existing
-          ? { ...existing }
-          : {
-              partnerUsername: partner,
-              lastMessageAt: msg.created_at,
-              lastMessageContent: msg.deleted ? 'Mensagem apagada' : msg.content,
-              unreadCount: 0,
-            };
-
-        if (isNewer) {
-          next.lastMessageAt = msg.created_at;
-          next.lastMessageContent = msg.deleted ? 'Mensagem apagada' : msg.content;
-        }
-        if (shouldCountUnread) next.unreadCount = (next.unreadCount ?? 0) + 1;
-
-        const list = idx >= 0 ? prev.map((p, i) => (i === idx ? next : p)) : [...prev, next];
-        list.sort(
-          (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-        );
-        return list;
-      });
-    },
-    [currentUsername]
-  );
-
-  const resetUnreadFor = useCallback((partnerUsername: string) => {
-    setPreviews((prev) =>
-      prev.map((p) =>
-        p.partnerUsername === partnerUsername ? { ...p, unreadCount: 0 } : p
-      )
-    );
-  }, []);
+  }, [
+    currentUsername,
+    messagesSnapshot,
+    readStatuses,
+    usersMap,
+  ]);
 
   useEffect(() => {
-    fetchPreviews();
-
-    if (!currentUsername) return;
-
-    const channel = supabase
-      .channel(`chat-previews-${currentUsername}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          const msg = payload.new as {
-            id: string;
-            sender_username: string;
-            receiver_username: string;
-            content: string;
-            created_at: string;
-            deleted: boolean;
-          };
-          if (
-            msg.sender_username === currentUsername ||
-            msg.receiver_username === currentUsername
-          ) {
-            applyIncomingMessage(msg);
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'messages' },
-        (payload) => {
-          const msg = payload.new as {
-            id: string;
-            sender_username: string;
-            receiver_username: string;
-            content: string;
-            created_at: string;
-            deleted: boolean;
-          };
-          if (
-            msg.sender_username === currentUsername ||
-            msg.receiver_username === currentUsername
-          ) {
-            applyIncomingMessage(msg);
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'chat_read_status' },
-        (payload) => {
-          const row = (payload.new ?? payload.old) as {
-            username: string;
-            partner_username: string;
-          } | null;
-          if (!row || row.username !== currentUsername) return;
-          resetUnreadFor(row.partner_username);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentUsername, fetchPreviews, applyIncomingMessage, resetUnreadFor]);
+    rebuildPreviews();
+  }, [rebuildPreviews]);
 
   const markAsRead = useCallback(
     async (partnerUsername: string) => {
       if (!currentUsername) return;
-      const now = new Date().toISOString();
 
-      // Upsert read status
-      const { data: existing } = await supabase
-        .from('chat_read_status')
-        .select('id')
-        .eq('username', currentUsername)
-        .eq('partner_username', partnerUsername)
-        .maybeSingle();
+      const statusId = `${currentUsername}__${partnerUsername}`;
 
-      if (existing) {
-        await supabase.from('chat_read_status').update({ last_read_at: now }).eq('id', existing.id);
-      } else {
-        await supabase.from('chat_read_status').insert({
+      await setDoc(
+        doc(db, 'chat_read_status', statusId),
+        {
           username: currentUsername,
           partner_username: partnerUsername,
-          last_read_at: now,
-        });
-      }
+          userId:
+            usersMap.usernameToId.get(currentUsername) ||
+            null,
+          partnerId:
+            usersMap.usernameToId.get(partnerUsername) ||
+            null,
+          last_read_at: Timestamp.now(),
+          updated_at: Timestamp.now(),
+        },
+        { merge: true }
+      );
     },
-    [currentUsername]
+    [currentUsername, usersMap]
   );
 
-  return { previews, markAsRead };
+  return {
+    previews,
+    markAsRead,
+  };
 }

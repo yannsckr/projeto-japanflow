@@ -1,7 +1,20 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+} from 'firebase/firestore';
+import {
+  getMetadata,
+  getStorage,
+  listAll as listStorageAll,
+  ref,
+} from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -81,36 +94,39 @@ function clearPersisted() {
 }
 
 async function listAll(prefix = ''): Promise<StorageFile[]> {
+  const storage = getStorage();
   const out: StorageFile[] = [];
-  const stack: string[] = [prefix];
+  const stack = [ref(storage, prefix)];
+
   while (stack.length) {
     const current = stack.pop()!;
-    let offset = 0;
-    const pageSize = 1000;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { data, error } = await supabase.storage
-        .from(BUCKET)
-        .list(current, { limit: pageSize, offset, sortBy: { column: 'name', order: 'asc' } });
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-      for (const item of data) {
-        const full = current ? `${current}/${item.name}` : item.name;
-        if ((item as any).id === null || item.metadata === null) {
-          if (SKIP_PREFIXES.some((p) => full.startsWith(p.replace(/\/$/, '')))) continue;
-          stack.push(full);
-        } else {
-          out.push({
-            path: full,
-            size: (item.metadata as any)?.size ?? null,
-            mimetype: (item.metadata as any)?.mimetype ?? null,
-          });
-        }
+    const result = await listStorageAll(current);
+
+    for (const folder of result.prefixes) {
+      if (SKIP_PREFIXES.some((p) => folder.fullPath.startsWith(p))) continue;
+      stack.push(folder);
+    }
+
+    for (const itemRef of result.items) {
+      if (SKIP_PREFIXES.some((p) => itemRef.fullPath.startsWith(p))) continue;
+
+      try {
+        const metadata = await getMetadata(itemRef);
+        out.push({
+          path: itemRef.fullPath,
+          size: metadata.size ?? null,
+          mimetype: metadata.contentType ?? null,
+        });
+      } catch {
+        out.push({
+          path: itemRef.fullPath,
+          size: null,
+          mimetype: null,
+        });
       }
-      if (data.length < pageSize) break;
-      offset += pageSize;
     }
   }
+
   return out;
 }
 
@@ -193,30 +209,54 @@ const AdminBackfillImagesPage = () => {
     async (file: StorageFile): Promise<LogEntry> => {
       try {
         if (onlyMissingAssets) {
-          const { data: existing } = await supabase
-            .from('image_assets')
-            .select('id, mime_type')
-            .eq('storage_path', file.path)
-            .maybeSingle();
-          if (existing && existing.mime_type === 'image/webp') {
-            return { path: file.path, status: 'skip', reason: 'já é webp em image_assets' };
+          const existingSnapshot = await getDocs(
+            query(
+              collection(db, 'image_assets'),
+              where('storage_path', '==', file.path)
+            )
+          );
+
+          const alreadyWebp = existingSnapshot.docs.some(
+            (assetDoc) => assetDoc.data().mime_type === 'image/webp'
+          );
+
+          if (alreadyWebp) {
+            return {
+              path: file.path,
+              status: 'skip',
+              reason: 'já é webp em image_assets',
+            };
           }
         }
 
-        const { data, error } = await supabase.functions.invoke('backfill-webp', {
-          body: {
-            mode: 'paths',
-            paths: [file.path],
-            maxDimension,
-            quality,
-            updateAssetsRow,
-            inPlace: true,
-            skipIfLarger: true,
+        const backfillWebp = httpsCallable<
+          {
+            mode: 'paths';
+            paths: string[];
+            maxDimension: number;
+            quality: number;
+            updateAssetsRow: boolean;
+            inPlace: boolean;
+            skipIfLarger: boolean;
           },
-        });
-        if (error) throw error;
+          { results?: any[]; error?: string }
+        >(getFunctions(), 'backfillWebp');
 
-        const result = (data as any)?.results?.[0];
+        const response = await backfillWebp({
+          mode: 'paths',
+          paths: [file.path],
+          maxDimension,
+          quality,
+          updateAssetsRow,
+          inPlace: true,
+          skipIfLarger: true,
+        });
+
+        if (response.data?.error) {
+          throw new Error(response.data.error);
+        }
+
+        const result = response.data?.results?.[0];
         if (!result) throw new Error('resposta vazia do backend');
 
         if (result.status === 'ok') {

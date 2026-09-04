@@ -1,5 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  Timestamp,
+} from 'firebase/firestore';
 
 export type FeatureKey =
   | 'motoboy_management'
@@ -19,7 +26,8 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 };
 
 export const FEATURE_DESCRIPTIONS: Record<FeatureKey, string> = {
-  motoboy_management: 'Aprovar, criar, editar e excluir corridas (além da Patrícia/admins)',
+  motoboy_management:
+    'Aprovar, criar, editar e excluir corridas (além da Patrícia/admins)',
   request_reverse: 'Criar solicitações de envio reverso',
   tracking_warranties:
     'Adicionar/excluir rastreamentos e gerenciar garantias (além do William/admins)',
@@ -47,58 +55,81 @@ export const useFeaturePermissions = () => {
   const [permissions, setPermissions] = useState<FeaturePermission[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchPermissions = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('user_feature_permissions')
-      .select('user_id, feature_key, enabled');
-    if (!error && data) setPermissions(data as FeaturePermission[]);
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
-    fetchPermissions();
-    const channel = supabase
-      .channel('user_feature_permissions_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'user_feature_permissions' },
-        () => fetchPermissions()
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchPermissions]);
+    const unsubscribe = onSnapshot(
+      collection(db, 'user_feature_permissions'),
+      (snapshot) => {
+        const nextPermissions = snapshot.docs
+          .map((permissionDoc) => {
+            const data = permissionDoc.data();
+            return {
+              user_id: data.user_id || '',
+              feature_key: data.feature_key as FeatureKey,
+              enabled: data.enabled === true,
+            };
+          })
+          .filter(
+            (permission) =>
+              permission.user_id &&
+              ALL_FEATURE_KEYS.includes(permission.feature_key)
+          );
+
+        setPermissions(nextPermissions);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Erro ao carregar permissões:', error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const setPermission = useCallback(
     async (userId: string, featureKey: FeatureKey, enabled: boolean) => {
+      const previous = permissions;
+
       setPermissions((prev) => {
         const filtered = prev.filter(
-          (p) => !(p.user_id === userId && p.feature_key === featureKey)
+          (permission) =>
+            !(permission.user_id === userId && permission.feature_key === featureKey)
         );
+
         return [...filtered, { user_id: userId, feature_key: featureKey, enabled }];
       });
-      const { error } = await supabase.from('user_feature_permissions').upsert(
-        {
-          user_id: userId,
-          feature_key: featureKey,
-          enabled,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,feature_key' }
-      );
-      if (error) {
+
+      try {
+        const permissionId = `${featureKey}__${userId}`;
+
+        await setDoc(
+          doc(db, 'user_feature_permissions', permissionId),
+          {
+            user_id: userId,
+            feature_key: featureKey,
+            enabled,
+            updated_at: Timestamp.now(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
         console.error('Erro ao salvar permissão:', error);
-        fetchPermissions();
+        setPermissions(previous);
       }
     },
-    [fetchPermissions]
+    [permissions]
   );
 
   const hasFeature = useCallback(
     (userId: string | undefined, featureKey: FeatureKey): boolean => {
       if (!userId) return false;
-      const record = permissions.find((p) => p.user_id === userId && p.feature_key === featureKey);
+
+      const record = permissions.find(
+        (permission) =>
+          permission.user_id === userId &&
+          permission.feature_key === featureKey
+      );
+
       return record?.enabled === true;
     },
     [permissions]

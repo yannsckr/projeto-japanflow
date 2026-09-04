@@ -1,7 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Task, STATUS_LABELS, PRIORITY_LABELS, Sector, SECTOR_LABELS } from '@/types';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -71,31 +78,48 @@ const TaskTrackingPage = () => {
 
   // Fetch rides created by this user
   useEffect(() => {
-    if (!currentUser) return;
-    const fetchRides = async () => {
-      const { data } = await supabase
-        .from('motoboy_assignments')
-        .select('*')
-        .eq('assigned_by', currentUser.id)
-        .order('created_at', { ascending: false });
-      if (data) setRides(data as MotoboyAssignment[]);
-    };
-    fetchRides();
+    if (!currentUser) {
+      setRides([]);
+      return;
+    }
 
-    const channel = supabase
-      .channel('tracking-rides')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'motoboy_assignments' },
-        () => {
-          fetchRides();
-        }
-      )
-      .subscribe();
+    const ridesQuery = query(
+      collection(db, 'motoboy_assignments'),
+      where('assigned_by', '==', currentUser.id),
+      orderBy('created_at', 'desc')
+    );
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const unsubscribe = onSnapshot(
+      ridesQuery,
+      (snapshot) => {
+        setRides(
+          snapshot.docs.map((rideDoc) => {
+            const data = rideDoc.data();
+            return {
+              id: rideDoc.id,
+              description: data.description || '',
+              assigned_to: data.assigned_to || '',
+              status: data.status || 'pending',
+              client_name: data.client_name || '',
+              location: data.location || '',
+              ride_value: Number(data.ride_value) || 0,
+              notes: data.notes || '',
+              created_at: data.created_at?.toDate
+                ? data.created_at.toDate().toISOString()
+                : data.created_at || '',
+              completed_at: data.completed_at?.toDate
+                ? data.completed_at.toDate().toISOString()
+                : data.completed_at || null,
+            } as MotoboyAssignment;
+          })
+        );
+      },
+      (error) => {
+        console.error('Erro ao carregar corridas de acompanhamento:', error);
+      }
+    );
+
+    return () => unsubscribe();
   }, [currentUser]);
 
   // Tasks created by current user for others

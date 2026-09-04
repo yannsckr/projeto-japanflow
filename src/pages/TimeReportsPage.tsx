@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  Timestamp,
+  where,
+} from 'firebase/firestore';
 import { useAllPresences } from '@/hooks/usePresence';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -61,21 +69,70 @@ const TimeReportsPage = () => {
           startDate = startOfDay(now);
       }
 
-      const [pauseRes, sessionRes] = await Promise.all([
-        supabase
-          .from('pause_history')
-          .select('*')
-          .gte('started_at', startDate.toISOString())
-          .order('started_at', { ascending: false }),
-        supabase
-          .from('presence_sessions')
-          .select('*')
-          .gte('started_at', startDate.toISOString())
-          .order('started_at', { ascending: false }),
+      const startTimestamp = Timestamp.fromDate(startDate);
+
+      const [pauseSnapshot, sessionSnapshot] = await Promise.all([
+        getDocs(
+          query(
+            collection(db, 'pause_history'),
+            where('started_at', '>=', startTimestamp),
+            orderBy('started_at', 'desc')
+          )
+        ),
+        getDocs(
+          query(
+            collection(db, 'presence_sessions'),
+            where('started_at', '>=', startTimestamp),
+            orderBy('started_at', 'desc')
+          )
+        ),
       ]);
 
-      if (pauseRes.data) setPauseHistory(pauseRes.data as PauseRecord[]);
-      if (sessionRes.data) setSessions(sessionRes.data as SessionRecord[]);
+      setPauseHistory(
+        pauseSnapshot.docs.map((pauseDoc) => {
+          const data = pauseDoc.data();
+          return {
+            id: pauseDoc.id,
+            user_id: data.user_id || '',
+            pause_type: data.pause_type || '',
+            started_at: data.started_at?.toDate
+              ? data.started_at.toDate().toISOString()
+              : data.started_at || '',
+            ended_at: data.ended_at?.toDate
+              ? data.ended_at.toDate().toISOString()
+              : data.ended_at || null,
+            duration_seconds:
+              typeof data.duration_seconds === 'number'
+                ? data.duration_seconds
+                : null,
+            overtime_seconds:
+              typeof data.overtime_seconds === 'number'
+                ? data.overtime_seconds
+                : null,
+          } as PauseRecord;
+        })
+      );
+
+      setSessions(
+        sessionSnapshot.docs.map((sessionDoc) => {
+          const data = sessionDoc.data();
+          return {
+            id: sessionDoc.id,
+            user_id: data.user_id || '',
+            started_at: data.started_at?.toDate
+              ? data.started_at.toDate().toISOString()
+              : data.started_at || '',
+            ended_at: data.ended_at?.toDate
+              ? data.ended_at.toDate().toISOString()
+              : data.ended_at || null,
+            duration_seconds:
+              typeof data.duration_seconds === 'number'
+                ? data.duration_seconds
+                : null,
+            status: data.status || '',
+          } as SessionRecord;
+        })
+      );
     };
 
     fetchData();

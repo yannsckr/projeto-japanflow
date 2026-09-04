@@ -1,5 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
 import { CalendarEvent } from '@/types';
 
 interface CalendarRow {
@@ -13,8 +24,15 @@ interface CalendarRow {
   type: string;
   target_mode: string;
   target_users: any;
-  created_at: string;
+  created_at: any;
 }
+
+const toIso = (value: any): string => {
+  if (!value) return '';
+  if (value?.toDate) return value.toDate().toISOString();
+  if (typeof value === 'string') return value;
+  return '';
+};
 
 const rowToEvent = (row: CalendarRow): CalendarEvent => ({
   id: row.id,
@@ -27,7 +45,7 @@ const rowToEvent = (row: CalendarRow): CalendarEvent => ({
   type: row.type as 'event' | 'reminder',
   targetMode: (row.target_mode as CalendarEvent['targetMode']) || 'specific',
   targetUsers: Array.isArray(row.target_users) ? row.target_users : [],
-  createdAt: row.created_at,
+  createdAt: toIso(row.created_at),
 });
 
 export const useSupabaseCalendar = (enabled = true) => {
@@ -39,83 +57,83 @@ export const useSupabaseCalendar = (enabled = true) => {
       return;
     }
 
-    const fetch = async () => {
-      const { data, error } = await supabase.from('calendar_events').select('*').order('date');
-      if (error) {
-        console.error('Error fetching calendar events:', error);
-        return;
-      }
-      setEvents(data.map((r: any) => rowToEvent(r)));
-    };
-    fetch();
+    const eventsQuery = query(
+      collection(db, 'calendar_events'),
+      orderBy('date', 'asc')
+    );
 
-    const channel = supabase
-      .channel('calendar-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'calendar_events' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const e = rowToEvent(payload.new as CalendarRow);
-            setEvents((prev) => (prev.find((x) => x.id === e.id) ? prev : [...prev, e]));
-          } else if (payload.eventType === 'UPDATE') {
-            const e = rowToEvent(payload.new as CalendarRow);
-            setEvents((prev) => prev.map((x) => (x.id === e.id ? e : x)));
-          } else if (payload.eventType === 'DELETE') {
-            setEvents((prev) => prev.filter((x) => x.id !== (payload.old as any).id));
-          }
-        }
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const unsubscribe = onSnapshot(
+      eventsQuery,
+      (snapshot) => {
+        setEvents(
+          snapshot.docs.map((eventDoc) =>
+            rowToEvent({
+              id: eventDoc.id,
+              ...(eventDoc.data() as Omit<CalendarRow, 'id'>),
+            })
+          )
+        );
+      },
+      (error) => {
+        console.error('Error fetching calendar events:', error);
+      }
+    );
+
+    return () => unsubscribe();
   }, [enabled]);
 
-  const addEvent = useCallback(async (event: Omit<CalendarEvent, 'id' | 'createdAt'>) => {
-    await supabase.from('calendar_events').insert({
-      title: event.title,
-      description: event.description,
-      date: event.date,
-      time: event.time || null,
-      user_id: event.userId,
-      created_by: event.createdBy,
-      type: event.type,
-      target_mode: event.targetMode || 'specific',
-      target_users: event.targetUsers || [],
-    } as any);
-  }, []);
+  const addEvent = useCallback(
+    async (event: Omit<CalendarEvent, 'id' | 'createdAt'>) => {
+      await addDoc(collection(db, 'calendar_events'), {
+        title: event.title,
+        description: event.description,
+        date: event.date,
+        time: event.time || null,
+        user_id: event.userId,
+        created_by: event.createdBy,
+        type: event.type,
+        target_mode: event.targetMode || 'specific',
+        target_users: event.targetUsers || [],
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
+    },
+    []
+  );
 
   const updateEvent = useCallback(
     async (
       eventId: string,
       updates: Partial<Omit<CalendarEvent, 'id' | 'createdAt' | 'createdBy'>>
     ) => {
-      const dbUpdates: any = {};
+      const dbUpdates: Record<string, any> = { updated_at: Timestamp.now() };
+
       if (updates.title !== undefined) dbUpdates.title = updates.title;
       if (updates.description !== undefined) dbUpdates.description = updates.description;
       if (updates.date !== undefined) dbUpdates.date = updates.date;
       if (updates.time !== undefined) dbUpdates.time = updates.time || null;
       if (updates.type !== undefined) dbUpdates.type = updates.type;
+      if (updates.targetMode !== undefined) dbUpdates.target_mode = updates.targetMode;
       if (updates.targetUsers !== undefined) dbUpdates.target_users = updates.targetUsers;
-      await supabase.from('calendar_events').update(dbUpdates).eq('id', eventId);
+      if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
+
+      await updateDoc(doc(db, 'calendar_events', eventId), dbUpdates);
     },
     []
   );
 
   const deleteEvent = useCallback(async (eventId: string) => {
-    await supabase.from('calendar_events').delete().eq('id', eventId);
+    await deleteDoc(doc(db, 'calendar_events', eventId));
   }, []);
 
   const getEventsForUser = useCallback(
     (userId: string) => {
       return events
-        .filter((e) => {
-          // Event is visible if user is in targetUsers array, or if user_id matches (legacy/specific)
-          if (e.targetUsers && e.targetUsers.length > 0) {
-            return e.targetUsers.includes(userId);
+        .filter((event) => {
+          if (event.targetUsers && event.targetUsers.length > 0) {
+            return event.targetUsers.includes(userId);
           }
-          return e.userId === userId;
+          return event.userId === userId;
         })
         .sort((a, b) => a.date.localeCompare(b.date));
     },

@@ -1,5 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  Timestamp,
+} from 'firebase/firestore';
 
 export type TabKey = 'financial' | 'corridas' | 'tracking';
 
@@ -21,61 +28,65 @@ export const useTabPermissions = () => {
   const [permissions, setPermissions] = useState<TabPermission[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchPermissions = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('user_tab_permissions')
-      .select('user_id, tab_key, enabled');
-    if (!error && data) {
-      setPermissions(data as TabPermission[]);
-    }
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
-    fetchPermissions();
-    const channel = supabase
-      .channel('user_tab_permissions_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'user_tab_permissions' },
-        () => {
-          fetchPermissions();
-        }
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchPermissions]);
+    const unsubscribe = onSnapshot(
+      collection(db, 'user_tab_permissions'),
+      (snapshot) => {
+        setPermissions(
+          snapshot.docs.map((permissionDoc) => {
+            const data = permissionDoc.data();
+            return {
+              user_id: data.user_id || '',
+              tab_key: data.tab_key as TabKey,
+              enabled: data.enabled === true,
+            };
+          })
+        );
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Erro ao carregar permissões de abas:', error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const setPermission = useCallback(
     async (userId: string, tabKey: TabKey, enabled: boolean) => {
-      // Optimistic update
       setPermissions((prev) => {
-        const filtered = prev.filter((p) => !(p.user_id === userId && p.tab_key === tabKey));
+        const filtered = prev.filter(
+          (p) => !(p.user_id === userId && p.tab_key === tabKey)
+        );
         return [...filtered, { user_id: userId, tab_key: tabKey, enabled }];
       });
-      const { error } = await supabase
-        .from('user_tab_permissions')
-        .upsert(
-          { user_id: userId, tab_key: tabKey, enabled, updated_at: new Date().toISOString() },
-          { onConflict: 'user_id,tab_key' }
+
+      const permissionId = `${userId}__${tabKey}`;
+
+      try {
+        await setDoc(
+          doc(db, 'user_tab_permissions', permissionId),
+          {
+            user_id: userId,
+            tab_key: tabKey,
+            enabled,
+            updated_at: Timestamp.now(),
+          },
+          { merge: true }
         );
-      if (error) {
+      } catch (error) {
         console.error('Erro ao salvar permissão:', error);
-        fetchPermissions();
       }
     },
-    [fetchPermissions]
+    []
   );
 
-  /**
-   * Returns whether a tab is enabled for a user.
-   * If no record exists, falls back to the provided default (default-allow rules).
-   */
   const isTabEnabled = useCallback(
     (userId: string, tabKey: TabKey, fallback: boolean): boolean => {
-      const record = permissions.find((p) => p.user_id === userId && p.tab_key === tabKey);
+      const record = permissions.find(
+        (p) => p.user_id === userId && p.tab_key === tabKey
+      );
       if (!record) return fallback;
       return record.enabled;
     },

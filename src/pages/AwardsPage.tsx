@@ -1,6 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+} from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -73,24 +83,47 @@ const AwardsPage = () => {
   const canSeeAll = isAdmin || inFinance || inAdministracao;
 
   const fetchRows = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('awards')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (!error && data) setRows(data as AwardRow[]);
-    setLoading(false);
+    // Mantido por compatibilidade com chamadas existentes.
   }, []);
 
   useEffect(() => {
-    fetchRows();
-    const channel = supabase
-      .channel('awards_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'awards' }, () => fetchRows())
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchRows]);
+    const awardsQuery = query(
+      collection(db, 'awards'),
+      orderBy('created_at', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(
+      awardsQuery,
+      (snapshot) => {
+        setRows(
+          snapshot.docs.map((awardDoc) => {
+            const data = awardDoc.data();
+            return {
+              id: awardDoc.id,
+              target_user_id: data.target_user_id || '',
+              title: data.title || '',
+              amount: typeof data.amount === 'number' ? data.amount : null,
+              period: data.period || null,
+              notes: data.notes || null,
+              document_url: data.document_url || null,
+              document_name: data.document_name || null,
+              created_by: data.created_by || '',
+              created_at: data.created_at?.toDate
+                ? data.created_at.toDate().toISOString()
+                : data.created_at || '',
+            } as AwardRow;
+          })
+        );
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Erro ao carregar premiações:', error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   if (!currentUser) return null;
 
@@ -140,17 +173,21 @@ const AwardsPage = () => {
       toast.error('Informe o título');
       return;
     }
-    const { error } = await supabase.from('awards').insert({
-      target_user_id: targetUserId,
-      title: title.trim(),
-      amount: amount ? Number(amount) : null,
-      period: period.trim() || null,
-      notes: notes.trim() || null,
-      document_url: docUrl || null,
-      document_name: docName || null,
-      created_by: currentUser.id,
-    });
-    if (error) {
+    try {
+      await addDoc(collection(db, 'awards'), {
+        target_user_id: targetUserId,
+        title: title.trim(),
+        amount: amount ? Number(amount) : null,
+        period: period.trim() || null,
+        notes: notes.trim() || null,
+        document_url: docUrl || null,
+        document_name: docName || null,
+        created_by: currentUser.id,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error(error);
       toast.error('Erro ao salvar');
       return;
     }
@@ -162,8 +199,10 @@ const AwardsPage = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir esta premiação?')) return;
-    const { error } = await supabase.from('awards').delete().eq('id', id);
-    if (error) {
+    try {
+      await deleteDoc(doc(db, 'awards', id));
+    } catch (error) {
+      console.error(error);
       toast.error('Erro ao excluir');
       return;
     }

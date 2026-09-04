@@ -1,6 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -64,10 +76,14 @@ const InventoryPage = () => {
     setScanningIdx(idx);
     try {
       const { base64, mimeType } = await fileToBase64(file);
-      const { data, error } = await supabase.functions.invoke('parse-inventory-label', {
-        body: { imageBase64: base64, mimeType },
-      });
-      if (error) throw error;
+      const parseInventoryLabel = httpsCallable<
+        { imageBase64: string; mimeType: string },
+        { type?: string; code?: string; error?: string }
+      >(getFunctions(), 'parseInventoryLabel');
+
+      const response = await parseInventoryLabel({ imageBase64: base64, mimeType });
+      const data = response.data;
+      if (data?.error) throw new Error(data.error);
       const type = (data?.type || '').toString();
       const code = (data?.code || '').toString();
       if (!type && !code) {
@@ -93,67 +109,103 @@ const InventoryPage = () => {
   const canReports = isAdmin || isMoises;
 
   const load = async () => {
-    const { data } = await supabase
-      .from('inventories')
-      .select('*')
-      .order('started_at', { ascending: false });
-    if (data) setInventories(data as any);
+    // Mantido por compatibilidade; o listener abaixo já mantém a lista atualizada.
   };
 
   useEffect(() => {
-    load();
-    const ch = supabase
-      .channel('inventories-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventories' }, load)
-      .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
+    const inventoriesQuery = query(
+      collection(db, 'inventories'),
+      orderBy('started_at', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(
+      inventoriesQuery,
+      (snapshot) => {
+        setInventories(
+          snapshot.docs.map((inventoryDoc) => {
+            const data = inventoryDoc.data();
+            return {
+              id: inventoryDoc.id,
+              shelf_code: data.shelf_code || '',
+              status: data.status || 'in_progress',
+              started_by_id: data.started_by_id || '',
+              started_by_name: data.started_by_name || '',
+              locations: Array.isArray(data.locations) ? data.locations : [],
+              started_at: data.started_at?.toDate
+                ? data.started_at.toDate().toISOString()
+                : data.started_at || '',
+              finished_at: data.finished_at?.toDate
+                ? data.finished_at.toDate().toISOString()
+                : data.finished_at || null,
+              popup_id: data.popup_id || null,
+              task_id: data.task_id || null,
+            } as any;
+          })
+        );
+      },
+      (error) => console.error('Erro ao carregar inventários:', error)
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const handleStart = async () => {
     if (!shelfCode.trim() || !currentUser) return;
     const shelf = shelfCode.trim().toUpperCase();
 
-    const { data: inv, error } = await supabase
-      .from('inventories')
-      .insert({
+    try {
+      const inventoryRef = await addDoc(collection(db, 'inventories'), {
         shelf_code: shelf,
         status: 'in_progress',
         started_by_id: currentUser.id,
         started_by_name: currentUser.name,
         locations: [],
-      })
-      .select()
-      .single();
-    if (error || !inv) {
-      toast.error('Erro ao iniciar inventário');
-      return;
-    }
+        started_at: Timestamp.now(),
+        finished_at: null,
+      });
 
-    // Broadcast popup to all users
-    const { data: popup } = await supabase
-      .from('admin_popups')
-      .insert({
+      const popupRef = await addDoc(collection(db, 'admin_popups'), {
         title: `📦 Inventário em andamento - Prateleira ${shelf}`,
-        content: `A prateleira ${shelf} está em processo de inventário.\n\nSe precisar de algum item dela, entre em contato com o Estoque antes de retirar.\n\nIniciado por ${currentUser.name}.`,
+        content: `A prateleira ${shelf} está em processo de inventário.
+
+Se precisar de algum item dela, entre em contato com o Estoque antes de retirar.
+
+Iniciado por ${currentUser.name}.`,
         created_by: currentUser.id,
         target_mode: 'all',
         target_sectors: [],
         target_users: [],
         attachments: [],
-      })
-      .select()
-      .single();
-    if (popup) {
-      await supabase.from('inventories').update({ popup_id: popup.id }).eq('id', inv.id);
-    }
+        created_at: Timestamp.now(),
+      });
 
-    setShelfCode('');
-    setActiveInventory(inv as any);
-    setLocationCode('');
-    setItems(Array.from({ length: 5 }, emptyItem));
-    toast.success('Inventário iniciado e equipe notificada');
+      await updateDoc(doc(db, 'inventories', inventoryRef.id), {
+        popup_id: popupRef.id,
+        updated_at: Timestamp.now(),
+      });
+
+      const inv = {
+        id: inventoryRef.id,
+        shelf_code: shelf,
+        status: 'in_progress' as const,
+        started_by_id: currentUser.id,
+        started_by_name: currentUser.name,
+        locations: [],
+        started_at: new Date().toISOString(),
+        finished_at: null,
+        popup_id: popupRef.id,
+      } as any;
+
+      setShelfCode('');
+      setActiveInventory(inv);
+      setLocationCode('');
+      setItems(Array.from({ length: 5 }, emptyItem));
+      toast.success('Inventário iniciado e equipe notificada');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao iniciar inventário');
+      return;
+    }
   };
 
   const addItemFields = () => {
@@ -181,17 +233,17 @@ const InventoryPage = () => {
       ...(activeInventory.locations || []),
       { location_code: locationCode.trim().toUpperCase(), items: cleanItems },
     ];
-    const { data, error } = await supabase
-      .from('inventories')
-      .update({ locations: newLocations as any })
-      .eq('id', activeInventory.id)
-      .select()
-      .single();
-    if (error || !data) {
+    try {
+      await updateDoc(doc(db, 'inventories', activeInventory.id), {
+        locations: newLocations,
+        updated_at: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error(error);
       toast.error('Erro ao salvar localização');
       return null;
     }
-    const updated = data as any as Inventory;
+    const updated = { ...activeInventory, locations: newLocations } as Inventory;
     setActiveInventory(updated);
     return updated;
   };
@@ -234,42 +286,39 @@ const InventoryPage = () => {
     const reportText = buildReportText(finalInv);
 
     // Generate task for Moisés
-    const { data: task } = await supabase
-      .from('tasks')
-      .insert({
-        title: `📋 Baixa de Inventário - Prateleira ${finalInv.shelf_code}`,
-        description: `Realizar a baixa no sistema referente ao inventário da prateleira ${finalInv.shelf_code}.\n\n${reportText}`,
-        status: 'todo',
-        priority: 'medium',
-        assignee_id: MOISES_ID,
-        created_by: currentUser.id,
-        deadline: '',
-      })
-      .select()
-      .single();
+    const taskRef = await addDoc(collection(db, 'tasks'), {
+      title: `📋 Baixa de Inventário - Prateleira ${finalInv.shelf_code}`,
+      description: `Realizar a baixa no sistema referente ao inventário da prateleira ${finalInv.shelf_code}.
 
-    await supabase
-      .from('inventories')
-      .update({
-        status: 'completed',
-        finished_at: new Date().toISOString(),
-        task_id: task?.id ?? null,
-      })
-      .eq('id', finalInv.id);
+${reportText}`,
+      status: 'todo',
+      priority: 'medium',
+      assignee_id: MOISES_ID,
+      created_by: currentUser.id,
+      deadline: '',
+      sector: 'estoque',
+      status_history: [{ status: 'todo', enteredAt: new Date().toISOString() }],
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+    });
 
-    // Notify Moisés
-    await supabase.from('notifications').insert({
+    await updateDoc(doc(db, 'inventories', finalInv.id), {
+      status: 'completed',
+      finished_at: Timestamp.now(),
+      task_id: taskRef.id,
+      updated_at: Timestamp.now(),
+    });
+
+    await addDoc(collection(db, 'notifications'), {
       user_id: MOISES_ID,
       message: `Nova baixa de inventário disponível — Prateleira ${finalInv.shelf_code}`,
       type: 'task_created',
+      read: false,
+      created_at: Timestamp.now(),
     });
 
-    // Clean up: delete the broadcast popup so it stops showing
     if ((finalInv as any).popup_id) {
-      await supabase
-        .from('admin_popups')
-        .delete()
-        .eq('id', (finalInv as any).popup_id);
+      await deleteDoc(doc(db, 'admin_popups', (finalInv as any).popup_id));
     }
 
     toast.success('Inventário finalizado e tarefa enviada a Moisés');
@@ -282,12 +331,9 @@ const InventoryPage = () => {
     if (!activeInventory) return;
     if (!confirm('Cancelar este inventário? Os dados informados serão descartados.')) return;
     if ((activeInventory as any).popup_id) {
-      await supabase
-        .from('admin_popups')
-        .delete()
-        .eq('id', (activeInventory as any).popup_id);
+      await deleteDoc(doc(db, 'admin_popups', (activeInventory as any).popup_id));
     }
-    await supabase.from('inventories').delete().eq('id', activeInventory.id);
+    await deleteDoc(doc(db, 'inventories', activeInventory.id));
     setActiveInventory(null);
     setLocationCode('');
     setItems(Array.from({ length: 5 }, emptyItem));

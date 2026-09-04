@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -101,28 +102,73 @@ const ChatHistoryPage = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const { data: users } = await supabase.from('app_users').select('username, name');
+      const usersSnapshot = await getDocs(collection(db, 'app_users'));
       const nameMap: Record<string, string> = {};
-      (users || []).forEach((u: { username: string; name: string }) => {
-        nameMap[u.username] = u.name;
+      const usernameById = new Map<string, string>();
+
+      usersSnapshot.docs.forEach((userDoc) => {
+        const data = userDoc.data();
+        const username = String(data.username || '').trim();
+        const name = String(data.name || username || userDoc.id);
+        if (username) {
+          nameMap[username] = name;
+          usernameById.set(userDoc.id, username);
+        }
       });
       setNames(nameMap);
 
-      const all: Msg[] = [];
-      const PAGE = 1000;
-      for (let from = 0; from < 100000; from += PAGE) {
-        const { data, error } = await supabase
-          .from('messages')
-          .select(
-            'id, sender_username, receiver_username, content, attachment_url, attachment_name, attachment_type, created_at'
-          )
-          .order('created_at', { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all.push(...(data as Msg[]));
-        if (data.length < PAGE) break;
-      }
+      const messagesSnapshot = await getDocs(collection(db, 'messages'));
+      const all: Msg[] = messagesSnapshot.docs
+        .map((messageDoc) => {
+          const data = messageDoc.data();
+
+          const senderUsername =
+            data.sender_username ||
+            (data.senderId ? usernameById.get(data.senderId) : undefined);
+
+          const receiverUsername =
+            data.receiver_username ||
+            (data.receiverId ? usernameById.get(data.receiverId) : undefined);
+
+          const createdValue =
+            data.created_at ||
+            data.timestamp ||
+            data.createdAt;
+
+          const createdAt = createdValue?.toDate
+            ? createdValue.toDate().toISOString()
+            : typeof createdValue === 'string'
+              ? createdValue
+              : '';
+
+          if (!senderUsername || !receiverUsername) return null;
+
+          return {
+            id: messageDoc.id,
+            sender_username: senderUsername,
+            receiver_username: receiverUsername,
+            content: String(data.content || ''),
+            attachment_url:
+              data.attachment_url ||
+              data.attachmentUrl ||
+              null,
+            attachment_name:
+              data.attachment_name ||
+              data.attachmentName ||
+              null,
+            attachment_type:
+              data.attachment_type ||
+              data.attachmentType ||
+              null,
+            created_at: createdAt,
+          } as Msg;
+        })
+        .filter((message): message is Msg => !!message)
+        .sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime()
+        );
 
       // Mescla o cache local deste navegador (mensagens antigas que já não estão no servidor)
       const merged = new Map<string, Msg>();

@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sparkles, Loader2, Check, X, CalendarDays, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sector, SECTOR_LABELS } from '@/types';
-import { supabase } from '@/integrations/supabase/client';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { cn } from '@/lib/utils';
 
 interface ParsedEvent {
@@ -38,11 +38,24 @@ const AICalendarCreator = () => {
       const sectors = Object.entries(SECTOR_LABELS).map(([k, v]) => ({ id: k, label: v }));
       const usersList = users.map((u) => ({ id: u.id, name: u.name, sectors: u.sectors }));
 
-      const { data, error } = await supabase.functions.invoke('parse-calendar-events', {
-        body: { text: text.trim(), users: usersList, sectors },
+      const functions = getFunctions();
+      const parseCalendarEvents = httpsCallable<
+        {
+          text: string;
+          users: Array<{ id: string; name: string; sectors?: Sector[] }>;
+          sectors: Array<{ id: string; label: string }>;
+        },
+        { events?: any[]; error?: string }
+      >(functions, 'parseCalendarEvents');
+
+      const result = await parseCalendarEvents({
+        text: text.trim(),
+        users: usersList,
+        sectors,
       });
 
-      if (error) throw error;
+      const data = result.data;
+
       if (data?.error) throw new Error(data.error);
 
       const events = (data.events || []).map((e: any) => ({ ...e, selected: true }));

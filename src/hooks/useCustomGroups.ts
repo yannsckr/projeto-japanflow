@@ -1,63 +1,91 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+} from 'firebase/firestore';
 
 export interface CustomGroup {
   id: string;
   name: string;
   createdBy: string;
-  participants: string[]; // array of user IDs
+  participants: string[];
   createdAt: string;
 }
+
+const toIso = (value: any): string => {
+  if (!value) return '';
+  if (value?.toDate) return value.toDate().toISOString();
+  if (typeof value === 'string') return value;
+  return '';
+};
 
 export function useCustomGroups() {
   const [groups, setGroups] = useState<CustomGroup[]>([]);
 
-  const fetchGroups = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('custom_groups')
-      .select('*')
-      .order('created_at', { ascending: false });
+  useEffect(() => {
+    const groupsQuery = query(
+      collection(db, 'custom_groups'),
+      orderBy('created_at', 'desc')
+    );
 
-    if (!error && data) {
-      setGroups(
-        data.map((g: any) => ({
-          id: g.id,
-          name: g.name,
-          createdBy: g.created_by,
-          participants: (g.participants as string[]) || [],
-          createdAt: g.created_at,
-        }))
-      );
-    }
+    const unsubscribe = onSnapshot(
+      groupsQuery,
+      (snapshot) => {
+        setGroups(
+          snapshot.docs.map((groupDoc) => {
+            const data = groupDoc.data();
+
+            return {
+              id: groupDoc.id,
+              name: data.name || '',
+              createdBy: data.created_by || '',
+              participants: Array.isArray(data.participants)
+                ? data.participants
+                : [],
+              createdAt: toIso(data.created_at),
+            };
+          })
+        );
+      },
+      (error) => {
+        console.error('Erro ao carregar grupos:', error);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    fetchGroups();
-    const channel = supabase
-      .channel('custom-groups-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_groups' }, () =>
-        fetchGroups()
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchGroups]);
-
   const createGroup = useCallback(
-    async (name: string, participants: string[], createdBy: string) => {
-      await supabase.from('custom_groups').insert({
+    async (
+      name: string,
+      participants: string[],
+      createdBy: string
+    ) => {
+      await addDoc(collection(db, 'custom_groups'), {
         name,
-        participants: participants as any,
+        participants,
         created_by: createdBy,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
     },
     []
   );
 
   const deleteGroup = useCallback(async (id: string) => {
-    await supabase.from('custom_groups').delete().eq('id', id);
+    await deleteDoc(doc(db, 'custom_groups', id));
   }, []);
 
-  return { groups, createGroup, deleteGroup };
+  return {
+    groups,
+    createGroup,
+    deleteGroup,
+  };
 }

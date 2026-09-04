@@ -14,7 +14,16 @@ import {
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  Timestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -68,57 +77,82 @@ const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
         sourceField: 'photo_url',
         uploadedBy: task.assigneeId,
       });
-      // Update the task with the receipt image and mark as done
-      await supabase
-        .from('tasks')
-        .update({
-          image_url: publicUrl,
-          status: 'done',
-          updated_at: new Date().toISOString(),
-          status_history: [
-            ...(task.statusHistory || []),
-            { status: 'done', enteredAt: new Date().toISOString() },
-          ] as any,
-        })
-        .eq('id', task.id);
-      // Also complete matching motoboy_assignment via task_id link
-      const { data: directMatch } = await supabase
-        .from('motoboy_assignments')
-        .select('id')
-        .eq('task_id', task.id)
-        .neq('status', 'completed')
-        .limit(1);
-      if (directMatch && directMatch.length > 0) {
-        await supabase
-          .from('motoboy_assignments')
-          .update({
+      // Atualiza a tarefa com a foto do cupom e conclui a corrida.
+      const now = Timestamp.now();
+      const nowIso = now.toDate().toISOString();
+
+      await updateDoc(doc(db, 'tasks', task.id), {
+        image_url: publicUrl,
+        status: 'done',
+        updated_at: now,
+        status_history: [
+          ...(task.statusHistory || []),
+          { status: 'done', enteredAt: nowIso },
+        ],
+      });
+
+      // Primeiro tenta localizar a corrida diretamente pelo task_id.
+      const directQuery = query(
+        collection(db, 'motoboy_assignments'),
+        where('task_id', '==', task.id)
+      );
+
+      const directSnapshot = await getDocs(directQuery);
+
+      const directMatch = directSnapshot.docs.find(
+        (assignmentDoc) => assignmentDoc.data().status !== 'completed'
+      );
+
+      if (directMatch) {
+        await updateDoc(
+          doc(db, 'motoboy_assignments', directMatch.id),
+          {
             status: 'completed',
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', directMatch[0].id);
-      } else {
-        // Fallback for legacy assignments
-        const { data: assignments } = await supabase
-          .from('motoboy_assignments')
-          .select('*')
-          .eq('assigned_to', task.assigneeId)
-          .eq('status', 'accepted')
-          .order('created_at', { ascending: false });
-        if (assignments && assignments.length > 0) {
-          const match = assignments.find(
-            (a) => task.title.includes(a.client_name || '') || task.title.includes(a.description)
-          );
-          if (match) {
-            await supabase
-              .from('motoboy_assignments')
-              .update({
-                status: 'completed',
-                completed_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', match.id);
+            completed_at: now,
+            updated_at: now,
           }
+        );
+      } else {
+        // Fallback para corridas antigas que ainda não possuem task_id.
+        const assignmentsQuery = query(
+          collection(db, 'motoboy_assignments'),
+          where('assigned_to', '==', task.assigneeId),
+          where('status', '==', 'accepted')
+        );
+
+        const assignmentsSnapshot = await getDocs(assignmentsQuery);
+
+        const assignments = assignmentsSnapshot.docs
+          .map((assignmentDoc) => ({
+            id: assignmentDoc.id,
+            ...assignmentDoc.data(),
+          }))
+          .sort((a: any, b: any) => {
+            const aDate =
+              a.created_at?.toDate?.()?.getTime?.() ??
+              new Date(a.created_at || 0).getTime();
+            const bDate =
+              b.created_at?.toDate?.()?.getTime?.() ??
+              new Date(b.created_at || 0).getTime();
+
+            return bDate - aDate;
+          }) as any[];
+
+        const match = assignments.find(
+          (assignment) =>
+            task.title.includes(assignment.client_name || '') ||
+            task.title.includes(assignment.description || '')
+        );
+
+        if (match) {
+          await updateDoc(
+            doc(db, 'motoboy_assignments', match.id),
+            {
+              status: 'completed',
+              completed_at: now,
+              updated_at: now,
+            }
+          );
         }
       }
       toast.success('Corrida concluída com foto do cupom!');

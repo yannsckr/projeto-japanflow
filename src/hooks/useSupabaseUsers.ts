@@ -1,5 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  collection,
+  setDoc,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
 import { mockUsers } from '@/data/mockData';
 import { User, Sector, UserRole } from '@/types';
 
@@ -15,21 +26,21 @@ interface DbUser {
   sectors: string[];
   function: string | null;
   background_color: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: any;
+  updated_at: any;
 }
 
-function dbToUser(db: DbUser): User {
+function dbToUser(dbUser: DbUser): User {
   return {
-    id: db.id,
-    name: db.name,
-    username: db.username,
-    password: db.password,
-    role: db.role as UserRole,
-    avatar: db.avatar || undefined,
-    sectors: (db.sectors || []) as Sector[],
-    function: db.function || undefined,
-    backgroundColor: db.background_color || undefined,
+    id: dbUser.id,
+    name: dbUser.name,
+    username: dbUser.username,
+    password: dbUser.password,
+    role: dbUser.role as UserRole,
+    avatar: dbUser.avatar || undefined,
+    sectors: (dbUser.sectors || []) as Sector[],
+    function: dbUser.function || undefined,
+    backgroundColor: dbUser.background_color || undefined,
   };
 }
 
@@ -41,12 +52,12 @@ function sanitizeUsers(value: unknown): User[] {
       const user = candidate as Partial<User>;
       return Boolean(
         user &&
-        typeof user.id === 'string' &&
-        typeof user.name === 'string' &&
-        typeof user.username === 'string' &&
-        typeof user.password === 'string' &&
-        typeof user.role === 'string' &&
-        Array.isArray(user.sectors)
+          typeof user.id === 'string' &&
+          typeof user.name === 'string' &&
+          typeof user.username === 'string' &&
+          typeof user.password === 'string' &&
+          typeof user.role === 'string' &&
+          Array.isArray(user.sectors)
       );
     })
     .map((user) => ({
@@ -68,9 +79,7 @@ function readCachedUsers(): User[] {
   try {
     const raw = window.localStorage.getItem(USERS_CACHE_KEY);
     if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-    return sanitizeUsers(parsed);
+    return sanitizeUsers(JSON.parse(raw));
   } catch {
     return [];
   }
@@ -98,106 +107,89 @@ export function useSupabaseUsers() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const usersRef = useRef<User[]>(initialUsersRef.current);
-  const isFetchingRef = useRef(false);
 
   useEffect(() => {
     usersRef.current = users;
   }, [users]);
 
-  const fetchUsers = useCallback(async () => {
-    if (isFetchingRef.current) return;
+  useEffect(() => {
+    setLoading(usersRef.current.length === 0);
 
-    isFetchingRef.current = true;
-    if (usersRef.current.length === 0) {
-      setLoading(true);
-    }
+    const usersQuery = query(
+      collection(db, 'app_users'),
+      orderBy('created_at', 'asc')
+    );
 
-    const retryDelays = [0, 1200, 3000];
-
-    try {
-      for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
-        if (retryDelays[attempt] > 0) {
-          await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
-        }
-
-        const { data, error } = await supabase
-          .from('app_users')
-          .select(
-            'id, name, username, password, role, avatar, sectors, function, background_color, created_at, updated_at'
-          )
-          .order('created_at', { ascending: true });
-
-        if (!error && Array.isArray(data) && data.length > 0) {
-          const mappedUsers = data.map((d: any) => dbToUser(d as DbUser));
-          usersRef.current = mappedUsers;
-          setUsers(mappedUsers);
-          writeCachedUsers(mappedUsers);
-          setError(null);
-          return;
-        }
-
-        if (!error && Array.isArray(data) && data.length === 0) {
+    const unsubscribe = onSnapshot(
+      usersQuery,
+      (snapshot) => {
+        if (snapshot.empty) {
           const fallbackUsers = getFallbackUsers();
           usersRef.current = fallbackUsers;
           setUsers(fallbackUsers);
           writeCachedUsers(fallbackUsers);
           setError(null);
+          setLoading(false);
           return;
         }
 
-        const isLastAttempt = attempt === retryDelays.length - 1;
-        if (isLastAttempt) {
-          console.error('Error fetching users:', error);
+        const mappedUsers = snapshot.docs.map((userDoc) => {
+          const data = userDoc.data();
 
-          if (usersRef.current.length === 0) {
-            const fallbackUsers = getFallbackUsers();
-            usersRef.current = fallbackUsers;
-            setUsers(fallbackUsers);
-            writeCachedUsers(fallbackUsers);
-            setError(null);
-          } else {
-            setError(null);
-          }
+          return dbToUser({
+            id: userDoc.id,
+            name: data.name || '',
+            username: data.username || '',
+            password: data.password || '',
+            role: data.role || 'employee',
+            avatar: data.avatar || null,
+            sectors: Array.isArray(data.sectors) ? data.sectors : [],
+            function: data.function || null,
+            background_color: data.background_color || null,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          });
+        });
+
+        const sanitized = sanitizeUsers(mappedUsers);
+        usersRef.current = sanitized;
+        setUsers(sanitized);
+        writeCachedUsers(sanitized);
+        setError(null);
+        setLoading(false);
+      },
+      (snapshotError) => {
+        console.error('Error fetching users:', snapshotError);
+
+        if (usersRef.current.length === 0) {
+          const fallbackUsers = getFallbackUsers();
+          usersRef.current = fallbackUsers;
+          setUsers(fallbackUsers);
+          writeCachedUsers(fallbackUsers);
         }
+
+        setError(null);
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-      isFetchingRef.current = false;
-    }
+    );
+
+    return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    fetchUsers();
-
-    // Realtime cobre mudanças; polling fica como safety-net a cada 15min
-    // e somente quando aba está visível.
-    const refreshInterval = setInterval(() => {
-      if (!document.hidden) fetchUsers();
-    }, 900000);
-
-    const channel = supabase
-      .channel('app-users-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => {
-        fetchUsers();
-      })
-      .subscribe();
-
-    return () => {
-      clearInterval(refreshInterval);
-      supabase.removeChannel(channel);
-    };
-  }, [fetchUsers]);
 
   const addUser = useCallback(async (user: Omit<User, 'id'>) => {
     const id = `emp-${Date.now()}`;
-    await supabase.from('app_users').insert({
-      id,
+
+    await setDoc(doc(db, 'app_users', id), {
       name: user.name,
       username: user.username,
       password: user.password,
       role: user.role,
-      sectors: user.sectors as any,
+      sectors: user.sectors || [],
       function: user.function || null,
+      avatar: user.avatar || null,
+      background_color: user.backgroundColor || null,
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
     });
   }, []);
 
@@ -208,31 +200,37 @@ export function useSupabaseUsers() {
         Pick<User, 'name' | 'username' | 'password' | 'sectors' | 'function' | 'avatar'>
       >
     ) => {
-      const dbUpdates: any = {};
+      const dbUpdates: Record<string, any> = { updated_at: Timestamp.now() };
+
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.username !== undefined) dbUpdates.username = updates.username;
       if (updates.password !== undefined) dbUpdates.password = updates.password;
       if (updates.sectors !== undefined) dbUpdates.sectors = updates.sectors;
-      if (updates.function !== undefined) dbUpdates.function = updates.function;
-      if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
-      dbUpdates.updated_at = new Date().toISOString();
+      if (updates.function !== undefined) dbUpdates.function = updates.function || null;
+      if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar || null;
 
-      await supabase.from('app_users').update(dbUpdates).eq('id', userId);
+      await updateDoc(doc(db, 'app_users', userId), dbUpdates);
     },
     []
   );
 
   const deleteUser = useCallback(async (userId: string) => {
-    await supabase.from('app_users').delete().eq('id', userId);
+    await deleteDoc(doc(db, 'app_users', userId));
   }, []);
 
   const updateProfile = useCallback(
     async (userId: string, updates: { avatar?: string; backgroundColor?: string }) => {
-      const dbUpdates: any = { updated_at: new Date().toISOString() };
-      if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
-      if (updates.backgroundColor !== undefined)
-        dbUpdates.background_color = updates.backgroundColor;
-      await supabase.from('app_users').update(dbUpdates).eq('id', userId);
+      const dbUpdates: Record<string, any> = { updated_at: Timestamp.now() };
+
+      if (updates.avatar !== undefined) {
+        dbUpdates.avatar = updates.avatar || null;
+      }
+
+      if (updates.backgroundColor !== undefined) {
+        dbUpdates.background_color = updates.backgroundColor || null;
+      }
+
+      await updateDoc(doc(db, 'app_users', userId), dbUpdates);
     },
     []
   );

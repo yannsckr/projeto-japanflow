@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Calculator, Loader2, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const formatBRL = (v: number) =>
   isFinite(v) ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—';
@@ -414,11 +414,22 @@ function FreightCalculator() {
     setError(null);
     setResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke('freight-calc', {
-        body: { address: address.trim() },
+      const functions = getFunctions();
+      const freightCalc = httpsCallable<
+        { address: string },
+        FreightResult & { error?: string }
+      >(functions, 'freightCalc');
+
+      const response = await freightCalc({
+        address: address.trim(),
       });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
+
+      const data = response.data;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
       setResult(data as FreightResult);
     } catch (e: any) {
       setError(e?.message || 'Erro ao calcular o frete');

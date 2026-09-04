@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -93,28 +104,44 @@ export default function CounterOrdersPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = async () => {
-    const { data, error } = await supabase
-      .from('counter_orders' as any)
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error(error);
-      return;
-    }
-    setOrders((data as any) || []);
+    // Mantido por compatibilidade; o listener abaixo já mantém a lista atualizada.
   };
 
   useEffect(() => {
-    load();
-    const ch = supabase
-      .channel('counter_orders_ch')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'counter_orders' }, () =>
-        load()
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
+    const ordersQuery = query(
+      collection(db, 'counter_orders'),
+      orderBy('created_at', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(
+      ordersQuery,
+      (snapshot) => {
+        setOrders(
+          snapshot.docs.map((orderDoc) => {
+            const data = orderDoc.data();
+            const createdAt = data.created_at?.toDate
+              ? data.created_at.toDate().toISOString()
+              : data.created_at || '';
+            const orderedAt = data.ordered_at?.toDate
+              ? data.ordered_at.toDate().toISOString()
+              : data.ordered_at || null;
+
+            return {
+              id: orderDoc.id,
+              ...data,
+              created_at: createdAt,
+              ordered_at: orderedAt,
+              status_history: Array.isArray(data.status_history)
+                ? data.status_history
+                : [],
+            } as CounterOrder;
+          })
+        );
+      },
+      (error) => console.error('Erro ao carregar encomendas:', error)
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const set = (k: keyof typeof empty, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -150,12 +177,19 @@ export default function CounterOrdersPage() {
         },
       ],
     };
-    const { error } = await supabase.from('counter_orders' as any).insert(payload);
-    setLoading(false);
-    if (error) {
+    try {
+      await addDoc(collection(db, 'counter_orders'), {
+        ...payload,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
       toast.error('Erro ao criar encomenda');
       return;
     }
+    setLoading(false);
     toast.success('Encomenda registrada');
     setForm({ ...empty });
   };
@@ -174,20 +208,25 @@ export default function CounterOrdersPage() {
     });
     const patch: any = { status, status_history: history };
     if (status === 'ordered' && !cur?.ordered_at) patch.ordered_at = nowIso;
-    const { error } = await supabase
-      .from('counter_orders' as any)
-      .update(patch)
-      .eq('id', id);
-    if (error) toast.error('Erro ao atualizar');
+    try {
+      await updateDoc(doc(db, 'counter_orders', id), {
+        ...patch,
+        updated_at: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao atualizar');
+    }
   };
 
   const remove = async (id: string) => {
     if (!confirm('Excluir esta encomenda?')) return;
-    const { error } = await supabase
-      .from('counter_orders' as any)
-      .delete()
-      .eq('id', id);
-    if (error) toast.error('Erro ao excluir');
+    try {
+      await deleteDoc(doc(db, 'counter_orders', id));
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao excluir');
+    }
   };
 
   const fmt = (n: number | null) =>

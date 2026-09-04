@@ -1,5 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+  Timestamp,
+} from 'firebase/firestore';
 
 export interface PersonalNote {
   id: string;
@@ -12,14 +24,31 @@ export interface PersonalNote {
   sharedByUserId?: string;
 }
 
-function mapNote(n: any, isShared = false, sharedByUserId?: string): PersonalNote {
+interface PersonalNoteFirestore {
+  userId: string;
+  title: string;
+  content: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+function mapNote(
+  id: string,
+  data: PersonalNoteFirestore,
+  isShared = false,
+  sharedByUserId?: string
+): PersonalNote {
   return {
-    id: n.id,
-    userId: n.user_id,
-    title: n.title,
-    content: n.content,
-    createdAt: n.created_at,
-    updatedAt: n.updated_at,
+    id,
+    userId: data.userId,
+    title: data.title || '',
+    content: data.content || '',
+    createdAt: data.createdAt?.toDate
+      ? data.createdAt.toDate().toISOString()
+      : new Date().toISOString(),
+    updatedAt: data.updatedAt?.toDate
+      ? data.updatedAt.toDate().toISOString()
+      : new Date().toISOString(),
     isShared,
     sharedByUserId,
   };
@@ -29,40 +58,71 @@ export function usePersonalNotes(userId: string | null) {
   const [notes, setNotes] = useState<PersonalNote[]>([]);
 
   const fetchNotes = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      setNotes([]);
+      return;
+    }
 
-    // Fetch own notes
-    const { data: ownData } = await supabase
-      .from('personal_notes')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+    try {
+      const ownQuery = query(
+        collection(db, 'personal_notes'),
+        where('userId', '==', userId)
+      );
 
-    // Fetch notes shared with this user
-    const { data: sharesData } = await supabase
-      .from('personal_note_shares')
-      .select('note_id, shared_by_user_id')
-      .eq('shared_with_user_id', userId);
+      const sharesQuery = query(
+        collection(db, 'personal_note_shares'),
+        where('sharedWithUserId', '==', userId)
+      );
 
-    const ownNotes = (ownData || []).map((n: any) => mapNote(n));
+      const [ownSnapshot, sharesSnapshot] = await Promise.all([
+        getDocs(ownQuery),
+        getDocs(sharesQuery),
+      ]);
 
-    if (sharesData && sharesData.length > 0) {
-      const sharedNoteIds = sharesData.map((s: any) => s.note_id);
-      const shareMap = new Map(sharesData.map((s: any) => [s.note_id, s.shared_by_user_id]));
+      const ownNotes = ownSnapshot.docs.map((noteDoc) =>
+        mapNote(
+          noteDoc.id,
+          noteDoc.data() as PersonalNoteFirestore
+        )
+      );
 
-      const { data: sharedNotesData } = await supabase
-        .from('personal_notes')
-        .select('*')
-        .in('id', sharedNoteIds)
-        .order('updated_at', { ascending: false });
+      const ownIds = new Set(ownNotes.map((note) => note.id));
 
-      const sharedNotes = (sharedNotesData || [])
-        .filter((n: any) => !ownNotes.some((own) => own.id === n.id))
-        .map((n: any) => mapNote(n, true, shareMap.get(n.id)));
+      const sharedNotes: PersonalNote[] = [];
 
-      setNotes([...ownNotes, ...sharedNotes]);
-    } else {
-      setNotes(ownNotes);
+      for (const shareDoc of sharesSnapshot.docs) {
+        const shareData = shareDoc.data();
+
+        const noteId = shareData.noteId as string;
+        const sharedByUserId = shareData.sharedByUserId as string;
+
+        if (!noteId || ownIds.has(noteId)) continue;
+
+        const noteSnapshot = await getDoc(
+          doc(db, 'personal_notes', noteId)
+        );
+
+        if (!noteSnapshot.exists()) continue;
+
+        sharedNotes.push(
+          mapNote(
+            noteSnapshot.id,
+            noteSnapshot.data() as PersonalNoteFirestore,
+            true,
+            sharedByUserId
+          )
+        );
+      }
+
+      const allNotes = [...ownNotes, ...sharedNotes].sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() -
+          new Date(a.updatedAt).getTime()
+      );
+
+      setNotes(allNotes);
+    } catch (error) {
+      console.error('Erro ao carregar notas pessoais:', error);
     }
   }, [userId]);
 
@@ -73,27 +133,72 @@ export function usePersonalNotes(userId: string | null) {
   const addNote = useCallback(
     async (title: string, content: string) => {
       if (!userId) return;
-      await supabase.from('personal_notes').insert({ user_id: userId, title, content });
-      fetchNotes();
+
+      try {
+        const now = Timestamp.now();
+
+        await addDoc(collection(db, 'personal_notes'), {
+          userId,
+          title,
+          content,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        await fetchNotes();
+      } catch (error) {
+        console.error('Erro ao criar nota:', error);
+      }
     },
     [userId, fetchNotes]
   );
 
   const updateNote = useCallback(
-    async (noteId: string, updates: { title?: string; content?: string }) => {
-      await supabase
-        .from('personal_notes')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', noteId);
-      fetchNotes();
+    async (
+      noteId: string,
+      updates: {
+        title?: string;
+        content?: string;
+      }
+    ) => {
+      try {
+        await updateDoc(doc(db, 'personal_notes', noteId), {
+          ...updates,
+          updatedAt: Timestamp.now(),
+        });
+
+        await fetchNotes();
+      } catch (error) {
+        console.error('Erro ao atualizar nota:', error);
+      }
     },
     [fetchNotes]
   );
 
   const deleteNote = useCallback(
     async (noteId: string) => {
-      await supabase.from('personal_notes').delete().eq('id', noteId);
-      fetchNotes();
+      try {
+        await deleteDoc(doc(db, 'personal_notes', noteId));
+
+        const sharesQuery = query(
+          collection(db, 'personal_note_shares'),
+          where('noteId', '==', noteId)
+        );
+
+        const sharesSnapshot = await getDocs(sharesQuery);
+
+        await Promise.all(
+          sharesSnapshot.docs.map((shareDoc) =>
+            deleteDoc(
+              doc(db, 'personal_note_shares', shareDoc.id)
+            )
+          )
+        );
+
+        await fetchNotes();
+      } catch (error) {
+        console.error('Erro ao excluir nota:', error);
+      }
     },
     [fetchNotes]
   );
@@ -101,30 +206,66 @@ export function usePersonalNotes(userId: string | null) {
   const shareNote = useCallback(
     async (noteId: string, targetUserId: string) => {
       if (!userId) return;
-      // Check if already shared
-      const { data: existing } = await supabase
-        .from('personal_note_shares')
-        .select('id')
-        .eq('note_id', noteId)
-        .eq('shared_with_user_id', targetUserId);
-      if (existing && existing.length > 0) return;
 
-      await supabase.from('personal_note_shares').insert({
-        note_id: noteId,
-        shared_with_user_id: targetUserId,
-        shared_by_user_id: userId,
-      });
+      try {
+        const existingQuery = query(
+          collection(db, 'personal_note_shares'),
+          where('noteId', '==', noteId),
+          where('sharedWithUserId', '==', targetUserId)
+        );
+
+        const existingSnapshot = await getDocs(existingQuery);
+
+        if (!existingSnapshot.empty) return;
+
+        await addDoc(collection(db, 'personal_note_shares'), {
+          noteId,
+          sharedWithUserId: targetUserId,
+          sharedByUserId: userId,
+          createdAt: Timestamp.now(),
+        });
+      } catch (error) {
+        console.error('Erro ao compartilhar nota:', error);
+      }
     },
     [userId]
   );
 
-  const unshareNote = useCallback(async (noteId: string, targetUserId: string) => {
-    await supabase
-      .from('personal_note_shares')
-      .delete()
-      .eq('note_id', noteId)
-      .eq('shared_with_user_id', targetUserId);
-  }, []);
+  const unshareNote = useCallback(
+    async (noteId: string, targetUserId: string) => {
+      try {
+        const sharesQuery = query(
+          collection(db, 'personal_note_shares'),
+          where('noteId', '==', noteId),
+          where('sharedWithUserId', '==', targetUserId)
+        );
 
-  return { notes, addNote, updateNote, deleteNote, shareNote, unshareNote, fetchNotes };
+        const snapshot = await getDocs(sharesQuery);
+
+        await Promise.all(
+          snapshot.docs.map((shareDoc) =>
+            deleteDoc(
+              doc(db, 'personal_note_shares', shareDoc.id)
+            )
+          )
+        );
+      } catch (error) {
+        console.error(
+          'Erro ao remover compartilhamento:',
+          error
+        );
+      }
+    },
+    []
+  );
+
+  return {
+    notes,
+    addNote,
+    updateNote,
+    deleteNote,
+    shareNote,
+    unshareNote,
+    fetchNotes,
+  };
 }

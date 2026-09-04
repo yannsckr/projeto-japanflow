@@ -5,7 +5,8 @@ import {
   WarrantyClaim,
   WarrantyUpdate,
 } from '@/hooks/useSupabaseWarranties';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -220,7 +221,7 @@ const WarrantiesPanel = () => {
       const now = new Date().toISOString();
       const deadline = new Date();
       deadline.setHours(23, 59, 59, 999);
-      await supabase.from('tasks').insert({
+      await addDoc(collection(db, 'tasks'), {
         title: `🛡️ Garantia: ${form.clientName.trim()} - ${form.itemName.trim()}`,
         description: `Novo pedido de garantia\nCliente: ${form.clientName.trim()}\nMarca: ${form.productBrand.trim()}\nItem: ${form.itemName.trim()}\nNF/Pedido: ${form.invoiceNumber.trim()}`,
         status: 'todo',
@@ -229,7 +230,9 @@ const WarrantiesPanel = () => {
         created_by: currentUser.id,
         deadline: deadline.toISOString().split('T')[0],
         sector: 'garantias',
-        status_history: [{ status: 'todo', enteredAt: now }] as any,
+        status_history: [{ status: 'todo', enteredAt: now }],
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
       toast.success('Pedido de garantia criado');
       setShowCreate(false);

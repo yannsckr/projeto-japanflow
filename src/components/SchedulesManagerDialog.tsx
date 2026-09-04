@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   useWorkSchedules,
   upsertSchedule,
@@ -116,14 +116,28 @@ const SchedulesManagerDialog = () => {
     setAiBusy(true);
     try {
       const userName = users.find((u) => u.id === selectedUserId)?.name;
-      const { data, error } = await supabase.functions.invoke('parse-schedule', {
-        body: { ...payload, userName, referenceWeekStart: weekStart },
-      });
-      if (error) throw error;
 
-      const weeks = (data as {
-        weeks?: Array<{ weekStart?: string; days: Partial<WeekDays> }>;
-      })?.weeks || [];
+      const functions = getFunctions();
+      const parseSchedule = httpsCallable<
+        {
+          imageBase64?: string;
+          mimeType?: string;
+          text?: string;
+          userName?: string;
+          referenceWeekStart: string;
+        },
+        {
+          weeks?: Array<{ weekStart?: string; days: Partial<WeekDays> }>;
+        }
+      >(functions, 'parseSchedule');
+
+      const result = await parseSchedule({
+        ...payload,
+        userName,
+        referenceWeekStart: weekStart,
+      });
+
+      const weeks = result.data?.weeks || [];
 
       if (!weeks.length) {
         toast({ title: 'IA não retornou dados', variant: 'destructive' });

@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -98,23 +110,54 @@ const PedidoComprasPage = () => {
     currentUser?.sectors?.includes('administracao') || currentUser?.role === 'admin';
 
   const fetchAll = async () => {
-    const [{ data: sup }, { data: ord }] = await Promise.all([
-      supabase.from('suppliers').select('*').order('razao_social'),
-      supabase.from('purchase_orders').select('*').order('order_number', { ascending: false }),
-    ]);
-    if (sup) setSuppliers(sup as any);
-    if (ord) setOrders(ord.map((o: any) => ({ ...o, items: o.items || [] })));
+    // Mantido por compatibilidade; os listeners abaixo já atualizam os dados.
   };
 
   useEffect(() => {
-    fetchAll();
-    const ch = supabase
-      .channel('po-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, fetchAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, fetchAll)
-      .subscribe();
+    const suppliersQuery = query(
+      collection(db, 'suppliers'),
+      orderBy('razao_social', 'asc')
+    );
+    const ordersQuery = query(
+      collection(db, 'purchase_orders'),
+      orderBy('order_number', 'desc')
+    );
+
+    const unsubscribeSuppliers = onSnapshot(
+      suppliersQuery,
+      (snapshot) => {
+        setSuppliers(
+          snapshot.docs.map((supplierDoc) => ({
+            id: supplierDoc.id,
+            ...supplierDoc.data(),
+          })) as Supplier[]
+        );
+      },
+      (error) => console.error('Erro ao carregar fornecedores:', error)
+    );
+
+    const unsubscribeOrders = onSnapshot(
+      ordersQuery,
+      (snapshot) => {
+        setOrders(
+          snapshot.docs.map((orderDoc) => ({
+            id: orderDoc.id,
+            ...orderDoc.data(),
+            items: Array.isArray(orderDoc.data().items)
+              ? orderDoc.data().items
+              : [],
+            created_at: orderDoc.data().created_at?.toDate
+              ? orderDoc.data().created_at.toDate().toISOString()
+              : orderDoc.data().created_at || '',
+          })) as PurchaseOrder[]
+        );
+      },
+      (error) => console.error('Erro ao carregar pedidos de compra:', error)
+    );
+
     return () => {
-      supabase.removeChannel(ch);
+      unsubscribeSuppliers();
+      unsubscribeOrders();
     };
   }, []);
 
@@ -155,11 +198,18 @@ const PedidoComprasPage = () => {
         reader.onerror = rej;
         reader.readAsDataURL(file);
       });
-      const { data, error } = await supabase.functions.invoke('parse-purchase-order', {
-        body: { fileBase64: dataUrl, mimeType: file.type },
+      const parsePurchaseOrder = httpsCallable<
+        { fileBase64: string; mimeType: string },
+        { supplier?: Partial<Supplier>; items?: PurchaseItem[]; error?: string }
+      >(getFunctions(), 'parsePurchaseOrder');
+
+      const response = await parsePurchaseOrder({
+        fileBase64: dataUrl,
+        mimeType: file.type,
       });
-      if (error) throw error;
-      const parsed = data as { supplier?: Partial<Supplier>; items?: PurchaseItem[] };
+
+      const parsed = response.data;
+      if (parsed?.error) throw new Error(parsed.error);
       if (parsed.supplier) {
         setSupplierId('new');
         setSupplierData({
@@ -199,26 +249,7 @@ const PedidoComprasPage = () => {
   const saveSupplierIfNeeded = async (): Promise<{ id: string | null; snapshot: Supplier }> => {
     if (!supplierData.razao_social.trim()) return { id: null, snapshot: supplierData };
     if (supplierId !== 'new') {
-      await supabase
-        .from('suppliers')
-        .update({
-          razao_social: supplierData.razao_social,
-          cnpj: supplierData.cnpj,
-          celular: supplierData.celular,
-          endereco: supplierData.endereco,
-          cep: supplierData.cep,
-          municipio_uf: supplierData.municipio_uf,
-          email: supplierData.email,
-          contato: supplierData.contato,
-          obs: supplierData.obs,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', supplierId);
-      return { id: supplierId, snapshot: supplierData };
-    }
-    const { data, error } = await supabase
-      .from('suppliers')
-      .insert({
+      await updateDoc(doc(db, 'suppliers', supplierId), {
         razao_social: supplierData.razao_social,
         cnpj: supplierData.cnpj,
         celular: supplierData.celular,
@@ -228,12 +259,30 @@ const PedidoComprasPage = () => {
         email: supplierData.email,
         contato: supplierData.contato,
         obs: supplierData.obs,
-        created_by: currentUser?.id,
-      })
-      .select()
-      .single();
-    if (error || !data) return { id: null, snapshot: supplierData };
-    return { id: data.id, snapshot: { ...supplierData, id: data.id } };
+        updated_at: Timestamp.now(),
+      });
+      return { id: supplierId, snapshot: supplierData };
+    }
+
+    const supplierRef = await addDoc(collection(db, 'suppliers'), {
+      razao_social: supplierData.razao_social,
+      cnpj: supplierData.cnpj,
+      celular: supplierData.celular,
+      endereco: supplierData.endereco,
+      cep: supplierData.cep,
+      municipio_uf: supplierData.municipio_uf,
+      email: supplierData.email,
+      contato: supplierData.contato,
+      obs: supplierData.obs,
+      created_by: currentUser?.id || null,
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+    });
+
+    return {
+      id: supplierRef.id,
+      snapshot: { ...supplierData, id: supplierRef.id },
+    };
   };
 
   const finalize = async () => {
@@ -245,22 +294,35 @@ const PedidoComprasPage = () => {
     setSaving(true);
     try {
       const { id: supId, snapshot } = await saveSupplierIfNeeded();
-      const { data, error } = await supabase
-        .from('purchase_orders')
-        .insert({
-          comprador_id: currentUser?.id,
-          comprador_nome: currentUser?.name,
-          escopo,
-          supplier_id: supId,
-          supplier_snapshot: snapshot as any,
-          items: cleanItems as any,
-          total,
-          order_date: new Date().toISOString().slice(0, 10),
-        })
-        .select()
-        .single();
-      if (error || !data) throw error || new Error('Falha ao salvar');
-      const order: PurchaseOrder = { ...(data as any), items: cleanItems };
+      const existingNumbers = orders.map((order) => Number(order.order_number) || 0);
+      const nextOrderNumber = (existingNumbers.length ? Math.max(...existingNumbers) : 0) + 1;
+
+      const orderRef = await addDoc(collection(db, 'purchase_orders'), {
+        order_number: nextOrderNumber,
+        comprador_id: currentUser?.id || null,
+        comprador_nome: currentUser?.name || null,
+        escopo,
+        supplier_id: supId,
+        supplier_snapshot: snapshot,
+        items: cleanItems,
+        total,
+        order_date: new Date().toISOString().slice(0, 10),
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
+
+      const order: PurchaseOrder = {
+        id: orderRef.id,
+        order_number: nextOrderNumber,
+        comprador_nome: currentUser?.name,
+        escopo,
+        supplier_id: supId || undefined,
+        supplier_snapshot: snapshot,
+        items: cleanItems,
+        total,
+        order_date: new Date().toISOString().slice(0, 10),
+        created_at: new Date().toISOString(),
+      };
       setPreviewOrder(order);
       // reset
       setItems([emptyItem()]);
@@ -568,9 +630,7 @@ const PedidoComprasPage = () => {
                       <Button
                         size="sm"
                         onClick={async () => {
-                          await supabase
-                            .from('suppliers')
-                            .update({
+                          await updateDoc(doc(db, 'suppliers', editingSupplier.id), {
                               razao_social: editingSupplier.razao_social,
                               cnpj: editingSupplier.cnpj,
                               celular: editingSupplier.celular,
@@ -580,9 +640,8 @@ const PedidoComprasPage = () => {
                               email: editingSupplier.email,
                               contato: editingSupplier.contato,
                               obs: editingSupplier.obs,
-                              updated_at: new Date().toISOString(),
-                            })
-                            .eq('id', editingSupplier.id);
+                            updated_at: Timestamp.now(),
+                          });
                           setEditingSupplier(null);
                           toast.success('Fornecedor atualizado.');
                         }}
@@ -609,7 +668,7 @@ const PedidoComprasPage = () => {
                         variant="ghost"
                         onClick={async () => {
                           if (!confirm('Remover fornecedor?')) return;
-                          await supabase.from('suppliers').delete().eq('id', s.id);
+                          await deleteDoc(doc(db, 'suppliers', s.id));
                           toast.success('Fornecedor removido.');
                         }}
                       >

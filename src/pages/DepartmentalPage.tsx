@@ -2,7 +2,14 @@ import { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { useSupabaseDepartmental } from '@/hooks/useSupabaseDepartmental';
 import { useFeaturePermissions } from '@/hooks/useFeaturePermissions';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  doc,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1133,58 +1140,49 @@ const DepartmentalPage = () => {
                                     toast.error('Data/hora inválida');
                                     return;
                                   }
-                                  await supabase
-                                    .from('motoboy_assignments')
-                                    .update({
-                                      assigned_to: selectedMotoboy,
-                                      status: 'pending_approval',
-                                      client_name: clientName,
-                                      location: location,
-                                      ride_value: rideValue,
-                                      scheduled_for: dt.toISOString(),
-                                      updated_at: new Date().toISOString(),
-                                    } as any)
-                                    .eq('id', ma.id);
+                                  await updateDoc(doc(db, 'motoboy_assignments', ma.id), {
+                                    assigned_to: selectedMotoboy,
+                                    status: 'pending_approval',
+                                    client_name: clientName,
+                                    location,
+                                    ride_value: rideValue,
+                                    scheduled_for: Timestamp.fromDate(dt),
+                                    updated_at: Timestamp.now(),
+                                  });
                                   toast.success('Corrida agendada! Voltará para aprovação.');
                                 } else {
                                   const approvalIso = new Date().toISOString();
-                                  await supabase
-                                    .from('motoboy_assignments')
-                                    .update({
-                                      assigned_to: selectedMotoboy,
-                                      status: 'pending',
-                                      client_name: clientName,
-                                      location: location,
-                                      ride_value: rideValue,
-                                      scheduled_for: approvalIso,
-                                      updated_at: approvalIso,
-                                    } as any)
-                                    .eq('id', ma.id);
+                                  await updateDoc(doc(db, 'motoboy_assignments', ma.id), {
+                                    assigned_to: selectedMotoboy,
+                                    status: 'pending',
+                                    client_name: clientName,
+                                    location,
+                                    ride_value: rideValue,
+                                    scheduled_for: Timestamp.fromDate(new Date(approvalIso)),
+                                    updated_at: Timestamp.now(),
+                                  });
                                   const now = new Date().toISOString();
                                   const deadlineDate = new Date();
                                   deadlineDate.setHours(23, 59, 59, 999);
                                   const notesInfo = ma.notes ? `\n${ma.notes}` : '';
-                                  const { data: taskData } = await supabase
-                                    .from('tasks')
-                                    .insert({
-                                      title: `🏍️ Entrega: ${clientName}`,
-                                      description: `${ma.description} • Cliente: ${clientName} • Local: ${location} • Valor: R$ ${rideValue.toFixed(2)}${notesInfo}`,
-                                      status: 'todo',
-                                      priority: 'high',
-                                      assignee_id: selectedMotoboy,
-                                      created_by: currentUser.id,
-                                      deadline: deadlineDate.toISOString().split('T')[0],
-                                      sector: 'motoboys',
-                                      status_history: [{ status: 'todo', enteredAt: now }] as any,
-                                    })
-                                    .select('id')
-                                    .single();
-                                  if (taskData?.id) {
-                                    await supabase
-                                      .from('motoboy_assignments')
-                                      .update({ task_id: taskData.id } as any)
-                                      .eq('id', ma.id);
-                                  }
+                                  const taskRef = await addDoc(collection(db, 'tasks'), {
+                                    title: `🏍️ Entrega: ${clientName}`,
+                                    description: `${ma.description} • Cliente: ${clientName} • Local: ${location} • Valor: R$ ${rideValue.toFixed(2)}${notesInfo}`,
+                                    status: 'todo',
+                                    priority: 'high',
+                                    assignee_id: selectedMotoboy,
+                                    created_by: currentUser.id,
+                                    deadline: deadlineDate.toISOString().split('T')[0],
+                                    sector: 'motoboys',
+                                    status_history: [{ status: 'todo', enteredAt: now }],
+                                    created_at: Timestamp.now(),
+                                    updated_at: Timestamp.now(),
+                                  });
+
+                                  await updateDoc(doc(db, 'motoboy_assignments', ma.id), {
+                                    task_id: taskRef.id,
+                                    updated_at: Timestamp.now(),
+                                  });
                                   toast.success('Corrida aprovada e enviada ao motoboy!');
                                 }
                                 setForm((prev: any) => {

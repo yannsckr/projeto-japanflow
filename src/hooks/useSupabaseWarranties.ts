@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
 
 export interface WarrantyClaim {
   id: string;
@@ -35,86 +45,86 @@ export interface WarrantyUpdate {
   createdAt: string;
 }
 
-const mapClaim = (r: any): WarrantyClaim => ({
-  id: r.id,
-  clientName: r.client_name,
-  supplierName: r.supplier_name || '',
-  productBrand: r.product_brand,
-  itemName: r.item_name,
-  itemCode: r.item_code || '',
-  defectDescription: r.defect_description || '',
-  saleDate: r.sale_date,
-  invoiceNumber: r.invoice_number || '',
-  status: r.status,
-  requestedBy: r.requested_by,
-  laborReimbursementEnabled: r.labor_reimbursement_enabled || false,
-  laborReimbursementFileUrl: r.labor_reimbursement_file_url,
-  bankDetails: r.bank_details,
-  vehicleDocumentUrl: r.vehicle_document_url,
-  identityDocumentUrl: r.identity_document_url,
-  installationMileage: r.installation_mileage,
-  currentMileage: r.current_mileage,
-  productImages: Array.isArray(r.product_images) ? (r.product_images as string[]) : [],
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
+const toIso = (value: any): string => {
+  if (!value) return '';
+  if (value?.toDate) return value.toDate().toISOString();
+  if (typeof value === 'string') return value;
+  return '';
+};
+
+const mapClaim = (id: string, data: any): WarrantyClaim => ({
+  id,
+  clientName: data.client_name || '',
+  supplierName: data.supplier_name || '',
+  productBrand: data.product_brand || '',
+  itemName: data.item_name || '',
+  itemCode: data.item_code || '',
+  defectDescription: data.defect_description || '',
+  saleDate: data.sale_date || '',
+  invoiceNumber: data.invoice_number || '',
+  status: data.status || 'pending',
+  requestedBy: data.requested_by || '',
+  laborReimbursementEnabled: data.labor_reimbursement_enabled === true,
+  laborReimbursementFileUrl: data.labor_reimbursement_file_url || null,
+  bankDetails: data.bank_details || null,
+  vehicleDocumentUrl: data.vehicle_document_url || null,
+  identityDocumentUrl: data.identity_document_url || null,
+  installationMileage: data.installation_mileage || null,
+  currentMileage: data.current_mileage || null,
+  productImages: Array.isArray(data.product_images) ? data.product_images : [],
+  createdAt: toIso(data.created_at),
+  updatedAt: toIso(data.updated_at),
 });
 
-const mapUpdate = (r: any): WarrantyUpdate => ({
-  id: r.id,
-  warrantyId: r.warranty_id,
-  userId: r.user_id,
-  content: r.content || '',
-  attachmentUrl: r.attachment_url,
-  attachmentName: r.attachment_name,
-  createdAt: r.created_at,
+const mapUpdate = (id: string, data: any): WarrantyUpdate => ({
+  id,
+  warrantyId: data.warranty_id || '',
+  userId: data.user_id || '',
+  content: data.content || '',
+  attachmentUrl: data.attachment_url || null,
+  attachmentName: data.attachment_name || null,
+  createdAt: toIso(data.created_at),
 });
 
 export const useSupabaseWarranties = () => {
   const [claims, setClaims] = useState<WarrantyClaim[]>([]);
   const [updates, setUpdates] = useState<WarrantyUpdate[]>([]);
 
-  const fetchClaims = useCallback(async () => {
-    const { data } = await supabase
-      .from('warranty_claims')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (data) setClaims(data.map(mapClaim));
-  }, []);
-
-  const fetchUpdates = useCallback(async (warrantyId?: string) => {
-    let q = supabase.from('warranty_updates').select('*').order('created_at', { ascending: true });
-    if (warrantyId) q = q.eq('warranty_id', warrantyId);
-    const { data } = await q;
-    if (data)
-      setUpdates((prev) => {
-        if (warrantyId) {
-          const others = prev.filter((u) => u.warrantyId !== warrantyId);
-          return [...others, ...data.map(mapUpdate)];
-        }
-        return data.map(mapUpdate);
-      });
-  }, []);
-
   useEffect(() => {
-    fetchClaims();
-    fetchUpdates();
-    const ch1 = supabase
-      .channel('warranty_claims-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_claims' }, () =>
-        fetchClaims()
-      )
-      .subscribe();
-    const ch2 = supabase
-      .channel('warranty_updates-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_updates' }, () =>
-        fetchUpdates()
-      )
-      .subscribe();
+    const unsubscribeClaims = onSnapshot(
+      query(collection(db, 'warranty_claims'), orderBy('created_at', 'desc')),
+      (snapshot) => {
+        setClaims(
+          snapshot.docs.map((claimDoc) =>
+            mapClaim(claimDoc.id, claimDoc.data())
+          )
+        );
+      },
+      (error) => console.error('Erro ao carregar garantias:', error)
+    );
+
+    const unsubscribeUpdates = onSnapshot(
+      query(collection(db, 'warranty_updates'), orderBy('created_at', 'asc')),
+      (snapshot) => {
+        setUpdates(
+          snapshot.docs.map((updateDoc) =>
+            mapUpdate(updateDoc.id, updateDoc.data())
+          )
+        );
+      },
+      (error) => console.error('Erro ao carregar atualizações de garantia:', error)
+    );
+
     return () => {
-      supabase.removeChannel(ch1);
-      supabase.removeChannel(ch2);
+      unsubscribeClaims();
+      unsubscribeUpdates();
     };
-  }, [fetchClaims, fetchUpdates]);
+  }, []);
+
+  const fetchUpdates = useCallback(async (_warrantyId?: string) => {
+    // Mantido por compatibilidade. O listener acima já mantém os updates em tempo real.
+    return;
+  }, []);
 
   const createClaim = useCallback(
     async (data: {
@@ -136,7 +146,7 @@ export const useSupabaseWarranties = () => {
       currentMileage?: string | null;
       productImages?: string[];
     }) => {
-      const { error } = await supabase.from('warranty_claims').insert({
+      await addDoc(collection(db, 'warranty_claims'), {
         client_name: data.clientName,
         supplier_name: data.supplierName,
         product_brand: data.productBrand,
@@ -146,6 +156,7 @@ export const useSupabaseWarranties = () => {
         sale_date: data.saleDate,
         invoice_number: data.invoiceNumber,
         requested_by: data.requestedBy,
+        status: 'pending',
         labor_reimbursement_enabled: data.laborReimbursementEnabled,
         labor_reimbursement_file_url: data.laborReimbursementFileUrl || null,
         bank_details: data.bankDetails || null,
@@ -154,17 +165,18 @@ export const useSupabaseWarranties = () => {
         installation_mileage: data.installationMileage || null,
         current_mileage: data.currentMileage || null,
         product_images: data.productImages || [],
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
-      if (error) throw error;
     },
     []
   );
 
   const updateClaimStatus = useCallback(async (id: string, status: string) => {
-    await supabase
-      .from('warranty_claims')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', id);
+    await updateDoc(doc(db, 'warranty_claims', id), {
+      status,
+      updated_at: Timestamp.now(),
+    });
   }, []);
 
   const addUpdate = useCallback(
@@ -175,16 +187,24 @@ export const useSupabaseWarranties = () => {
       attachmentUrl?: string | null,
       attachmentName?: string | null
     ) => {
-      await supabase.from('warranty_updates').insert({
+      await addDoc(collection(db, 'warranty_updates'), {
         warranty_id: warrantyId,
         user_id: userId,
         content,
         attachment_url: attachmentUrl || null,
         attachment_name: attachmentName || null,
+        created_at: Timestamp.now(),
       });
     },
     []
   );
 
-  return { claims, updates, createClaim, updateClaimStatus, addUpdate, fetchUpdates };
+  return {
+    claims,
+    updates,
+    createClaim,
+    updateClaimStatus,
+    addUpdate,
+    fetchUpdates,
+  };
 };

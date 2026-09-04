@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/firebase';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+  where,
+} from 'firebase/firestore';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,27 +61,62 @@ export default function AdminPopupComposer() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const fetchPopups = async () => {
-    const [pRes, aRes] = await Promise.all([
-      (supabase as any).from('admin_popups').select('*').order('created_at', { ascending: false }),
-      (supabase as any).from('admin_popup_acks').select('popup_id, user_id, acknowledged_at'),
-    ]);
-    if (pRes.data) setPopups(pRes.data as PopupRow[]);
-    if (aRes.data) setAcks(aRes.data as any);
+    // Mantido por compatibilidade; os listeners abaixo já mantêm os dados atualizados.
   };
 
   useEffect(() => {
-    fetchPopups();
-    const ch = supabase
-      .channel('admin-popups-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_popups' }, () =>
-        fetchPopups()
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_popup_acks' }, () =>
-        fetchPopups()
-      )
-      .subscribe();
+    const popupQuery = query(
+      collection(db, 'admin_popups'),
+      orderBy('created_at', 'desc')
+    );
+
+    const unsubscribePopups = onSnapshot(
+      popupQuery,
+      (snapshot) => {
+        setPopups(
+          snapshot.docs.map((popupDoc) => {
+            const data = popupDoc.data();
+            return {
+              id: popupDoc.id,
+              title: data.title || '',
+              content: data.content || '',
+              created_by: data.created_by || '',
+              target_mode: data.target_mode || 'all',
+              target_sectors: Array.isArray(data.target_sectors) ? data.target_sectors : [],
+              target_users: Array.isArray(data.target_users) ? data.target_users : [],
+              attachments: Array.isArray(data.attachments) ? data.attachments : [],
+              created_at: data.created_at?.toDate
+                ? data.created_at.toDate().toISOString()
+                : data.created_at || '',
+            } as PopupRow;
+          })
+        );
+      },
+      (error) => console.error('Erro ao carregar pop-ups:', error)
+    );
+
+    const unsubscribeAcks = onSnapshot(
+      collection(db, 'admin_popup_acks'),
+      (snapshot) => {
+        setAcks(
+          snapshot.docs.map((ackDoc) => {
+            const data = ackDoc.data();
+            return {
+              popup_id: data.popup_id || '',
+              user_id: data.user_id || '',
+              acknowledged_at: data.acknowledged_at?.toDate
+                ? data.acknowledged_at.toDate().toISOString()
+                : data.acknowledged_at || '',
+            };
+          })
+        );
+      },
+      (error) => console.error('Erro ao carregar confirmações de pop-up:', error)
+    );
+
     return () => {
-      supabase.removeChannel(ch);
+      unsubscribePopups();
+      unsubscribeAcks();
     };
   }, []);
 
@@ -143,28 +190,40 @@ export default function AdminPopupComposer() {
       return;
     }
     setSending(true);
-    const { error } = await (supabase as any).from('admin_popups').insert({
-      title: title.trim(),
-      content: content.trim(),
-      created_by: currentUser.id,
-      target_mode: mode,
-      target_sectors: mode === 'sector' ? selectedSectors : [],
-      target_users: mode === 'users' ? selectedUsers : [],
-      attachments,
-    });
-    setSending(false);
-    if (error) {
+    try {
+      await addDoc(collection(db, 'admin_popups'), {
+        title: title.trim(),
+        content: content.trim(),
+        created_by: currentUser.id,
+        target_mode: mode,
+        target_sectors: mode === 'sector' ? selectedSectors : [],
+        target_users: mode === 'users' ? selectedUsers : [],
+        attachments,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error(error);
+      setSending(false);
       toast.error('Erro ao enviar');
       return;
     }
+    setSending(false);
     toast.success('Pop-up enviado');
     reset();
     setOpen(false);
   };
 
   const handleDelete = async (id: string) => {
-    await (supabase as any).from('admin_popup_acks').delete().eq('popup_id', id);
-    await (supabase as any).from('admin_popups').delete().eq('id', id);
+    const acksSnapshot = await getDocs(
+      query(collection(db, 'admin_popup_acks'), where('popup_id', '==', id))
+    );
+    await Promise.all(
+      acksSnapshot.docs.map((ackDoc) =>
+        deleteDoc(doc(db, 'admin_popup_acks', ackDoc.id))
+      )
+    );
+    await deleteDoc(doc(db, 'admin_popups', id));
     toast.success('Pop-up removido');
   };
 
