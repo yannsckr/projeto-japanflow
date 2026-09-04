@@ -215,7 +215,7 @@ const parseScheduleRows = (sources: string[], referenceWeekStart?: string): Pars
     const mentionsFriday = /\b(?:sexta|sex)\b/.test(normalized);
     const mentionsSaturday = /\b(?:sabado|sab)\b/.test(normalized);
     const saturdayOff =
-      /folga\s*(?:no|na)?\s*sabado/.test(normalized) || /sabado\s*[:\-]?\s*folga/.test(normalized);
+      /folga\s*(?:no|na)?\s*sabado/.test(normalized) || /sabado\s*[:-]?\s*folga/.test(normalized);
 
     if (hasMondayToThursday || /(?:segunda|seg).*?(?:quinta|qui)/.test(normalized)) {
       applySchedule(days, ['monday', 'tuesday', 'wednesday', 'thursday'], firstRange);
