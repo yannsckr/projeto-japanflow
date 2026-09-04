@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { useSupabaseFinancial } from '@/hooks/useSupabaseFinancial';
+import { useFinancial } from '@/hooks/useFinancial';
 import { Navigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -234,7 +234,7 @@ const WeekForecast = ({
 const FinancialPage = () => {
   const { currentUser } = useApp();
   const { forecasts, cardDueDates, addOrUpdateForecast, addCardDueDate, deleteCardDueDate } =
-    useSupabaseFinancial();
+    useFinancial();
   const [showCardDialog, setShowCardDialog] = useState(false);
   const [cardDate, setCardDate] = useState('');
   const [cardDesc, setCardDesc] = useState('');

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { useSupabaseDepartmental } from '@/hooks/useSupabaseDepartmental';
+import { useDepartmental } from '@/hooks/useDepartmental';
 import { useFeaturePermissions } from '@/hooks/useFeaturePermissions';
 import { db } from '@/lib/firebase';
 import {
@@ -84,7 +84,7 @@ const MotoboyTimer = ({ startTime }: { startTime: string }) => {
 
 const DepartmentalPage = () => {
   const { currentUser, users } = useApp();
-  const dept = useSupabaseDepartmental();
+  const dept = useDepartmental();
   const featPerms = useFeaturePermissions();
   const isAdmin = currentUser?.role === 'admin';
   const userSectors = currentUser?.sectors || [];

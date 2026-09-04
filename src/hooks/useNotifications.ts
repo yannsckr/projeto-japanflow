@@ -37,7 +37,7 @@ const rowToNotif = (row: NotifRow): Notification => ({
   timestamp: toIso(row.created_at),
 });
 
-export const useSupabaseNotifications = (enabled = true) => {
+export const useNotifications = (enabled = true) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {

@@ -95,7 +95,7 @@ function writeCachedUsers(users: User[]) {
   }
 }
 
-export function useSupabaseUsers() {
+export function useUsers () {
   const initialUsersRef = useRef<User[]>([]);
 
   if (initialUsersRef.current.length === 0) {

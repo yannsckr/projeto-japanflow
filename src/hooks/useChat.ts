@@ -15,7 +15,7 @@ interface MessageData {
   deleted?: boolean;
 }
 
-export const useSupabaseChat = () => {
+export const useChat = () => {
   const { currentUser } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const unsubscribeRef = useRef<(() => void) | null>(null);

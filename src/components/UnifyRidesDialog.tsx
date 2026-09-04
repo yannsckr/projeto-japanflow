@@ -20,7 +20,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { toast } from 'sonner';
-import { MotoboyAssignment } from '@/hooks/useSupabaseDepartmental';
+import { MotoboyAssignment } from '@/hooks/useDepartmental';
 import { cn } from '@/lib/utils';
 
 interface UnifyRidesDialogProps {

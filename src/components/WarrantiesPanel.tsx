@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import {
-  useSupabaseWarranties,
+  useWarranties,
   WarrantyClaim,
   WarrantyUpdate,
-} from '@/hooks/useSupabaseWarranties';
+} from '@/hooks/useWarranties';
 import { db } from '@/lib/firebase';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -83,7 +83,7 @@ const uploadFile = async (
 
 const WarrantiesPanel = () => {
   const { currentUser, users } = useApp();
-  const { claims, updates, createClaim, updateClaimStatus, addUpdate } = useSupabaseWarranties();
+  const { claims, updates, createClaim, updateClaimStatus, addUpdate } = useWarranties();
 
   const [showCreate, setShowCreate] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState<WarrantyClaim | null>(null);

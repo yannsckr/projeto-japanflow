@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { useSupabaseDepartmental } from '@/hooks/useSupabaseDepartmental';
+import { useDepartmental } from '@/hooks/useDepartmental';
 import { Navigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,7 +43,7 @@ function formatCurrency(value: number): string {
 
 const CorridasPage = () => {
   const { currentUser, users } = useApp();
-  const { motoboyAssignments } = useSupabaseDepartmental();
+  const { motoboyAssignments } = useDepartmental();
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedMotoboy, setSelectedMotoboy] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');

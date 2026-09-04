@@ -51,7 +51,7 @@ const mapMessage = (
   created_at: toIso(data.created_at),
 });
 
-export function useSupabaseGroupChat(
+export function useGroupChat(
   groupId: string | null
 ) {
   const [messages, setMessages] = useState<

@@ -48,7 +48,7 @@ const rowToEvent = (row: CalendarRow): CalendarEvent => ({
   createdAt: toIso(row.created_at),
 });
 
-export const useSupabaseCalendar = (enabled = true) => {
+export const useCalendar = (enabled = true) => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
 
   useEffect(() => {

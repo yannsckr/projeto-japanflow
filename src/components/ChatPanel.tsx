@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useSupabaseChat } from '@/hooks/useSupabaseChat';
+import { useChat } from '@/hooks/useChat';
 import { ChatMessage } from '@/types';
 
 interface ChatPanelProps {
@@ -28,7 +28,7 @@ interface ChatPanelProps {
 
 const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   const { currentUser, users } = useApp();
-  const { messages, sendMessage, editMessage } = useSupabaseChat(
+  const { messages, sendMessage, editMessage } = useChat(
     currentUser?.username || null,
     otherUser.username
   );

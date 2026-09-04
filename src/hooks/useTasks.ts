@@ -60,7 +60,7 @@ const rowToTask = (row: TaskRow): Task => ({
   response: row.response || undefined,
 });
 
-export const useSupabaseTasks = (
+export const useTasks = (
   allUsers?: { id: string; role: string; sectors: string[] }[],
   enabled = true
 ) => {

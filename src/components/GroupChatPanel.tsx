@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Send, Paperclip, Image, FileText, Pencil, X, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useSupabaseGroupChat, GroupMessage } from '@/hooks/useSupabaseGroupChat';
+import { useGroupChat, GroupMessage } from '@/hooks/useGroupChat';
 
 interface GroupChatPanelProps {
   groupId: string;
@@ -14,7 +14,7 @@ interface GroupChatPanelProps {
 
 const GroupChatPanel = ({ groupId, groupName }: GroupChatPanelProps) => {
   const { currentUser, users } = useApp();
-  const { messages, sendMessage, editMessage } = useSupabaseGroupChat(groupId);
+  const { messages, sendMessage, editMessage } = useGroupChat(groupId);
   const [text, setText] = useState('');
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');

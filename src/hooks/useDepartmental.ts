@@ -109,7 +109,7 @@ const toIso = (value: any): string | null => {
   return null;
 };
 
-export const useSupabaseDepartmental = () => {
+export const useDepartmental = () => {
   const [tracking, setTracking] = useState<TrackingEntry[]>([]);
   const [reverseShipments, setReverseShipments] = useState<ReverseShipment[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);

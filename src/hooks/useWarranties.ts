@@ -86,7 +86,7 @@ const mapUpdate = (id: string, data: any): WarrantyUpdate => ({
   createdAt: toIso(data.created_at),
 });
 
-export const useSupabaseWarranties = () => {
+export const useWarranties = () => {
   const [claims, setClaims] = useState<WarrantyClaim[]>([]);
   const [updates, setUpdates] = useState<WarrantyUpdate[]>([]);
 

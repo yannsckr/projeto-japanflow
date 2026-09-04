@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSupabaseDepartmental, MotoboyAssignment } from '@/hooks/useSupabaseDepartmental';
+import { useDepartmental, MotoboyAssignment } from '@/hooks/useDepartmental';
 import { useApp } from '@/contexts/AppContext';
 import { Bike, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,7 @@ const formatElapsed = (from: string) => {
 };
 
 const AdminMotoboyMonitor = () => {
-  const { motoboyAssignments } = useSupabaseDepartmental();
+  const { motoboyAssignments } = useDepartmental();
   const { users } = useApp();
   const [, setTick] = useState(0);
 

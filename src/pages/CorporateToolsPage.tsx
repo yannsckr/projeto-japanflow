@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { useSupabaseCorporate } from '@/hooks/useSupabaseCorporate';
+import { useCorporate } from '@/hooks/useCorporate';
 import { useFeaturePermissions } from '@/hooks/useFeaturePermissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,7 @@ import { addDoc, collection, Timestamp } from 'firebase/firestore';
 
 const CorporateToolsPage = () => {
   const { currentUser, users } = useApp();
-  const corporate = useSupabaseCorporate();
+  const corporate = useCorporate ();
   const featPerms = useFeaturePermissions();
   const baseAdmin = currentUser?.role === 'admin';
   const isAdmin = baseAdmin || featPerms.hasFeature(currentUser?.id, 'corporate_tools');

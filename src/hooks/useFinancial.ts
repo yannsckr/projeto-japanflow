@@ -39,7 +39,7 @@ const toIso = (value: any): string => {
   return '';
 };
 
-export function useSupabaseFinancial() {
+export function useFinancial() {
   const [forecasts, setForecasts] = useState<FinancialForecast[]>([]);
   const [cardDueDates, setCardDueDates] = useState<CardDueDate[]>([]);
 

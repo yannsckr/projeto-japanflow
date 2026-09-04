@@ -72,7 +72,7 @@ const toIso = (value: any): string => {
   return '';
 };
 
-export const useSupabaseCorporate = () => {
+export const useCorporate = () => {
   const [bulletinPosts, setBulletinPosts] = useState<BulletinPost[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [polls, setPolls] = useState<Poll[]>([]);
