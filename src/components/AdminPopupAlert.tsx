@@ -52,17 +52,11 @@ interface AdminPopupFirestore {
   created_at: Timestamp;
 }
 
-const userMatchesPopup = (
-  popup: AdminPopupRow,
-  userId: string,
-  userSectors: string[]
-) => {
+const userMatchesPopup = (popup: AdminPopupRow, userId: string, userSectors: string[]) => {
   if (popup.target_mode === 'all') return true;
 
   if (popup.target_mode === 'sector') {
-    return (popup.target_sectors || []).some((sector) =>
-      userSectors.includes(sector)
-    );
+    return (popup.target_sectors || []).some((sector) => userSectors.includes(sector));
   }
 
   if (popup.target_mode === 'users') {
@@ -79,10 +73,7 @@ export default function AdminPopupAlert() {
   const fetchUnseen = useCallback(async () => {
     if (!currentUser) return;
 
-    const popupsQuery = query(
-      collection(db, 'admin_popups'),
-      orderBy('created_at', 'asc')
-    );
+    const popupsQuery = query(collection(db, 'admin_popups'), orderBy('created_at', 'asc'));
 
     const acksQuery = query(
       collection(db, 'admin_popup_acks'),
@@ -124,10 +115,7 @@ export default function AdminPopupAlert() {
           : new Date().toISOString(),
       };
 
-      if (
-        !acked.has(popup.id) &&
-        userMatchesPopup(popup, currentUser.id, sectors)
-      ) {
+      if (!acked.has(popup.id) && userMatchesPopup(popup, currentUser.id, sectors)) {
         unseen.push(popup);
       }
     });
@@ -140,10 +128,7 @@ export default function AdminPopupAlert() {
 
     fetchUnseen();
 
-    const popupsQuery = query(
-      collection(db, 'admin_popups'),
-      orderBy('created_at', 'asc')
-    );
+    const popupsQuery = query(collection(db, 'admin_popups'), orderBy('created_at', 'asc'));
 
     let initialized = false;
 
@@ -179,9 +164,7 @@ export default function AdminPopupAlert() {
         }
 
         setQueue((prev) =>
-          prev.some((existing) => existing.id === popup.id)
-            ? prev
-            : [...prev, popup]
+          prev.some((existing) => existing.id === popup.id) ? prev : [...prev, popup]
         );
       });
     });
@@ -226,61 +209,54 @@ export default function AdminPopupAlert() {
 
           <DialogDescription className="text-xs">
             {queue.length > 1 && (
-              <span className="text-muted-foreground">
-                (+{queue.length - 1} aguardando)
-              </span>
+              <span className="text-muted-foreground">(+{queue.length - 1} aguardando)</span>
             )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           <div className="bg-card border border-border rounded-xl p-4 max-h-[60vh] overflow-y-auto">
-            <h4 className="font-semibold text-base mb-2">
-              {current.title}
-            </h4>
+            <h4 className="font-semibold text-base mb-2">{current.title}</h4>
 
             <div className="text-sm whitespace-pre-wrap break-words leading-relaxed text-foreground/90">
               {current.content}
             </div>
 
-            {Array.isArray(current.attachments) &&
-              current.attachments.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {current.attachments.map((attachment, index) =>
-                    attachment.type?.startsWith('image/') ? (
-                      <a
-                        key={index}
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block"
-                      >
-                        <img
-                          src={attachment.url}
-                          alt={attachment.name}
-                          className="max-h-80 w-auto rounded-lg border border-border"
-                        />
-                      </a>
-                    ) : (
-                      <a
-                        key={index}
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-2 p-2 bg-muted/40 border border-border rounded-lg hover:bg-muted transition-colors"
-                      >
-                        <FileIcon className="w-4 h-4 text-primary" />
+            {Array.isArray(current.attachments) && current.attachments.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {current.attachments.map((attachment, index) =>
+                  attachment.type?.startsWith('image/') ? (
+                    <a
+                      key={index}
+                      href={attachment.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block"
+                    >
+                      <img
+                        src={attachment.url}
+                        alt={attachment.name}
+                        className="max-h-80 w-auto rounded-lg border border-border"
+                      />
+                    </a>
+                  ) : (
+                    <a
+                      key={index}
+                      href={attachment.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 p-2 bg-muted/40 border border-border rounded-lg hover:bg-muted transition-colors"
+                    >
+                      <FileIcon className="w-4 h-4 text-primary" />
 
-                        <span className="flex-1 text-xs truncate">
-                          {attachment.name}
-                        </span>
+                      <span className="flex-1 text-xs truncate">{attachment.name}</span>
 
-                        <Download className="w-3 h-3 text-muted-foreground" />
-                      </a>
-                    )
-                  )}
-                </div>
-              )}
+                      <Download className="w-3 h-3 text-muted-foreground" />
+                    </a>
+                  )
+                )}
+              </div>
+            )}
 
             <p className="text-[10px] text-muted-foreground mt-3">
               {new Date(current.created_at).toLocaleString('pt-BR')}
@@ -293,10 +269,7 @@ export default function AdminPopupAlert() {
         </div>
 
         <DialogFooter>
-          <Button
-            onClick={handleClose}
-            className="w-full gap-2"
-          >
+          <Button onClick={handleClose} className="w-full gap-2">
             <span className="text-lg">👍</span>
             Curtir e Fechar
           </Button>

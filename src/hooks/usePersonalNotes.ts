@@ -64,10 +64,7 @@ export function usePersonalNotes(userId: string | null) {
     }
 
     try {
-      const ownQuery = query(
-        collection(db, 'personal_notes'),
-        where('userId', '==', userId)
-      );
+      const ownQuery = query(collection(db, 'personal_notes'), where('userId', '==', userId));
 
       const sharesQuery = query(
         collection(db, 'personal_note_shares'),
@@ -80,10 +77,7 @@ export function usePersonalNotes(userId: string | null) {
       ]);
 
       const ownNotes = ownSnapshot.docs.map((noteDoc) =>
-        mapNote(
-          noteDoc.id,
-          noteDoc.data() as PersonalNoteFirestore
-        )
+        mapNote(noteDoc.id, noteDoc.data() as PersonalNoteFirestore)
       );
 
       const ownIds = new Set(ownNotes.map((note) => note.id));
@@ -98,9 +92,7 @@ export function usePersonalNotes(userId: string | null) {
 
         if (!noteId || ownIds.has(noteId)) continue;
 
-        const noteSnapshot = await getDoc(
-          doc(db, 'personal_notes', noteId)
-        );
+        const noteSnapshot = await getDoc(doc(db, 'personal_notes', noteId));
 
         if (!noteSnapshot.exists()) continue;
 
@@ -115,9 +107,7 @@ export function usePersonalNotes(userId: string | null) {
       }
 
       const allNotes = [...ownNotes, ...sharedNotes].sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() -
-          new Date(a.updatedAt).getTime()
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
 
       setNotes(allNotes);
@@ -189,9 +179,7 @@ export function usePersonalNotes(userId: string | null) {
 
         await Promise.all(
           sharesSnapshot.docs.map((shareDoc) =>
-            deleteDoc(
-              doc(db, 'personal_note_shares', shareDoc.id)
-            )
+            deleteDoc(doc(db, 'personal_note_shares', shareDoc.id))
           )
         );
 
@@ -231,33 +219,23 @@ export function usePersonalNotes(userId: string | null) {
     [userId]
   );
 
-  const unshareNote = useCallback(
-    async (noteId: string, targetUserId: string) => {
-      try {
-        const sharesQuery = query(
-          collection(db, 'personal_note_shares'),
-          where('noteId', '==', noteId),
-          where('sharedWithUserId', '==', targetUserId)
-        );
+  const unshareNote = useCallback(async (noteId: string, targetUserId: string) => {
+    try {
+      const sharesQuery = query(
+        collection(db, 'personal_note_shares'),
+        where('noteId', '==', noteId),
+        where('sharedWithUserId', '==', targetUserId)
+      );
 
-        const snapshot = await getDocs(sharesQuery);
+      const snapshot = await getDocs(sharesQuery);
 
-        await Promise.all(
-          snapshot.docs.map((shareDoc) =>
-            deleteDoc(
-              doc(db, 'personal_note_shares', shareDoc.id)
-            )
-          )
-        );
-      } catch (error) {
-        console.error(
-          'Erro ao remover compartilhamento:',
-          error
-        );
-      }
-    },
-    []
-  );
+      await Promise.all(
+        snapshot.docs.map((shareDoc) => deleteDoc(doc(db, 'personal_note_shares', shareDoc.id)))
+      );
+    } catch (error) {
+      console.error('Erro ao remover compartilhamento:', error);
+    }
+  }, []);
 
   return {
     notes,

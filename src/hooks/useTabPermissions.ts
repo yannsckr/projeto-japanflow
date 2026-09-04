@@ -1,12 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  setDoc,
-  Timestamp,
-} from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
 
 export type TabKey = 'financial' | 'corridas' | 'tracking';
 
@@ -53,40 +47,33 @@ export const useTabPermissions = () => {
     return () => unsubscribe();
   }, []);
 
-  const setPermission = useCallback(
-    async (userId: string, tabKey: TabKey, enabled: boolean) => {
-      setPermissions((prev) => {
-        const filtered = prev.filter(
-          (p) => !(p.user_id === userId && p.tab_key === tabKey)
-        );
-        return [...filtered, { user_id: userId, tab_key: tabKey, enabled }];
-      });
+  const setPermission = useCallback(async (userId: string, tabKey: TabKey, enabled: boolean) => {
+    setPermissions((prev) => {
+      const filtered = prev.filter((p) => !(p.user_id === userId && p.tab_key === tabKey));
+      return [...filtered, { user_id: userId, tab_key: tabKey, enabled }];
+    });
 
-      const permissionId = `${userId}__${tabKey}`;
+    const permissionId = `${userId}__${tabKey}`;
 
-      try {
-        await setDoc(
-          doc(db, 'user_tab_permissions', permissionId),
-          {
-            user_id: userId,
-            tab_key: tabKey,
-            enabled,
-            updated_at: Timestamp.now(),
-          },
-          { merge: true }
-        );
-      } catch (error) {
-        console.error('Erro ao salvar permissão:', error);
-      }
-    },
-    []
-  );
+    try {
+      await setDoc(
+        doc(db, 'user_tab_permissions', permissionId),
+        {
+          user_id: userId,
+          tab_key: tabKey,
+          enabled,
+          updated_at: Timestamp.now(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error('Erro ao salvar permissão:', error);
+    }
+  }, []);
 
   const isTabEnabled = useCallback(
     (userId: string, tabKey: TabKey, fallback: boolean): boolean => {
-      const record = permissions.find(
-        (p) => p.user_id === userId && p.tab_key === tabKey
-      );
+      const record = permissions.find((p) => p.user_id === userId && p.tab_key === tabKey);
       if (!record) return fallback;
       return record.enabled;
     },

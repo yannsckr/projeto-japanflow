@@ -15,13 +15,7 @@ import {
 import { RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '@/lib/firebase';
-import {
-  addDoc,
-  collection,
-  doc,
-  Timestamp,
-  updateDoc,
-} from 'firebase/firestore';
+import { addDoc, collection, doc, Timestamp, updateDoc } from 'firebase/firestore';
 
 interface Props {
   task: Task;
@@ -139,11 +133,7 @@ const ReactivateTaskDialog = ({ task, open, onOpenChange, onReactivated }: Props
 
             <div>
               <label className="text-xs font-medium mb-1 block">Prazo</label>
-              <Input
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-              />
+              <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
             </div>
           </div>
 

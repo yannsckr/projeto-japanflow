@@ -1,8 +1,8 @@
-import { db } from "@/lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import app from "@/lib/firebase";
+import { db } from '@/lib/firebase';
+import { collection, addDoc } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import app from '@/lib/firebase';
 
 interface PushNotificationPayload {
   token: string;
@@ -16,8 +16,8 @@ export function usePushNotifications() {
   const [notification, setNotification] = useState<{ title: string; body: string } | null>(null);
 
   useEffect(() => {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
-      console.warn("Notifications or Service Worker not supported.");
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      console.warn('Notifications or Service Worker not supported.');
       return;
     }
 
@@ -25,7 +25,7 @@ export function usePushNotifications() {
 
     // Solicitar permissão para notificações
     Notification.requestPermission().then((permission) => {
-      if (permission === "granted") {
+      if (permission === 'granted') {
         getToken(messaging, {
           vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
         })
@@ -33,22 +33,25 @@ export function usePushNotifications() {
             if (currentToken) {
               setToken(currentToken);
               // Enviar o token para o seu backend para associar ao usuário
-              console.log("FCM Token:", currentToken);
+              console.log('FCM Token:', currentToken);
             } else {
-              console.log("No registration token available. Request permission to generate one.");
+              console.log('No registration token available. Request permission to generate one.');
             }
           })
           .catch((err) => {
-            console.error("An error occurred while retrieving token.", err);
+            console.error('An error occurred while retrieving token.', err);
           });
       }
     });
 
     // Lidar com mensagens em primeiro plano
     const unsubscribe = onMessage(messaging, (payload) => {
-      console.log("Message received. ", payload);
+      console.log('Message received. ', payload);
       if (payload.notification) {
-        setNotification({ title: payload.notification.title || "", body: payload.notification.body || "" });
+        setNotification({
+          title: payload.notification.title || '',
+          body: payload.notification.body || '',
+        });
       }
     });
 
@@ -62,14 +65,14 @@ export async function sendPushToUser(userId: string, title: string, body: string
   try {
     // Em um cenário real, você buscaria o token FCM do userId no seu banco de dados
     // Por simplicidade, aqui vamos simular que o token está disponível (vindo de algum lugar)
-    const userToken = "some_fcm_token_from_db"; // Substitua pela lógica real
+    const userToken = 'some_fcm_token_from_db'; // Substitua pela lógica real
 
     if (!userToken) {
       console.warn(`No FCM token found for user ${userId}. Cannot send push notification.`);
       return;
     }
 
-    const notificationsCollection = collection(db, "push_notifications");
+    const notificationsCollection = collection(db, 'push_notifications');
     await addDoc(notificationsCollection, {
       userId,
       title,
@@ -98,6 +101,6 @@ export async function sendPushToUser(userId: string, title: string, body: string
     // });
     // console.log("FCM response:", await response.json());
   } catch (error) {
-    console.error("Error sending push notification:", error);
+    console.error('Error sending push notification:', error);
   }
 }

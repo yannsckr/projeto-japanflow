@@ -45,9 +45,7 @@ export async function uploadImage(
 ): Promise<UploadImageResult> {
   // Comprime imagens no cliente (WebP, max 1600px, q=0.75, remove EXIF).
   // Não-imagens passam direto.
-  const toUpload = file.type.startsWith('image/')
-    ? await compressImage(file)
-    : file;
+  const toUpload = file.type.startsWith('image/') ? await compressImage(file) : file;
 
   const ext = (toUpload.name.split('.').pop() || 'bin').toLowerCase();
   const rnd = Math.random().toString(36).slice(2);

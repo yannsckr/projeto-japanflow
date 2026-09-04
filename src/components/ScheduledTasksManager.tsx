@@ -34,21 +34,9 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import {
-  CalendarClock,
-  Plus,
-  Trash2,
-  Pencil,
-  Power,
-  PowerOff,
-} from 'lucide-react';
+import { CalendarClock, Plus, Trash2, Pencil, Power, PowerOff } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ScheduledTask {
   id: string;
@@ -94,73 +82,53 @@ const ScheduledTasksManager = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
-  const [assignMode, setAssignMode] = useState<'employee' | 'sector'>(
-    'employee'
-  );
+  const [assignMode, setAssignMode] = useState<'employee' | 'sector'>('employee');
   const [assigneeId, setAssigneeId] = useState('');
   const [sector, setSector] = useState<Sector | ''>('');
   const [scheduleTime, setScheduleTime] = useState('08:00');
-  const [recurrence, setRecurrence] = useState<
-    'daily' | 'specific_days'
-  >('daily');
+  const [recurrence, setRecurrence] = useState<'daily' | 'specific_days'>('daily');
 
-  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([
-    1, 2, 3, 4, 5,
-  ]);
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
 
   // Firestore em tempo real
   useEffect(() => {
-    const schedulesQuery = query(
-      collection(db, 'scheduled_tasks'),
-      orderBy('created_at', 'desc')
-    );
+    const schedulesQuery = query(collection(db, 'scheduled_tasks'), orderBy('created_at', 'desc'));
 
     const unsubscribe = onSnapshot(
       schedulesQuery,
       (snapshot) => {
-        const nextSchedules: ScheduledTask[] =
-          snapshot.docs.map((scheduleDoc) => {
-            const data = scheduleDoc.data();
+        const nextSchedules: ScheduledTask[] = snapshot.docs.map((scheduleDoc) => {
+          const data = scheduleDoc.data();
 
-            return {
-              id: scheduleDoc.id,
-              title: data.title || '',
-              description: data.description || '',
-              priority: data.priority || 'medium',
-              assignee_id: data.assignee_id || null,
-              sector: data.sector || null,
-              assign_mode: data.assign_mode || 'employee',
-              schedule_time: data.schedule_time || '08:00',
-              recurrence: data.recurrence || 'daily',
+          return {
+            id: scheduleDoc.id,
+            title: data.title || '',
+            description: data.description || '',
+            priority: data.priority || 'medium',
+            assignee_id: data.assignee_id || null,
+            sector: data.sector || null,
+            assign_mode: data.assign_mode || 'employee',
+            schedule_time: data.schedule_time || '08:00',
+            recurrence: data.recurrence || 'daily',
 
-              days_of_week: Array.isArray(data.days_of_week)
-                ? data.days_of_week
-                : [],
+            days_of_week: Array.isArray(data.days_of_week) ? data.days_of_week : [],
 
-              active: data.active !== false,
+            active: data.active !== false,
 
-              created_by: data.created_by || '',
+            created_by: data.created_by || '',
 
-              created_at:
-                toIso(data.created_at) ||
-                new Date().toISOString(),
+            created_at: toIso(data.created_at) || new Date().toISOString(),
 
-              last_created_at:
-                toIso(data.last_created_at),
-            };
-          });
+            last_created_at: toIso(data.last_created_at),
+          };
+        });
 
         setSchedules(nextSchedules);
       },
       (error) => {
-        console.error(
-          'Erro ao acompanhar tarefas agendadas:',
-          error
-        );
+        console.error('Erro ao acompanhar tarefas agendadas:', error);
 
-        toast.error(
-          'Erro ao carregar tarefas agendadas'
-        );
+        toast.error('Erro ao carregar tarefas agendadas');
       }
     );
 
@@ -183,18 +151,12 @@ const ScheduledTasksManager = () => {
   const handleSave = async () => {
     if (!title.trim() || !currentUser) return;
 
-    if (
-      assignMode === 'employee' &&
-      !assigneeId
-    ) {
+    if (assignMode === 'employee' && !assigneeId) {
       toast.error('Selecione um funcionário');
       return;
     }
 
-    if (
-      assignMode === 'sector' &&
-      !sector
-    ) {
+    if (assignMode === 'sector' && !sector) {
       toast.error('Selecione um setor');
       return;
     }
@@ -206,24 +168,15 @@ const ScheduledTasksManager = () => {
 
       assign_mode: assignMode,
 
-      assignee_id:
-        assignMode === 'employee'
-          ? assigneeId
-          : null,
+      assignee_id: assignMode === 'employee' ? assigneeId : null,
 
-      sector:
-        assignMode === 'sector'
-          ? sector
-          : null,
+      sector: assignMode === 'sector' ? sector : null,
 
       schedule_time: scheduleTime,
 
       recurrence,
 
-      days_of_week:
-        recurrence === 'specific_days'
-          ? daysOfWeek
-          : [],
+      days_of_week: recurrence === 'specific_days' ? daysOfWeek : [],
 
       created_by: currentUser.id,
 
@@ -232,150 +185,75 @@ const ScheduledTasksManager = () => {
 
     try {
       if (editingId) {
-        await updateDoc(
-          doc(
-            db,
-            'scheduled_tasks',
-            editingId
-          ),
-          payload
-        );
+        await updateDoc(doc(db, 'scheduled_tasks', editingId), payload);
 
-        toast.success(
-          'Agendamento atualizado'
-        );
+        toast.success('Agendamento atualizado');
       } else {
-        await addDoc(
-          collection(
-            db,
-            'scheduled_tasks'
-          ),
-          {
-            ...payload,
+        await addDoc(collection(db, 'scheduled_tasks'), {
+          ...payload,
 
-            active: true,
+          active: true,
 
-            created_at:
-              Timestamp.now(),
+          created_at: Timestamp.now(),
 
-            last_created_at: null,
-          }
-        );
+          last_created_at: null,
+        });
 
-        toast.success(
-          'Agendamento criado'
-        );
+        toast.success('Agendamento criado');
       }
 
       resetForm();
       setOpen(false);
     } catch (error) {
-      console.error(
-        'Erro ao salvar agendamento:',
-        error
-      );
+      console.error('Erro ao salvar agendamento:', error);
 
-      toast.error(
-        editingId
-          ? 'Erro ao atualizar'
-          : 'Erro ao criar agendamento'
-      );
+      toast.error(editingId ? 'Erro ao atualizar' : 'Erro ao criar agendamento');
     }
   };
 
-  const handleEdit = (
-    schedule: ScheduledTask
-  ) => {
+  const handleEdit = (schedule: ScheduledTask) => {
     setEditingId(schedule.id);
 
     setTitle(schedule.title);
     setDescription(schedule.description);
 
-    setPriority(
-      schedule.priority as Priority
-    );
+    setPriority(schedule.priority as Priority);
 
-    setAssignMode(
-      schedule.assign_mode as
-        | 'employee'
-        | 'sector'
-    );
+    setAssignMode(schedule.assign_mode as 'employee' | 'sector');
 
-    setAssigneeId(
-      schedule.assignee_id || ''
-    );
+    setAssigneeId(schedule.assignee_id || '');
 
-    setSector(
-      (schedule.sector || '') as
-        | Sector
-        | ''
-    );
+    setSector((schedule.sector || '') as Sector | '');
 
-    setScheduleTime(
-      schedule.schedule_time
-    );
+    setScheduleTime(schedule.schedule_time);
 
-    setRecurrence(
-      schedule.recurrence as
-        | 'daily'
-        | 'specific_days'
-    );
+    setRecurrence(schedule.recurrence as 'daily' | 'specific_days');
 
-    setDaysOfWeek(
-      schedule.days_of_week || [
-        1, 2, 3, 4, 5,
-      ]
-    );
+    setDaysOfWeek(schedule.days_of_week || [1, 2, 3, 4, 5]);
 
     setOpen(true);
   };
 
-  const handleDelete = async (
-    id: string
-  ) => {
+  const handleDelete = async (id: string) => {
     try {
-      await deleteDoc(
-        doc(
-          db,
-          'scheduled_tasks',
-          id
-        )
-      );
+      await deleteDoc(doc(db, 'scheduled_tasks', id));
 
-      toast.success(
-        'Agendamento excluído'
-      );
+      toast.success('Agendamento excluído');
     } catch (error) {
-      console.error(
-        'Erro ao excluir agendamento:',
-        error
-      );
+      console.error('Erro ao excluir agendamento:', error);
 
       toast.error('Erro ao excluir');
     }
   };
 
-  const handleToggle = async (
-    id: string,
-    active: boolean
-  ) => {
+  const handleToggle = async (id: string, active: boolean) => {
     try {
-      await updateDoc(
-        doc(
-          db,
-          'scheduled_tasks',
-          id
-        ),
-        {
-          active: !active,
-          updated_at: Timestamp.now(),
-        }
-      );
+      await updateDoc(doc(db, 'scheduled_tasks', id), {
+        active: !active,
+        updated_at: Timestamp.now(),
+      });
     } catch (error) {
-      console.error(
-        'Erro ao alterar agendamento:',
-        error
-      );
+      console.error('Erro ao alterar agendamento:', error);
 
       toast.error('Erro ao atualizar');
     }
@@ -384,42 +262,22 @@ const ScheduledTasksManager = () => {
   const toggleDay = (day: number) => {
     setDaysOfWeek((prev) =>
       prev.includes(day)
-        ? prev.filter(
-            (currentDay) =>
-              currentDay !== day
-          )
-        : [...prev, day].sort(
-            (a, b) => a - b
-          )
+        ? prev.filter((currentDay) => currentDay !== day)
+        : [...prev, day].sort((a, b) => a - b)
     );
   };
 
-  const getAssigneeName = (
-    schedule: ScheduledTask
-  ) => {
-    if (
-      schedule.assign_mode === 'sector'
-    ) {
-      return (
-        SECTOR_LABELS[
-          schedule.sector as Sector
-        ] || schedule.sector
-      );
+  const getAssigneeName = (schedule: ScheduledTask) => {
+    if (schedule.assign_mode === 'sector') {
+      return SECTOR_LABELS[schedule.sector as Sector] || schedule.sector;
     }
 
-    const user = users.find(
-      (u) =>
-        u.id ===
-        schedule.assignee_id
-    );
+    const user = users.find((u) => u.id === schedule.assignee_id);
 
     return user?.name || 'Desconhecido';
   };
 
-  if (
-    !currentUser ||
-    currentUser.role !== 'admin'
-  ) {
+  if (!currentUser || currentUser.role !== 'admin') {
     return null;
   }
 
@@ -451,41 +309,27 @@ const ScheduledTasksManager = () => {
           <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
-                {editingId
-                  ? 'Editar Agendamento'
-                  : 'Novo Agendamento Automático'}
+                {editingId ? 'Editar Agendamento' : 'Novo Agendamento Automático'}
               </DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4 mt-2">
               <div>
-                <label className="text-sm font-medium">
-                  Título da Tarefa
-                </label>
+                <label className="text-sm font-medium">Título da Tarefa</label>
 
                 <Input
                   value={title}
-                  onChange={(e) =>
-                    setTitle(
-                      e.target.value
-                    )
-                  }
+                  onChange={(e) => setTitle(e.target.value)}
                   placeholder="Ex: Conferir estoque"
                 />
               </div>
 
               <div>
-                <label className="text-sm font-medium">
-                  Descrição
-                </label>
+                <label className="text-sm font-medium">Descrição</label>
 
                 <Textarea
                   value={description}
-                  onChange={(e) =>
-                    setDescription(
-                      e.target.value
-                    )
-                  }
+                  onChange={(e) => setDescription(e.target.value)}
                   placeholder="Descrição da tarefa..."
                   rows={3}
                 />
@@ -493,114 +337,65 @@ const ScheduledTasksManager = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-sm font-medium">
-                    Prioridade
-                  </label>
+                  <label className="text-sm font-medium">Prioridade</label>
 
                   <Select
                     value={priority}
-                    onValueChange={(value) =>
-                      setPriority(
-                        value as Priority
-                      )
-                    }
+                    onValueChange={(value) => setPriority(value as Priority)}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
 
                     <SelectContent>
-                      <SelectItem value="low">
-                        Baixa
-                      </SelectItem>
+                      <SelectItem value="low">Baixa</SelectItem>
 
-                      <SelectItem value="medium">
-                        Média
-                      </SelectItem>
+                      <SelectItem value="medium">Média</SelectItem>
 
-                      <SelectItem value="high">
-                        Alta
-                      </SelectItem>
+                      <SelectItem value="high">Alta</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">
-                    Horário
-                  </label>
+                  <label className="text-sm font-medium">Horário</label>
 
                   <Input
                     type="time"
                     value={scheduleTime}
-                    onChange={(e) =>
-                      setScheduleTime(
-                        e.target.value
-                      )
-                    }
+                    onChange={(e) => setScheduleTime(e.target.value)}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-sm font-medium">
-                  Atribuir para
-                </label>
+                <label className="text-sm font-medium">Atribuir para</label>
 
                 <Tabs
                   value={assignMode}
-                  onValueChange={(value) =>
-                    setAssignMode(
-                      value as
-                        | 'employee'
-                        | 'sector'
-                    )
-                  }
+                  onValueChange={(value) => setAssignMode(value as 'employee' | 'sector')}
                 >
                   <TabsList className="w-full">
-                    <TabsTrigger
-                      value="employee"
-                      className="flex-1"
-                    >
+                    <TabsTrigger value="employee" className="flex-1">
                       Funcionário
                     </TabsTrigger>
 
-                    <TabsTrigger
-                      value="sector"
-                      className="flex-1"
-                    >
+                    <TabsTrigger value="sector" className="flex-1">
                       Setor
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent
-                    value="employee"
-                    className="mt-2"
-                  >
-                    <Select
-                      value={assigneeId}
-                      onValueChange={
-                        setAssigneeId
-                      }
-                    >
+                  <TabsContent value="employee" className="mt-2">
+                    <Select value={assigneeId} onValueChange={setAssigneeId}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione..." />
                       </SelectTrigger>
 
                       <SelectContent>
                         {users
-                          .filter(
-                            (u) =>
-                              u.role ===
-                                'employee' ||
-                              u.role ===
-                                'admin'
-                          )
+                          .filter((u) => u.role === 'employee' || u.role === 'admin')
                           .map((u) => (
-                            <SelectItem
-                              key={u.id}
-                              value={u.id}
-                            >
+                            <SelectItem key={u.id} value={u.id}>
                               {u.name}
                             </SelectItem>
                           ))}
@@ -608,39 +403,16 @@ const ScheduledTasksManager = () => {
                     </Select>
                   </TabsContent>
 
-                  <TabsContent
-                    value="sector"
-                    className="mt-2"
-                  >
-                    <Select
-                      value={sector}
-                      onValueChange={(
-                        value
-                      ) =>
-                        setSector(
-                          value as Sector
-                        )
-                      }
-                    >
+                  <TabsContent value="sector" className="mt-2">
+                    <Select value={sector} onValueChange={(value) => setSector(value as Sector)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione..." />
                       </SelectTrigger>
 
                       <SelectContent>
-                        {(
-                          Object.keys(
-                            SECTOR_LABELS
-                          ) as Sector[]
-                        ).map((sectorKey) => (
-                          <SelectItem
-                            key={sectorKey}
-                            value={sectorKey}
-                          >
-                            {
-                              SECTOR_LABELS[
-                                sectorKey
-                              ]
-                            }
+                        {(Object.keys(SECTOR_LABELS) as Sector[]).map((sectorKey) => (
+                          <SelectItem key={sectorKey} value={sectorKey}>
+                            {SECTOR_LABELS[sectorKey]}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -650,80 +422,47 @@ const ScheduledTasksManager = () => {
               </div>
 
               <div>
-                <label className="text-sm font-medium">
-                  Recorrência
-                </label>
+                <label className="text-sm font-medium">Recorrência</label>
 
                 <Select
                   value={recurrence}
-                  onValueChange={(value) =>
-                    setRecurrence(
-                      value as
-                        | 'daily'
-                        | 'specific_days'
-                    )
-                  }
+                  onValueChange={(value) => setRecurrence(value as 'daily' | 'specific_days')}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
 
                   <SelectContent>
-                    <SelectItem value="daily">
-                      Todos os dias
-                    </SelectItem>
+                    <SelectItem value="daily">Todos os dias</SelectItem>
 
-                    <SelectItem value="specific_days">
-                      Dias específicos
-                    </SelectItem>
+                    <SelectItem value="specific_days">Dias específicos</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {recurrence ===
-                'specific_days' && (
+              {recurrence === 'specific_days' && (
                 <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Dias da semana
-                  </label>
+                  <label className="text-sm font-medium mb-2 block">Dias da semana</label>
 
                   <div className="flex gap-1.5 flex-wrap">
-                    {DAY_LABELS.map(
-                      (label, index) => (
-                        <Button
-                          key={index}
-                          type="button"
-                          size="sm"
-                          variant={
-                            daysOfWeek.includes(
-                              index
-                            )
-                              ? 'default'
-                              : 'outline'
-                          }
-                          className="h-9 w-11 text-xs"
-                          onClick={() =>
-                            toggleDay(
-                              index
-                            )
-                          }
-                        >
-                          {label}
-                        </Button>
-                      )
-                    )}
+                    {DAY_LABELS.map((label, index) => (
+                      <Button
+                        key={index}
+                        type="button"
+                        size="sm"
+                        variant={daysOfWeek.includes(index) ? 'default' : 'outline'}
+                        className="h-9 w-11 text-xs"
+                        onClick={() => toggleDay(index)}
+                      >
+                        {label}
+                      </Button>
+                    ))}
                   </div>
                 </div>
               )}
 
-              <Button
-                className="w-full"
-                onClick={handleSave}
-                disabled={!title.trim()}
-              >
-                {editingId
-                  ? 'Salvar Alterações'
-                  : 'Criar Agendamento'}
+              <Button className="w-full" onClick={handleSave} disabled={!title.trim()}>
+                {editingId ? 'Salvar Alterações' : 'Criar Agendamento'}
               </Button>
             </div>
           </DialogContent>
@@ -740,60 +479,31 @@ const ScheduledTasksManager = () => {
             <div
               key={schedule.id}
               className={`flex items-center justify-between p-3 rounded-lg border ${
-                schedule.active
-                  ? 'bg-card'
-                  : 'bg-muted/50 opacity-60'
+                schedule.active ? 'bg-card' : 'bg-muted/50 opacity-60'
               }`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm truncate">
-                    {schedule.title}
-                  </span>
+                  <span className="font-medium text-sm truncate">{schedule.title}</span>
 
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] shrink-0"
-                  >
-                    {PRIORITY_LABELS[
-                      schedule.priority as Priority
-                    ] ||
-                      schedule.priority}
+                  <Badge variant="outline" className="text-[10px] shrink-0">
+                    {PRIORITY_LABELS[schedule.priority as Priority] || schedule.priority}
                   </Badge>
 
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] shrink-0"
-                  >
+                  <Badge variant="secondary" className="text-[10px] shrink-0">
                     {schedule.schedule_time}
                   </Badge>
                 </div>
 
                 <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
-                  <span>
-                    →{' '}
-                    {getAssigneeName(
-                      schedule
-                    )}
-                  </span>
+                  <span>→ {getAssigneeName(schedule)}</span>
 
                   <span>•</span>
 
                   <span>
-                    {schedule.recurrence ===
-                    'daily'
+                    {schedule.recurrence === 'daily'
                       ? 'Todos os dias'
-                      : (
-                          schedule.days_of_week ||
-                          []
-                        )
-                          .map(
-                            (day) =>
-                              DAY_LABELS[
-                                day
-                              ]
-                          )
-                          .join(', ')}
+                      : (schedule.days_of_week || []).map((day) => DAY_LABELS[day]).join(', ')}
                   </span>
                 </div>
               </div>
@@ -803,17 +513,8 @@ const ScheduledTasksManager = () => {
                   size="icon"
                   variant="ghost"
                   className="h-8 w-8"
-                  onClick={() =>
-                    handleToggle(
-                      schedule.id,
-                      schedule.active
-                    )
-                  }
-                  title={
-                    schedule.active
-                      ? 'Desativar'
-                      : 'Ativar'
-                  }
+                  onClick={() => handleToggle(schedule.id, schedule.active)}
+                  title={schedule.active ? 'Desativar' : 'Ativar'}
                 >
                   {schedule.active ? (
                     <Power className="w-4 h-4 text-green-500" />
@@ -826,11 +527,7 @@ const ScheduledTasksManager = () => {
                   size="icon"
                   variant="ghost"
                   className="h-8 w-8"
-                  onClick={() =>
-                    handleEdit(
-                      schedule
-                    )
-                  }
+                  onClick={() => handleEdit(schedule)}
                 >
                   <Pencil className="w-4 h-4" />
                 </Button>
@@ -839,11 +536,7 @@ const ScheduledTasksManager = () => {
                   size="icon"
                   variant="ghost"
                   className="h-8 w-8 text-destructive"
-                  onClick={() =>
-                    handleDelete(
-                      schedule.id
-                    )
-                  }
+                  onClick={() => handleDelete(schedule.id)}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>

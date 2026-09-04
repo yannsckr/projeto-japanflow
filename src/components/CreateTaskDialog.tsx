@@ -24,14 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 
 import { db } from '@/lib/firebase';
-import {
-  addDoc,
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  Timestamp,
-} from 'firebase/firestore';
+import { addDoc, collection, onSnapshot, orderBy, query, Timestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
@@ -42,13 +35,8 @@ interface CreateTaskDialogProps {
 }
 
 const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
-  const {
-    currentUser,
-    users,
-    sectorAssignEnabled,
-    nfToCarolEnabled,
-    nfBoletoToCarolEnabled,
-  } = useApp();
+  const { currentUser, users, sectorAssignEnabled, nfToCarolEnabled, nfBoletoToCarolEnabled } =
+    useApp();
   const { permissions, loading: permissionsLoading } = useTaskPermissions();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -87,10 +75,7 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
   const [carriers, setCarriers] = useState<{ id: string; name: string; blocked: boolean }[]>([]);
 
   useEffect(() => {
-    const carriersQuery = query(
-      collection(db, 'carriers'),
-      orderBy('name', 'asc')
-    );
+    const carriersQuery = query(collection(db, 'carriers'), orderBy('name', 'asc'));
 
     const unsubscribe = onSnapshot(
       carriersQuery,
@@ -292,10 +277,10 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
           setOcrLoading(true);
           try {
             const functions = getFunctions();
-            const transcribeImage = httpsCallable<
-              { imageBase64: string },
-              { text?: string }
-            >(functions, 'transcribeImage');
+            const transcribeImage = httpsCallable<{ imageBase64: string }, { text?: string }>(
+              functions,
+              'transcribeImage'
+            );
 
             const resp = await transcribeImage({ imageBase64: base64 });
             const transcribed = resp.data?.text || '';
@@ -377,12 +362,7 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
 
     // Require payment proof when separação de pedido marked as PAGO,
     // exceto quando o cliente for usar créditos (comprovante é opcional)
-    if (
-      isSeparacao &&
-      pagamento === 'pago' &&
-      !usarCreditos &&
-      paymentProofFiles.length === 0
-    ) {
+    if (isSeparacao && pagamento === 'pago' && !usarCreditos && paymentProofFiles.length === 0) {
       toast.error('Anexe o comprovante de pagamento (imagem ou PDF)');
       return;
     }

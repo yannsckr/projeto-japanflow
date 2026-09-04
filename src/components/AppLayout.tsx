@@ -32,8 +32,7 @@ const AppLayout = () => {
   const isChatRoute = location.pathname === '/chat';
   const { updatePresence } = usePresence(currentUser?.id || null);
   usePushNotifications(currentUser?.username || null, currentUser?.id || null);
-  const { totalUnread: unreadMessages } =
-  useUnreadMessages(currentUser?.id || null);
+  const { totalUnread: unreadMessages } = useUnreadMessages(currentUser?.id || null);
   const unreadNotifs = currentUser
     ? notifications.filter((n) => n.userId === currentUser.id && !n.read).length
     : 0;

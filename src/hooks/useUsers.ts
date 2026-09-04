@@ -52,12 +52,12 @@ function sanitizeUsers(value: unknown): User[] {
       const user = candidate as Partial<User>;
       return Boolean(
         user &&
-          typeof user.id === 'string' &&
-          typeof user.name === 'string' &&
-          typeof user.username === 'string' &&
-          typeof user.password === 'string' &&
-          typeof user.role === 'string' &&
-          Array.isArray(user.sectors)
+        typeof user.id === 'string' &&
+        typeof user.name === 'string' &&
+        typeof user.username === 'string' &&
+        typeof user.password === 'string' &&
+        typeof user.role === 'string' &&
+        Array.isArray(user.sectors)
       );
     })
     .map((user) => ({
@@ -95,7 +95,7 @@ function writeCachedUsers(users: User[]) {
   }
 }
 
-export function useUsers () {
+export function useUsers() {
   const initialUsersRef = useRef<User[]>([]);
 
   if (initialUsersRef.current.length === 0) {
@@ -115,10 +115,7 @@ export function useUsers () {
   useEffect(() => {
     setLoading(usersRef.current.length === 0);
 
-    const usersQuery = query(
-      collection(db, 'app_users'),
-      orderBy('created_at', 'asc')
-    );
+    const usersQuery = query(collection(db, 'app_users'), orderBy('created_at', 'asc'));
 
     const unsubscribe = onSnapshot(
       usersQuery,

@@ -60,10 +60,7 @@ export default function BulletinAlertPopup() {
   const fetchUnseen = useCallback(async () => {
     if (!currentUser) return;
 
-    const postsQuery = query(
-      collection(db, 'bulletin_posts'),
-      orderBy('created_at', 'asc')
-    );
+    const postsQuery = query(collection(db, 'bulletin_posts'), orderBy('created_at', 'asc'));
 
     const acksQuery = query(
       collection(db, 'bulletin_acks'),
@@ -138,10 +135,7 @@ export default function BulletinAlertPopup() {
 
     fetchUnseen();
 
-    const postsQuery = query(
-      collection(db, 'bulletin_posts'),
-      orderBy('created_at', 'asc')
-    );
+    const postsQuery = query(collection(db, 'bulletin_posts'), orderBy('created_at', 'asc'));
 
     let initialized = false;
 
@@ -167,11 +161,7 @@ export default function BulletinAlertPopup() {
             : new Date().toISOString(),
         };
 
-        setQueue((prev) =>
-          prev.some((p) => p.id === post.id)
-            ? prev
-            : [...prev, post]
-        );
+        setQueue((prev) => (prev.some((p) => p.id === post.id) ? prev : [...prev, post]));
 
         try {
           audioRef.currentTime = 0;
@@ -291,15 +281,9 @@ export default function BulletinAlertPopup() {
           </DialogTitle>
 
           <DialogDescription className="text-xs">
-            Por{' '}
-            <span className="font-semibold text-foreground">
-              {current.created_by}
-            </span>
-
+            Por <span className="font-semibold text-foreground">{current.created_by}</span>
             {queue.length > 1 && (
-              <span className="ml-2 text-muted-foreground">
-                (+{queue.length - 1} aguardando)
-              </span>
+              <span className="ml-2 text-muted-foreground">(+{queue.length - 1} aguardando)</span>
             )}
           </DialogDescription>
         </DialogHeader>
@@ -307,39 +291,29 @@ export default function BulletinAlertPopup() {
         <div className="space-y-3">
           <div
             className={`bg-card border border-border rounded-xl p-4 max-h-[60vh] overflow-y-auto ${
-              current.pinned
-                ? 'border-primary/30 bg-primary/5'
-                : ''
+              current.pinned ? 'border-primary/30 bg-primary/5' : ''
             }`}
           >
             <div className="flex items-center gap-2 mb-2">
-              {current.pinned && (
-                <Pin className="w-3 h-3 text-primary" />
-              )}
+              {current.pinned && <Pin className="w-3 h-3 text-primary" />}
 
-              <h4 className="font-semibold text-base">
-                {current.title}
-              </h4>
+              <h4 className="font-semibold text-base">{current.title}</h4>
             </div>
 
             <div
               className="text-sm mt-2 prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-headings:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 whitespace-pre-wrap break-words"
               dangerouslySetInnerHTML={{
-                __html:
-                  current.content || `<p>${plainContent}</p>`,
+                __html: current.content || `<p>${plainContent}</p>`,
               }}
             />
 
             <p className="text-[10px] text-muted-foreground mt-3">
-              Por {current.created_by} •{' '}
-              {new Date(current.created_at).toLocaleString('pt-BR')}
+              Por {current.created_by} • {new Date(current.created_at).toLocaleString('pt-BR')}
             </p>
           </div>
 
           <div>
-            <p className="text-xs text-muted-foreground mb-2">
-              Reaja a este aviso:
-            </p>
+            <p className="text-xs text-muted-foreground mb-2">Reaja a este aviso:</p>
 
             <div className="flex flex-wrap gap-2">
               {REACTION_EMOJIS.map((emoji) => {
@@ -369,10 +343,7 @@ export default function BulletinAlertPopup() {
         </div>
 
         <DialogFooter>
-          <Button
-            onClick={handleClose}
-            className="w-full gap-2"
-          >
+          <Button onClick={handleClose} className="w-full gap-2">
             <span className="text-lg">👍</span>
             Curtir e Fechar
           </Button>

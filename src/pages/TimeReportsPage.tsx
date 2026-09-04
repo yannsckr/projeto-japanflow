@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  Timestamp,
-  where,
-} from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, Timestamp, where } from 'firebase/firestore';
 import { useAllPresences } from '@/hooks/usePresence';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -102,13 +95,9 @@ const TimeReportsPage = () => {
               ? data.ended_at.toDate().toISOString()
               : data.ended_at || null,
             duration_seconds:
-              typeof data.duration_seconds === 'number'
-                ? data.duration_seconds
-                : null,
+              typeof data.duration_seconds === 'number' ? data.duration_seconds : null,
             overtime_seconds:
-              typeof data.overtime_seconds === 'number'
-                ? data.overtime_seconds
-                : null,
+              typeof data.overtime_seconds === 'number' ? data.overtime_seconds : null,
           } as PauseRecord;
         })
       );
@@ -126,9 +115,7 @@ const TimeReportsPage = () => {
               ? data.ended_at.toDate().toISOString()
               : data.ended_at || null,
             duration_seconds:
-              typeof data.duration_seconds === 'number'
-                ? data.duration_seconds
-                : null,
+              typeof data.duration_seconds === 'number' ? data.duration_seconds : null,
             status: data.status || '',
           } as SessionRecord;
         })

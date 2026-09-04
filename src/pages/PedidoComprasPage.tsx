@@ -114,14 +114,8 @@ const PedidoComprasPage = () => {
   };
 
   useEffect(() => {
-    const suppliersQuery = query(
-      collection(db, 'suppliers'),
-      orderBy('razao_social', 'asc')
-    );
-    const ordersQuery = query(
-      collection(db, 'purchase_orders'),
-      orderBy('order_number', 'desc')
-    );
+    const suppliersQuery = query(collection(db, 'suppliers'), orderBy('razao_social', 'asc'));
+    const ordersQuery = query(collection(db, 'purchase_orders'), orderBy('order_number', 'desc'));
 
     const unsubscribeSuppliers = onSnapshot(
       suppliersQuery,
@@ -143,9 +137,7 @@ const PedidoComprasPage = () => {
           snapshot.docs.map((orderDoc) => ({
             id: orderDoc.id,
             ...orderDoc.data(),
-            items: Array.isArray(orderDoc.data().items)
-              ? orderDoc.data().items
-              : [],
+            items: Array.isArray(orderDoc.data().items) ? orderDoc.data().items : [],
             created_at: orderDoc.data().created_at?.toDate
               ? orderDoc.data().created_at.toDate().toISOString()
               : orderDoc.data().created_at || '',
@@ -631,15 +623,15 @@ const PedidoComprasPage = () => {
                         size="sm"
                         onClick={async () => {
                           await updateDoc(doc(db, 'suppliers', editingSupplier.id), {
-                              razao_social: editingSupplier.razao_social,
-                              cnpj: editingSupplier.cnpj,
-                              celular: editingSupplier.celular,
-                              endereco: editingSupplier.endereco,
-                              cep: editingSupplier.cep,
-                              municipio_uf: editingSupplier.municipio_uf,
-                              email: editingSupplier.email,
-                              contato: editingSupplier.contato,
-                              obs: editingSupplier.obs,
+                            razao_social: editingSupplier.razao_social,
+                            cnpj: editingSupplier.cnpj,
+                            celular: editingSupplier.celular,
+                            endereco: editingSupplier.endereco,
+                            cep: editingSupplier.cep,
+                            municipio_uf: editingSupplier.municipio_uf,
+                            email: editingSupplier.email,
+                            contato: editingSupplier.contato,
+                            obs: editingSupplier.obs,
                             updated_at: Timestamp.now(),
                           });
                           setEditingSupplier(null);

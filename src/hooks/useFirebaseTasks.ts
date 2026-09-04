@@ -52,7 +52,7 @@ export function useFirebaseTasks(
       try {
         const docRef = doc(collection(db, 'tasks'));
         const now = new Date().toISOString();
-        
+
         // Estrutura flexível para o histórico inicial sem quebrar o contrato de tipo
         const initialHistoryEntry: any = {
           status: newTask.status,

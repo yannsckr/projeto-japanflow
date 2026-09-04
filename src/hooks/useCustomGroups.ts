@@ -30,10 +30,7 @@ export function useCustomGroups() {
   const [groups, setGroups] = useState<CustomGroup[]>([]);
 
   useEffect(() => {
-    const groupsQuery = query(
-      collection(db, 'custom_groups'),
-      orderBy('created_at', 'desc')
-    );
+    const groupsQuery = query(collection(db, 'custom_groups'), orderBy('created_at', 'desc'));
 
     const unsubscribe = onSnapshot(
       groupsQuery,
@@ -46,9 +43,7 @@ export function useCustomGroups() {
               id: groupDoc.id,
               name: data.name || '',
               createdBy: data.created_by || '',
-              participants: Array.isArray(data.participants)
-                ? data.participants
-                : [],
+              participants: Array.isArray(data.participants) ? data.participants : [],
               createdAt: toIso(data.created_at),
             };
           })
@@ -63,11 +58,7 @@ export function useCustomGroups() {
   }, []);
 
   const createGroup = useCallback(
-    async (
-      name: string,
-      participants: string[],
-      createdBy: string
-    ) => {
+    async (name: string, participants: string[], createdBy: string) => {
       await addDoc(collection(db, 'custom_groups'), {
         name,
         participants,

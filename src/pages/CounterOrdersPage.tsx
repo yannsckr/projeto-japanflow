@@ -108,10 +108,7 @@ export default function CounterOrdersPage() {
   };
 
   useEffect(() => {
-    const ordersQuery = query(
-      collection(db, 'counter_orders'),
-      orderBy('created_at', 'desc')
-    );
+    const ordersQuery = query(collection(db, 'counter_orders'), orderBy('created_at', 'desc'));
 
     const unsubscribe = onSnapshot(
       ordersQuery,
@@ -131,9 +128,7 @@ export default function CounterOrdersPage() {
               ...data,
               created_at: createdAt,
               ordered_at: orderedAt,
-              status_history: Array.isArray(data.status_history)
-                ? data.status_history
-                : [],
+              status_history: Array.isArray(data.status_history) ? data.status_history : [],
             } as CounterOrder;
           })
         );

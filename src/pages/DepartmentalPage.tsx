@@ -3,13 +3,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useDepartmental } from '@/hooks/useDepartmental';
 import { useFeaturePermissions } from '@/hooks/useFeaturePermissions';
 import { db } from '@/lib/firebase';
-import {
-  addDoc,
-  collection,
-  doc,
-  Timestamp,
-  updateDoc,
-} from 'firebase/firestore';
+import { addDoc, collection, doc, Timestamp, updateDoc } from 'firebase/firestore';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

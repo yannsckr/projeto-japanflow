@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-} from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Package } from 'lucide-react';
 
 interface ActiveInv {
@@ -37,10 +32,7 @@ const InventoryHeaderBanner = () => {
         setActive(inventories);
       },
       (error) => {
-        console.error(
-          'Erro ao acompanhar inventários em andamento:',
-          error
-        );
+        console.error('Erro ao acompanhar inventários em andamento:', error);
       }
     );
 
@@ -55,8 +47,7 @@ const InventoryHeaderBanner = () => {
         <Package className="h-4 w-4 md:h-5 md:w-5 shrink-0" />
 
         <span className="font-bold text-sm md:text-lg whitespace-nowrap overflow-hidden text-ellipsis">
-          Prateleira em Processo de Inventário:{' '}
-          {active.map((item) => item.shelf_code).join(', ')}
+          Prateleira em Processo de Inventário: {active.map((item) => item.shelf_code).join(', ')}
         </span>
       </div>
     </div>

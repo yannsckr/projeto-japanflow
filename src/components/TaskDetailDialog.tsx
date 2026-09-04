@@ -129,10 +129,7 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
   useEffect(() => {
     if (!open) return;
 
-    const commentsQuery = query(
-      collection(db, 'task_comments'),
-      where('task_id', '==', task.id)
-    );
+    const commentsQuery = query(collection(db, 'task_comments'), where('task_id', '==', task.id));
 
     const unsubscribeComments = onSnapshot(
       commentsQuery,
@@ -152,9 +149,7 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
             };
           })
           .sort(
-            (a, b) =>
-              new Date(a.created_at || 0).getTime() -
-              new Date(b.created_at || 0).getTime()
+            (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
           );
 
         setDbComments(comments);
@@ -770,11 +765,9 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                           currentRow?.previous_assignee_id ||
                           currentRow?.created_by ||
                           task.createdBy;
-                        const currentAssignee =
-                          currentRow?.assignee_id || task.assigneeId;
+                        const currentAssignee = currentRow?.assignee_id || task.assigneeId;
                         const targetUser = prevAssignee;
-                        const shouldTransfer =
-                          !!targetUser && currentUser?.id !== targetUser;
+                        const shouldTransfer = !!targetUser && currentUser?.id !== targetUser;
                         const updatePayload: any = {
                           response_attachments: newAttachments,
                           response: finalResponse || null,
@@ -975,9 +968,7 @@ const TaskDetailDialog = ({ task, open, onOpenChange }: TaskDetailDialogProps) =
                           sector: null,
                           image_url: allImages[0] || null,
                           image_urls: allImages,
-                          status_history: [
-                            { status: 'todo', enteredAt: new Date().toISOString() },
-                          ],
+                          status_history: [{ status: 'todo', enteredAt: new Date().toISOString() }],
                           created_at: Timestamp.now(),
                           updated_at: Timestamp.now(),
                         });

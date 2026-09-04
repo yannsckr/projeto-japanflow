@@ -20,11 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { useApp } from '@/contexts/AppContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import {
-  useWorkSchedules,
-  upsertSchedule,
-  deleteSchedule,
-} from '@/hooks/useWorkSchedules';
+import { useWorkSchedules, upsertSchedule, deleteSchedule } from '@/hooks/useWorkSchedules';
 import {
   DAY_KEYS,
   DAY_LABELS,
@@ -151,9 +147,10 @@ const SchedulesManagerDialog = () => {
 
       for (let i = 0; i < weeks.length; i++) {
         const w = weeks[i];
-        const targetWeek = w.weekStart && /^\d{4}-\d{2}-\d{2}$/.test(w.weekStart)
-          ? mondayOf(new Date(w.weekStart + 'T00:00:00'))
-          : addWeeks(weekStart, i);
+        const targetWeek =
+          w.weekStart && /^\d{4}-\d{2}-\d{2}$/.test(w.weekStart)
+            ? mondayOf(new Date(w.weekStart + 'T00:00:00'))
+            : addWeeks(weekStart, i);
 
         const merged: WeekDays = emptyWeek();
         for (const k of DAY_KEYS) {
@@ -249,11 +246,23 @@ const SchedulesManagerDialog = () => {
           <div>
             <Label>Semana</Label>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addWeeks(w, -1))}>‹</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setWeekStart((w) => addWeeks(w, -1))}
+              >
+                ‹
+              </Button>
               <div className="flex-1 text-center text-sm font-medium border rounded h-10 flex items-center justify-center">
                 {formatWeekRange(weekStart)}
               </div>
-              <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addWeeks(w, 1))}>›</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setWeekStart((w) => addWeeks(w, 1))}
+              >
+                ›
+              </Button>
             </div>
           </div>
         </div>
@@ -277,7 +286,11 @@ const SchedulesManagerDialog = () => {
                 <p className="text-xs text-muted-foreground">
                   Dica: imagens podem conter várias semanas — todas serão importadas.
                 </p>
-                <Button size="sm" onClick={handleTranscribeText} disabled={aiBusy || !aiText.trim()}>
+                <Button
+                  size="sm"
+                  onClick={handleTranscribeText}
+                  disabled={aiBusy || !aiText.trim()}
+                >
                   Transcrever texto
                 </Button>
               </div>
@@ -311,11 +324,18 @@ const SchedulesManagerDialog = () => {
             </div>
 
             <div className="flex justify-between gap-2 pt-2">
-              <Button variant="destructive" size="sm" onClick={handleDelete} disabled={!existingSchedule}>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDelete}
+                disabled={!existingSchedule}
+              >
                 <Trash2 className="h-4 w-4 mr-1" /> Excluir
               </Button>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setDays(emptyWeek())}>Limpar</Button>
+                <Button variant="outline" onClick={() => setDays(emptyWeek())}>
+                  Limpar
+                </Button>
                 <Button onClick={handleSave} disabled={saving}>
                   {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
                   Salvar escala

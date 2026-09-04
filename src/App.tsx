@@ -59,7 +59,6 @@ const App = () => (
               <Route path="/documentos" element={<SharedDocsPage />} />
               <Route path="/politicas-internas" element={<InternalPoliciesPage />} />
               <Route path="/historico-conversas" element={<ChatHistoryPage />} />
-
             </Route>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="*" element={<NotFound />} />

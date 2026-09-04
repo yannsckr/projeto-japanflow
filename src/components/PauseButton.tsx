@@ -4,13 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
-import {
-  addDoc,
-  collection,
-  doc,
-  Timestamp,
-  updateDoc,
-} from 'firebase/firestore';
+import { addDoc, collection, doc, Timestamp, updateDoc } from 'firebase/firestore';
 
 const PAUSE_DURATIONS = {
   almoco: 60 * 60,

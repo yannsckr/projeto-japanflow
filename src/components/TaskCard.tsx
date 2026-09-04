@@ -15,15 +15,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  Timestamp,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
+import { collection, doc, getDocs, query, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -85,10 +77,7 @@ const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
         image_url: publicUrl,
         status: 'done',
         updated_at: now,
-        status_history: [
-          ...(task.statusHistory || []),
-          { status: 'done', enteredAt: nowIso },
-        ],
+        status_history: [...(task.statusHistory || []), { status: 'done', enteredAt: nowIso }],
       });
 
       // Primeiro tenta localizar a corrida diretamente pelo task_id.
@@ -104,14 +93,11 @@ const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
       );
 
       if (directMatch) {
-        await updateDoc(
-          doc(db, 'motoboy_assignments', directMatch.id),
-          {
-            status: 'completed',
-            completed_at: now,
-            updated_at: now,
-          }
-        );
+        await updateDoc(doc(db, 'motoboy_assignments', directMatch.id), {
+          status: 'completed',
+          completed_at: now,
+          updated_at: now,
+        });
       } else {
         // Fallback para corridas antigas que ainda não possuem task_id.
         const assignmentsQuery = query(
@@ -129,11 +115,9 @@ const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
           }))
           .sort((a: any, b: any) => {
             const aDate =
-              a.created_at?.toDate?.()?.getTime?.() ??
-              new Date(a.created_at || 0).getTime();
+              a.created_at?.toDate?.()?.getTime?.() ?? new Date(a.created_at || 0).getTime();
             const bDate =
-              b.created_at?.toDate?.()?.getTime?.() ??
-              new Date(b.created_at || 0).getTime();
+              b.created_at?.toDate?.()?.getTime?.() ?? new Date(b.created_at || 0).getTime();
 
             return bDate - aDate;
           }) as any[];
@@ -145,14 +129,11 @@ const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
         );
 
         if (match) {
-          await updateDoc(
-            doc(db, 'motoboy_assignments', match.id),
-            {
-              status: 'completed',
-              completed_at: now,
-              updated_at: now,
-            }
-          );
+          await updateDoc(doc(db, 'motoboy_assignments', match.id), {
+            status: 'completed',
+            completed_at: now,
+            updated_at: now,
+          });
         }
       }
       toast.success('Corrida concluída com foto do cupom!');

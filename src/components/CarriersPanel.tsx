@@ -18,14 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import {
-  Plus,
-  Trash2,
-  Truck,
-  DollarSign,
-  Save,
-  MapPin,
-} from 'lucide-react';
+import { Plus, Trash2, Truck, DollarSign, Save, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -74,10 +67,7 @@ const CarriersPanel = () => {
 
   const fetchCarriers = useCallback(async () => {
     try {
-      const q = query(
-        collection(db, 'carriers'),
-        orderBy('name', 'asc')
-      );
+      const q = query(collection(db, 'carriers'), orderBy('name', 'asc'));
 
       const snapshot = await getDocs(q);
 
@@ -101,10 +91,7 @@ const CarriersPanel = () => {
 
   const fetchDestinations = useCallback(async () => {
     try {
-      const q = query(
-        collection(db, 'freight_destinations'),
-        orderBy('sort_order', 'asc')
-      );
+      const q = query(collection(db, 'freight_destinations'), orderBy('sort_order', 'asc'));
 
       const snapshot = await getDocs(q);
 
@@ -119,14 +106,8 @@ const CarriersPanel = () => {
           price: d.price || '',
           deadline: d.deadline || '',
           notes: d.notes || '',
-          per_km_rate:
-            typeof d.per_km_rate === 'number'
-              ? d.per_km_rate
-              : null,
-          sort_order:
-            typeof d.sort_order === 'number'
-              ? d.sort_order
-              : 0,
+          per_km_rate: typeof d.per_km_rate === 'number' ? d.per_km_rate : null,
+          sort_order: typeof d.sort_order === 'number' ? d.sort_order : 0,
         };
       });
 
@@ -146,10 +127,7 @@ const CarriersPanel = () => {
   }, []);
 
   useEffect(() => {
-    const carriersQuery = query(
-      collection(db, 'carriers'),
-      orderBy('name', 'asc')
-    );
+    const carriersQuery = query(collection(db, 'carriers'), orderBy('name', 'asc'));
 
     const destinationsQuery = query(
       collection(db, 'freight_destinations'),
@@ -181,10 +159,7 @@ const CarriersPanel = () => {
     setLoading(true);
 
     try {
-      const duplicateQuery = query(
-        collection(db, 'carriers'),
-        where('name', '==', name)
-      );
+      const duplicateQuery = query(collection(db, 'carriers'), where('name', '==', name));
 
       const duplicateSnapshot = await getDocs(duplicateQuery);
 
@@ -215,11 +190,7 @@ const CarriersPanel = () => {
         blocked: !c.blocked,
       });
 
-      toast.success(
-        !c.blocked
-          ? `${c.name} bloqueada`
-          : `${c.name} desbloqueada`
-      );
+      toast.success(!c.blocked ? `${c.name} bloqueada` : `${c.name} desbloqueada`);
     } catch (error) {
       console.error('Erro ao atualizar transportadora:', error);
       toast.error('Erro ao atualizar');
@@ -238,34 +209,24 @@ const CarriersPanel = () => {
     }
   };
 
-  const updateDest = (
-    id: string,
-    patch: Partial<FreightDestination>
-  ) => {
-    setDestinations((prev) =>
-      prev.map((d) =>
-        d.id === id ? { ...d, ...patch } : d
-      )
-    );
+  const updateDest = (id: string, patch: Partial<FreightDestination>) => {
+    setDestinations((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   };
 
   const saveDest = async (d: FreightDestination) => {
     setSavingId(d.id);
 
     try {
-      await updateDoc(
-        doc(db, 'freight_destinations', d.id),
-        {
-          city_name: d.city_name,
-          city_slug: slugify(d.city_name),
-          carrier: d.carrier,
-          price: d.price,
-          deadline: d.deadline,
-          notes: d.notes,
-          per_km_rate: d.per_km_rate,
-          updated_at: Timestamp.now(),
-        }
-      );
+      await updateDoc(doc(db, 'freight_destinations', d.id), {
+        city_name: d.city_name,
+        city_slug: slugify(d.city_name),
+        carrier: d.carrier,
+        price: d.price,
+        deadline: d.deadline,
+        notes: d.notes,
+        per_km_rate: d.per_km_rate,
+        updated_at: Timestamp.now(),
+      });
 
       toast.success(`${d.city_name} atualizado`);
     } catch (error) {
@@ -280,9 +241,7 @@ const CarriersPanel = () => {
     if (!confirm(`Remover o destino "${d.city_name}"?`)) return;
 
     try {
-      await deleteDoc(
-        doc(db, 'freight_destinations', d.id)
-      );
+      await deleteDoc(doc(db, 'freight_destinations', d.id));
 
       toast.success('Destino removido');
     } catch (error) {
@@ -305,25 +264,19 @@ const CarriersPanel = () => {
     setAdding(true);
 
     try {
-      const maxOrder = destinations.reduce(
-        (max, d) => Math.max(max, d.sort_order),
-        0
-      );
+      const maxOrder = destinations.reduce((max, d) => Math.max(max, d.sort_order), 0);
 
-      await addDoc(
-        collection(db, 'freight_destinations'),
-        {
-          city_slug: slug,
-          city_name: name,
-          carrier: '',
-          price: 'R$ 0,00',
-          deadline: '',
-          notes: '',
-          per_km_rate: null,
-          sort_order: maxOrder + 10,
-          created_at: Timestamp.now(),
-        }
-      );
+      await addDoc(collection(db, 'freight_destinations'), {
+        city_slug: slug,
+        city_name: name,
+        carrier: '',
+        price: 'R$ 0,00',
+        deadline: '',
+        notes: '',
+        per_km_rate: null,
+        sort_order: maxOrder + 10,
+        created_at: Timestamp.now(),
+      });
 
       setNewCity('');
       toast.success('Destino adicionado');
@@ -345,8 +298,8 @@ const CarriersPanel = () => {
           </h3>
 
           <p className="text-xs text-muted-foreground">
-            Cadastre as transportadoras disponíveis para os pedidos de separação.
-            Transportadoras bloqueadas não aparecerão na seleção, mas o histórico é preservado.
+            Cadastre as transportadoras disponíveis para os pedidos de separação. Transportadoras
+            bloqueadas não aparecerão na seleção, mas o histórico é preservado.
           </p>
         </div>
 
@@ -360,10 +313,7 @@ const CarriersPanel = () => {
             }}
           />
 
-          <Button
-            onClick={handleAdd}
-            disabled={!newName.trim() || loading}
-          >
+          <Button onClick={handleAdd} disabled={!newName.trim() || loading}>
             <Plus className="w-4 h-4 mr-1" />
             Adicionar
           </Button>
@@ -387,16 +337,12 @@ const CarriersPanel = () => {
                   <Truck
                     className={cn(
                       'w-4 h-4 shrink-0',
-                      c.blocked
-                        ? 'text-destructive'
-                        : 'text-primary'
+                      c.blocked ? 'text-destructive' : 'text-primary'
                     )}
                   />
 
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {c.name}
-                    </p>
+                    <p className="text-sm font-medium truncate">{c.name}</p>
 
                     <p className="text-[11px] text-muted-foreground">
                       {c.blocked ? 'Bloqueada' : 'Ativa'}
@@ -410,10 +356,7 @@ const CarriersPanel = () => {
                       {c.blocked ? 'Desbloquear' : 'Bloquear'}
                     </span>
 
-                    <Switch
-                      checked={!c.blocked}
-                      onCheckedChange={() => toggleBlocked(c)}
-                    />
+                    <Switch checked={!c.blocked} onCheckedChange={() => toggleBlocked(c)} />
                   </div>
 
                   <Button
@@ -441,10 +384,8 @@ const CarriersPanel = () => {
           <p className="text-xs text-muted-foreground">
             Cada linha representa uma cidade atendida. Ajuste o valor de cada destino de forma
             independente e adicione novos destinos quando necessário. Destinos com{' '}
-            <span className="font-medium">
-              Taxa por km
-            </span>{' '}
-            preenchida são calculados automaticamente pela distância.
+            <span className="font-medium">Taxa por km</span> preenchida são calculados
+            automaticamente pela distância.
           </p>
         </div>
 
@@ -458,10 +399,7 @@ const CarriersPanel = () => {
             }}
           />
 
-          <Button
-            onClick={addDest}
-            disabled={!newCity.trim() || adding}
-          >
+          <Button onClick={addDest} disabled={!newCity.trim() || adding}>
             <Plus className="w-4 h-4 mr-1" />
             Adicionar destino
           </Button>
@@ -483,9 +421,7 @@ const CarriersPanel = () => {
                     <MapPin className="w-4 h-4 text-primary shrink-0" />
 
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate">
-                        {d.city_name}
-                      </p>
+                      <p className="text-sm font-semibold truncate">{d.city_name}</p>
 
                       <p className="text-[11px] text-muted-foreground truncate">
                         {d.carrier || '—'}
@@ -496,9 +432,7 @@ const CarriersPanel = () => {
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="text-sm font-semibold text-primary">
                       {d.per_km_rate != null
-                        ? `R$ ${Number(d.per_km_rate)
-                            .toFixed(2)
-                            .replace('.', ',')}/km`
+                        ? `R$ ${Number(d.per_km_rate).toFixed(2).replace('.', ',')}/km`
                         : d.price || '—'}
                     </span>
 
@@ -519,9 +453,7 @@ const CarriersPanel = () => {
                 <div className="p-4 border-t border-border/50 space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">
-                        Cidade
-                      </label>
+                      <label className="text-xs text-muted-foreground">Cidade</label>
 
                       <Input
                         value={d.city_name}
@@ -534,9 +466,7 @@ const CarriersPanel = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">
-                        Transportador
-                      </label>
+                      <label className="text-xs text-muted-foreground">Transportador</label>
 
                       <Input
                         value={d.carrier}
@@ -578,19 +508,14 @@ const CarriersPanel = () => {
                         placeholder="Vazio = valor fixo acima"
                         onChange={(e) =>
                           updateDest(d.id, {
-                            per_km_rate:
-                              e.target.value === ''
-                                ? null
-                                : Number(e.target.value),
+                            per_km_rate: e.target.value === '' ? null : Number(e.target.value),
                           })
                         }
                       />
                     </div>
 
                     <div className="space-y-1 md:col-span-2">
-                      <label className="text-xs text-muted-foreground">
-                        Prazo
-                      </label>
+                      <label className="text-xs text-muted-foreground">Prazo</label>
 
                       <Input
                         value={d.deadline}
@@ -603,9 +528,7 @@ const CarriersPanel = () => {
                     </div>
 
                     <div className="space-y-1 md:col-span-2">
-                      <label className="text-xs text-muted-foreground">
-                        Observações
-                      </label>
+                      <label className="text-xs text-muted-foreground">Observações</label>
 
                       <Textarea
                         value={d.notes}
@@ -620,16 +543,10 @@ const CarriersPanel = () => {
                   </div>
 
                   <div className="flex justify-end">
-                    <Button
-                      size="sm"
-                      onClick={() => saveDest(d)}
-                      disabled={savingId === d.id}
-                    >
+                    <Button size="sm" onClick={() => saveDest(d)} disabled={savingId === d.id}>
                       <Save className="w-3.5 h-3.5 mr-1" />
 
-                      {savingId === d.id
-                        ? 'Salvando…'
-                        : 'Salvar alterações'}
+                      {savingId === d.id ? 'Salvando…' : 'Salvar alterações'}
                     </Button>
                   </div>
                 </div>

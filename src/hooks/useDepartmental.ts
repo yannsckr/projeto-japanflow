@@ -122,11 +122,7 @@ export const useDepartmental = () => {
     const unsubscribers: Array<() => void> = [];
 
     const makeQuery = (collectionName: string) =>
-      query(
-        collection(db, collectionName),
-        orderBy('created_at', 'desc'),
-        limit(500)
-      );
+      query(collection(db, collectionName), orderBy('created_at', 'desc'), limit(500));
 
     unsubscribers.push(
       onSnapshot(
@@ -286,41 +282,28 @@ export const useDepartmental = () => {
 
           // Mantém a sincronização antiga:
           // se a task vinculada já estiver "done", conclui a corrida automaticamente.
-          const pendingWithTaskId = raw.filter(
-            (r) => r.task_id && r.status !== 'completed'
-          );
+          const pendingWithTaskId = raw.filter((r) => r.task_id && r.status !== 'completed');
 
           if (pendingWithTaskId.length > 0) {
             await Promise.all(
               pendingWithTaskId.map(async (assignment) => {
                 try {
-                  const taskSnapshot = await getDoc(
-                    doc(db, 'tasks', assignment.task_id)
-                  );
+                  const taskSnapshot = await getDoc(doc(db, 'tasks', assignment.task_id));
 
-                  if (
-                    taskSnapshot.exists() &&
-                    taskSnapshot.data().status === 'done'
-                  ) {
+                  if (taskSnapshot.exists() && taskSnapshot.data().status === 'done') {
                     const now = Timestamp.now();
 
-                    await updateDoc(
-                      doc(db, 'motoboy_assignments', assignment.id),
-                      {
-                        status: 'completed',
-                        completed_at: now,
-                        updated_at: now,
-                      }
-                    );
+                    await updateDoc(doc(db, 'motoboy_assignments', assignment.id), {
+                      status: 'completed',
+                      completed_at: now,
+                      updated_at: now,
+                    });
 
                     assignment.status = 'completed';
                     assignment.completed_at = now;
                   }
                 } catch (error) {
-                  console.warn(
-                    'Erro ao sincronizar corrida com tarefa:',
-                    error
-                  );
+                  console.warn('Erro ao sincronizar corrida com tarefa:', error);
                 }
               })
             );
@@ -377,15 +360,12 @@ export const useDepartmental = () => {
     []
   );
 
-  const updateTrackingStatus = useCallback(
-    async (id: string, status: string) => {
-      await updateDoc(doc(db, 'tracking_entries', id), {
-        status,
-        updated_at: Timestamp.now(),
-      });
-    },
-    []
-  );
+  const updateTrackingStatus = useCallback(async (id: string, status: string) => {
+    await updateDoc(doc(db, 'tracking_entries', id), {
+      status,
+      updated_at: Timestamp.now(),
+    });
+  }, []);
 
   const deleteTracking = useCallback(async (id: string) => {
     await deleteDoc(doc(db, 'tracking_entries', id));
@@ -492,12 +472,7 @@ export const useDepartmental = () => {
 
   // Counter Quotes
   const requestQuote = useCallback(
-    async (
-      productName: string,
-      desc: string,
-      qty: number,
-      requestedBy: string
-    ) => {
+    async (productName: string, desc: string, qty: number, requestedBy: string) => {
       await addDoc(collection(db, 'counter_quotes'), {
         product_name: productName,
         description: desc,
@@ -521,17 +496,14 @@ export const useDepartmental = () => {
     });
   }, []);
 
-  const respondQuote = useCallback(
-    async (id: string, response: string, respondedBy: string) => {
-      await updateDoc(doc(db, 'counter_quotes', id), {
-        response,
-        status: 'responded',
-        responded_by: respondedBy,
-        updated_at: Timestamp.now(),
-      });
-    },
-    []
-  );
+  const respondQuote = useCallback(async (id: string, response: string, respondedBy: string) => {
+    await updateDoc(doc(db, 'counter_quotes', id), {
+      response,
+      status: 'responded',
+      responded_by: respondedBy,
+      updated_at: Timestamp.now(),
+    });
+  }, []);
 
   const deleteQuote = useCallback(async (id: string) => {
     await deleteDoc(doc(db, 'counter_quotes', id));
@@ -539,12 +511,7 @@ export const useDepartmental = () => {
 
   // Low Stock
   const reportLowStock = useCallback(
-    async (
-      name: string,
-      desc: string,
-      photoUrl: string | null,
-      reportedBy: string
-    ) => {
+    async (name: string, desc: string, photoUrl: string | null, reportedBy: string) => {
       await addDoc(collection(db, 'low_stock_items'), {
         product_name: name,
         description: desc,
@@ -571,12 +538,7 @@ export const useDepartmental = () => {
 
   // Supply Requests
   const requestSupply = useCallback(
-    async (
-      name: string,
-      desc: string,
-      qty: number,
-      requestedBy: string
-    ) => {
+    async (name: string, desc: string, qty: number, requestedBy: string) => {
       await addDoc(collection(db, 'supply_requests'), {
         item_name: name,
         description: desc,
@@ -590,15 +552,12 @@ export const useDepartmental = () => {
     []
   );
 
-  const updateSupplyStatus = useCallback(
-    async (id: string, status: string) => {
-      await updateDoc(doc(db, 'supply_requests', id), {
-        status,
-        updated_at: Timestamp.now(),
-      });
-    },
-    []
-  );
+  const updateSupplyStatus = useCallback(async (id: string, status: string) => {
+    await updateDoc(doc(db, 'supply_requests', id), {
+      status,
+      updated_at: Timestamp.now(),
+    });
+  }, []);
 
   // Motoboy
   const assignMotoboy = useCallback(
@@ -634,9 +593,7 @@ export const useDepartmental = () => {
         return;
       }
 
-      const taskTitle = clientName
-        ? `🏍️ Corrida: ${clientName}`
-        : `🏍️ Corrida: ${desc}`;
+      const taskTitle = clientName ? `🏍️ Corrida: ${clientName}` : `🏍️ Corrida: ${desc}`;
 
       const taskDesc = [
         desc,
@@ -684,29 +641,26 @@ export const useDepartmental = () => {
     []
   );
 
-  const updateMotoboyStatus = useCallback(
-    async (id: string, status: string, notes?: string) => {
-      const update: any = {
-        status,
-        updated_at: Timestamp.now(),
-      };
+  const updateMotoboyStatus = useCallback(async (id: string, status: string, notes?: string) => {
+    const update: any = {
+      status,
+      updated_at: Timestamp.now(),
+    };
 
-      if (notes !== undefined) {
-        update.notes = notes;
-      }
+    if (notes !== undefined) {
+      update.notes = notes;
+    }
 
-      if (status === 'accepted') {
-        update.accepted_at = Timestamp.now();
-      }
+    if (status === 'accepted') {
+      update.accepted_at = Timestamp.now();
+    }
 
-      if (status === 'completed') {
-        update.completed_at = Timestamp.now();
-      }
+    if (status === 'completed') {
+      update.completed_at = Timestamp.now();
+    }
 
-      await updateDoc(doc(db, 'motoboy_assignments', id), update);
-    },
-    []
-  );
+    await updateDoc(doc(db, 'motoboy_assignments', id), update);
+  }, []);
 
   const deleteMotoboyAssignment = useCallback(
     async (id: string) => {
@@ -743,8 +697,7 @@ export const useDepartmental = () => {
         const description = String(task.description || '');
 
         return (
-          (!!assignment.clientName &&
-            title.includes(assignment.clientName)) ||
+          (!!assignment.clientName && title.includes(assignment.clientName)) ||
           description.includes(assignment.description)
         );
       });
@@ -800,32 +753,23 @@ export const useDepartmental = () => {
       const current = motoboyAssignments.find((a) => a.id === id);
       if (!current) return;
 
-      const newAssignee =
-        data.assignedTo !== undefined ? data.assignedTo : current.assignedTo;
+      const newAssignee = data.assignedTo !== undefined ? data.assignedTo : current.assignedTo;
 
-      const newClientName =
-        data.clientName !== undefined ? data.clientName : current.clientName;
+      const newClientName = data.clientName !== undefined ? data.clientName : current.clientName;
 
-      const newDesc =
-        data.description !== undefined ? data.description : current.description;
+      const newDesc = data.description !== undefined ? data.description : current.description;
 
-      const newLocation =
-        data.location !== undefined ? data.location : current.location;
+      const newLocation = data.location !== undefined ? data.location : current.location;
 
-      const newRideValue =
-        data.rideValue !== undefined ? data.rideValue : current.rideValue;
+      const newRideValue = data.rideValue !== undefined ? data.rideValue : current.rideValue;
 
-      const taskTitle = newClientName
-        ? `🏍️ Corrida: ${newClientName}`
-        : `🏍️ Corrida: ${newDesc}`;
+      const taskTitle = newClientName ? `🏍️ Corrida: ${newClientName}` : `🏍️ Corrida: ${newDesc}`;
 
       const taskDesc = [
         newDesc,
         newClientName ? `Cliente: ${newClientName}` : '',
         newLocation ? `Local: ${newLocation}` : '',
-        newRideValue
-          ? `Valor: R$ ${Number(newRideValue).toFixed(2)}`
-          : '',
+        newRideValue ? `Valor: R$ ${Number(newRideValue).toFixed(2)}` : '',
       ]
         .filter(Boolean)
         .join(' • ');

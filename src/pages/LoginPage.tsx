@@ -35,9 +35,7 @@ const LoginPage = () => {
       const ip = await getClientPublicIp();
       if (!isIpAllowed(ip)) {
         // Verifica liberação individual para acesso fora da rede
-        const allowedExternal = candidate
-          ? await userCanAccessExternally(candidate.id)
-          : false;
+        const allowedExternal = candidate ? await userCanAccessExternally(candidate.id) : false;
         if (!allowedExternal) {
           toast.error('Credenciais inválidas');
           setIsLoggingIn(false);

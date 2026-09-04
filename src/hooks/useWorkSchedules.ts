@@ -46,10 +46,7 @@ export function useWorkSchedules(userId?: string) {
     setLoading(true);
 
     try {
-      const schedulesQuery = query(
-        collection(db, 'work_schedules'),
-        where('userId', '==', userId)
-      );
+      const schedulesQuery = query(collection(db, 'work_schedules'), where('userId', '==', userId));
 
       const snapshot = await getDocs(schedulesQuery);
 
@@ -65,25 +62,16 @@ export function useWorkSchedules(userId?: string) {
             ...(data.days || {}),
           },
           created_by: data.createdBy || null,
-          created_at: data.createdAt?.toDate
-            ? data.createdAt.toDate().toISOString()
-            : '',
-          updated_at: data.updatedAt?.toDate
-            ? data.updatedAt.toDate().toISOString()
-            : '',
+          created_at: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : '',
+          updated_at: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : '',
         };
       });
 
-      nextSchedules.sort((a, b) =>
-        a.week_start.localeCompare(b.week_start)
-      );
+      nextSchedules.sort((a, b) => a.week_start.localeCompare(b.week_start));
 
       setSchedules(nextSchedules);
     } catch (error) {
-      console.error(
-        'Erro ao carregar escalas de trabalho:',
-        error
-      );
+      console.error('Erro ao carregar escalas de trabalho:', error);
     } finally {
       setLoading(false);
     }
@@ -108,11 +96,7 @@ export async function upsertSchedule(params: {
 }) {
   const scheduleId = `${params.userId}__${params.weekStart}`;
 
-  const scheduleRef = doc(
-    db,
-    'work_schedules',
-    scheduleId
-  );
+  const scheduleRef = doc(db, 'work_schedules', scheduleId);
 
   const now = Timestamp.now();
 
@@ -126,16 +110,12 @@ export async function upsertSchedule(params: {
       days: params.days,
       createdBy: params.createdBy || null,
       updatedAt: now,
-      ...(!existingSchedule.exists()
-        ? { createdAt: now }
-        : {}),
+      ...(!existingSchedule.exists() ? { createdAt: now } : {}),
     },
     { merge: true }
   );
 }
 
 export async function deleteSchedule(id: string) {
-  await deleteDoc(
-    doc(db, 'work_schedules', id)
-  );
+  await deleteDoc(doc(db, 'work_schedules', id));
 }

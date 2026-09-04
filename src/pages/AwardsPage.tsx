@@ -87,10 +87,7 @@ const AwardsPage = () => {
   }, []);
 
   useEffect(() => {
-    const awardsQuery = query(
-      collection(db, 'awards'),
-      orderBy('created_at', 'desc')
-    );
+    const awardsQuery = query(collection(db, 'awards'), orderBy('created_at', 'desc'));
 
     const unsubscribe = onSnapshot(
       awardsQuery,

@@ -21,20 +21,10 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Package,
-  History,
-  CheckCircle2,
-  Undo2,
-} from 'lucide-react';
+import { Package, History, CheckCircle2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const ALLOWED_USER_IDS = [
-  'emp-1',
-  'emp-2',
-  'emp-9',
-  'emp-1781181301491',
-];
+const ALLOWED_USER_IDS = ['emp-1', 'emp-2', 'emp-9', 'emp-1781181301491'];
 
 export const canSeePickups = (
   user: {
@@ -80,17 +70,14 @@ interface PickupFirestore {
   createdAt?: Timestamp;
 }
 
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleString('pt-BR');
+const formatDate = (iso: string) => new Date(iso).toLocaleString('pt-BR');
 
 const PickupsPanel = () => {
   const { currentUser, users } = useApp();
 
   const [pickups, setPickups] = useState<PickupRow[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [detail, setDetail] = useState<PickupRow | null>(
-    null
-  );
+  const [detail, setDetail] = useState<PickupRow | null>(null);
 
   useEffect(() => {
     if (!canSeePickups(currentUser)) {
@@ -98,68 +85,45 @@ const PickupsPanel = () => {
       return;
     }
 
-    const pickupsQuery = query(
-      collection(db, 'pickups'),
-      orderBy('createdAt', 'desc')
-    );
+    const pickupsQuery = query(collection(db, 'pickups'), orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(
       pickupsQuery,
       (snapshot) => {
-        const nextPickups: PickupRow[] =
-          snapshot.docs.map((pickupDoc) => {
-            const data =
-              pickupDoc.data() as PickupFirestore;
+        const nextPickups: PickupRow[] = snapshot.docs.map((pickupDoc) => {
+          const data = pickupDoc.data() as PickupFirestore;
 
-            return {
-              id: pickupDoc.id,
+          return {
+            id: pickupDoc.id,
 
-              order_title: data.orderTitle || '',
+            order_title: data.orderTitle || '',
 
-              delivery_type:
-                data.deliveryType || 'balcao',
+            delivery_type: data.deliveryType || 'balcao',
 
-              carrier_name:
-                data.carrierName || null,
+            carrier_name: data.carrierName || null,
 
-              details:
-                data.details || null,
+            details: data.details || null,
 
-              created_by:
-                data.createdBy || '',
+            created_by: data.createdBy || '',
 
-              status:
-                data.status || 'pending',
+            status: data.status || 'pending',
 
-              completed_at:
-                data.completedAt?.toDate
-                  ? data.completedAt
-                      .toDate()
-                      .toISOString()
-                  : null,
+            completed_at: data.completedAt?.toDate ? data.completedAt.toDate().toISOString() : null,
 
-              completed_by:
-                data.completedBy || null,
+            completed_by: data.completedBy || null,
 
-              completed_by_name:
-                data.completedByName || null,
+            completed_by_name: data.completedByName || null,
 
-              created_at:
-                data.createdAt?.toDate
-                  ? data.createdAt
-                      .toDate()
-                      .toISOString()
-                  : new Date().toISOString(),
-            };
-          });
+            created_at: data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : new Date().toISOString(),
+          };
+        });
 
         setPickups(nextPickups);
       },
       (error) => {
-        console.error(
-          'Erro ao acompanhar retiradas:',
-          error
-        );
+        console.error('Erro ao acompanhar retiradas:', error);
       }
     );
 
@@ -170,13 +134,9 @@ const PickupsPanel = () => {
     return null;
   }
 
-  const pending = pickups.filter(
-    (pickup) => pickup.status === 'pending'
-  );
+  const pending = pickups.filter((pickup) => pickup.status === 'pending');
 
-  const completed = pickups.filter(
-    (pickup) => pickup.status === 'done'
-  );
+  const completed = pickups.filter((pickup) => pickup.status === 'done');
 
   const handleComplete = async (id: string) => {
     if (!currentUser) return;
@@ -189,9 +149,7 @@ const PickupsPanel = () => {
           ? {
               ...pickup,
               status: 'done',
-              completed_at: completedAt
-                .toDate()
-                .toISOString(),
+              completed_at: completedAt.toDate().toISOString(),
               completed_by: currentUser.id,
               completed_by_name: currentUser.name,
             }
@@ -209,10 +167,7 @@ const PickupsPanel = () => {
 
       toast.success('Retirada concluída');
     } catch (error) {
-      console.error(
-        'Erro ao concluir retirada:',
-        error
-      );
+      console.error('Erro ao concluir retirada:', error);
 
       toast.error('Erro ao concluir retirada');
     }
@@ -227,51 +182,35 @@ const PickupsPanel = () => {
         completedByName: null,
       });
 
-      toast.success(
-        'Retirada revertida para pendente'
-      );
+      toast.success('Retirada revertida para pendente');
     } catch (error) {
-      console.error(
-        'Erro ao reverter retirada:',
-        error
-      );
+      console.error('Erro ao reverter retirada:', error);
 
       toast.error('Erro ao reverter retirada');
     }
   };
 
-  const creatorName = (id: string) =>
-    users.find((user) => user.id === id)?.name || id;
+  const creatorName = (id: string) => users.find((user) => user.id === id)?.name || id;
 
   const typeLabel = (pickup: PickupRow) =>
     pickup.delivery_type === 'balcao'
       ? '🏪 Balcão'
-      : `🚛 ${
-          pickup.carrier_name || 'Transportadora'
-        }`;
+      : `🚛 ${pickup.carrier_name || 'Transportadora'}`;
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-base font-semibold flex items-center gap-2">
           <Package className="w-5 h-5 text-primary" />
-
           Retiradas
-
           {pending.length > 0 && (
-            <Badge
-              variant="secondary"
-              className="ml-1"
-            >
+            <Badge variant="secondary" className="ml-1">
               {pending.length}
             </Badge>
           )}
         </h3>
 
-        <Dialog
-          open={historyOpen}
-          onOpenChange={setHistoryOpen}
-        >
+        <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
           <DialogTrigger asChild>
             <Button size="sm" variant="outline">
               <History className="w-4 h-4 mr-1" />
@@ -281,9 +220,7 @@ const PickupsPanel = () => {
 
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>
-                Histórico de Retiradas
-              </DialogTitle>
+              <DialogTitle>Histórico de Retiradas</DialogTitle>
             </DialogHeader>
 
             <ScrollArea className="max-h-[60vh] pr-3">
@@ -299,14 +236,9 @@ const PickupsPanel = () => {
                       className="border border-border rounded p-3 text-sm space-y-1"
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="font-medium">
-                          {pickup.order_title}
-                        </span>
+                        <span className="font-medium">{pickup.order_title}</span>
 
-                        <Badge
-                          variant="outline"
-                          className="text-[10px]"
-                        >
+                        <Badge variant="outline" className="text-[10px]">
                           {typeLabel(pickup)}
                         </Badge>
                       </div>
@@ -318,44 +250,19 @@ const PickupsPanel = () => {
                       )}
 
                       <div className="text-xs text-muted-foreground">
-                        Criado por{' '}
-                        <b>
-                          {creatorName(
-                            pickup.created_by
-                          )}
-                        </b>{' '}
-                        em{' '}
-                        {formatDate(
-                          pickup.created_at
-                        )}
+                        Criado por <b>{creatorName(pickup.created_by)}</b> em{' '}
+                        {formatDate(pickup.created_at)}
                       </div>
 
                       <div className="text-xs text-success flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" />
-
                         Concluído por{' '}
-                        <b>
-                          {pickup.completed_by_name ||
-                            creatorName(
-                              pickup.completed_by ||
-                                ''
-                            )}
-                        </b>
-
-                        {pickup.completed_at &&
-                          ` em ${formatDate(
-                            pickup.completed_at
-                          )}`}
+                        <b>{pickup.completed_by_name || creatorName(pickup.completed_by || '')}</b>
+                        {pickup.completed_at && ` em ${formatDate(pickup.completed_at)}`}
                       </div>
 
                       <div className="pt-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            handleRevert(pickup.id)
-                          }
-                        >
+                        <Button size="sm" variant="outline" onClick={() => handleRevert(pickup.id)}>
                           <Undo2 className="w-3 h-3 mr-1" />
                           Reverter
                         </Button>
@@ -370,9 +277,7 @@ const PickupsPanel = () => {
       </div>
 
       {pending.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Nenhuma retirada pendente.
-        </p>
+        <p className="text-xs text-muted-foreground">Nenhuma retirada pendente.</p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
           {pending.map((pickup) => (
@@ -384,9 +289,7 @@ const PickupsPanel = () => {
                 onClick={() => setDetail(pickup)}
                 className="text-left flex-1 min-w-0 hover:bg-muted/40 rounded transition px-1 py-0.5"
               >
-                <div className="text-xs font-medium truncate">
-                  {pickup.order_title}
-                </div>
+                <div className="text-xs font-medium truncate">{pickup.order_title}</div>
 
                 <div className="text-[10px] text-muted-foreground truncate">
                   {typeLabel(pickup)}
@@ -395,9 +298,7 @@ const PickupsPanel = () => {
 
               <Button
                 size="sm"
-                onClick={() =>
-                  handleComplete(pickup.id)
-                }
+                onClick={() => handleComplete(pickup.id)}
                 className="h-6 text-[11px] px-2"
               >
                 <CheckCircle2 className="w-3 h-3 mr-1" />
@@ -420,10 +321,7 @@ const PickupsPanel = () => {
               {detail?.order_title}
 
               {detail && (
-                <Badge
-                  variant="outline"
-                  className="text-[10px]"
-                >
+                <Badge variant="outline" className="text-[10px]">
                   {typeLabel(detail)}
                 </Badge>
               )}
@@ -433,17 +331,12 @@ const PickupsPanel = () => {
           {detail && (
             <div className="text-xs space-y-1">
               {detail.details && (
-                <p className="whitespace-pre-line text-muted-foreground">
-                  {detail.details}
-                </p>
+                <p className="whitespace-pre-line text-muted-foreground">{detail.details}</p>
               )}
 
               <div className="text-muted-foreground">
-                Criado por{' '}
-                <b>
-                  {creatorName(detail.created_by)}
-                </b>{' '}
-                em {formatDate(detail.created_at)}
+                Criado por <b>{creatorName(detail.created_by)}</b> em{' '}
+                {formatDate(detail.created_at)}
               </div>
 
               <Button

@@ -65,10 +65,7 @@ export default function AdminPopupComposer() {
   };
 
   useEffect(() => {
-    const popupQuery = query(
-      collection(db, 'admin_popups'),
-      orderBy('created_at', 'desc')
-    );
+    const popupQuery = query(collection(db, 'admin_popups'), orderBy('created_at', 'desc'));
 
     const unsubscribePopups = onSnapshot(
       popupQuery,
@@ -219,9 +216,7 @@ export default function AdminPopupComposer() {
       query(collection(db, 'admin_popup_acks'), where('popup_id', '==', id))
     );
     await Promise.all(
-      acksSnapshot.docs.map((ackDoc) =>
-        deleteDoc(doc(db, 'admin_popup_acks', ackDoc.id))
-      )
+      acksSnapshot.docs.map((ackDoc) => deleteDoc(doc(db, 'admin_popup_acks', ackDoc.id)))
     );
     await deleteDoc(doc(db, 'admin_popups', id));
     toast.success('Pop-up removido');

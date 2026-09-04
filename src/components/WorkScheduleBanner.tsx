@@ -60,9 +60,7 @@ const WorkScheduleBanner = ({ userId }: Props) => {
             <span
               key={d}
               className={`px-2 py-0.5 rounded border ${
-                d === today
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background'
+                d === today ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'
               }`}
             >
               <b>{DAY_SHORT[d]}</b> {formatRange(days[d])}
@@ -79,7 +77,9 @@ const WorkScheduleBanner = ({ userId }: Props) => {
         }}
       >
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">Escalas</Button>
+          <Button variant="outline" size="sm">
+            Escalas
+          </Button>
         </DialogTrigger>
         <DialogContent className="max-w-xl">
           <DialogHeader>

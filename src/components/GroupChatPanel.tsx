@@ -186,7 +186,6 @@ const GroupChatPanel = ({ groupId, groupName }: GroupChatPanelProps) => {
               </button>
             </div>
           )}
-
         </div>
       </div>
     );

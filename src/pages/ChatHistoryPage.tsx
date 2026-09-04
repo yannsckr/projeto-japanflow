@@ -87,7 +87,6 @@ const downloadBlob = (filename: string, blob: Blob) => {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 };
 
-
 const ChatHistoryPage = () => {
   const { currentUser } = useApp();
   const [names, setNames] = useState<Record<string, string>>({});
@@ -123,17 +122,13 @@ const ChatHistoryPage = () => {
           const data = messageDoc.data();
 
           const senderUsername =
-            data.sender_username ||
-            (data.senderId ? usernameById.get(data.senderId) : undefined);
+            data.sender_username || (data.senderId ? usernameById.get(data.senderId) : undefined);
 
           const receiverUsername =
             data.receiver_username ||
             (data.receiverId ? usernameById.get(data.receiverId) : undefined);
 
-          const createdValue =
-            data.created_at ||
-            data.timestamp ||
-            data.createdAt;
+          const createdValue = data.created_at || data.timestamp || data.createdAt;
 
           const createdAt = createdValue?.toDate
             ? createdValue.toDate().toISOString()
@@ -148,27 +143,14 @@ const ChatHistoryPage = () => {
             sender_username: senderUsername,
             receiver_username: receiverUsername,
             content: String(data.content || ''),
-            attachment_url:
-              data.attachment_url ||
-              data.attachmentUrl ||
-              null,
-            attachment_name:
-              data.attachment_name ||
-              data.attachmentName ||
-              null,
-            attachment_type:
-              data.attachment_type ||
-              data.attachmentType ||
-              null,
+            attachment_url: data.attachment_url || data.attachmentUrl || null,
+            attachment_name: data.attachment_name || data.attachmentName || null,
+            attachment_type: data.attachment_type || data.attachmentType || null,
             created_at: createdAt,
           } as Msg;
         })
         .filter((message): message is Msg => !!message)
-        .sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() -
-            new Date(b.created_at).getTime()
-        );
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
       // Mescla o cache local deste navegador (mensagens antigas que já não estão no servidor)
       const merged = new Map<string, Msg>();
@@ -216,7 +198,9 @@ const ChatHistoryPage = () => {
     const header = `Conversa do usuário ${nameOf(c.a)} com o usuário ${nameOf(c.b)}\nTotal de mensagens: ${c.messages.length}\nExportado em: ${fmt(new Date().toISOString())}\n${'='.repeat(70)}\n\n`;
     const body = c.messages
       .map((m) => {
-        const attach = m.attachment_url ? `\n    ${fileNames.get(m.id) || attachmentFileName(m)}` : '';
+        const attach = m.attachment_url
+          ? `\n    ${fileNames.get(m.id) || attachmentFileName(m)}`
+          : '';
         return `[${fmt(m.created_at)}] ${nameOf(m.sender_username)}: ${m.content || ''}${attach}`;
       })
       .join('\n');

@@ -1,8 +1,8 @@
-import { 
-  signInWithEmailAndPassword, 
+import {
+  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  User as FirebaseUser
+  User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -20,7 +20,7 @@ export interface AppUserProfile {
 export async function loginUser(email: string, password: string): Promise<AppUserProfile> {
   const credential = await signInWithEmailAndPassword(auth, email, password);
   const user = credential.user;
-  
+
   const userDocRef = doc(db, 'users', user.uid);
   const userDoc = await getDoc(userDocRef);
 

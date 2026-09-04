@@ -113,10 +113,7 @@ const InventoryPage = () => {
   };
 
   useEffect(() => {
-    const inventoriesQuery = query(
-      collection(db, 'inventories'),
-      orderBy('started_at', 'desc')
-    );
+    const inventoriesQuery = query(collection(db, 'inventories'), orderBy('started_at', 'desc'));
 
     const unsubscribe = onSnapshot(
       inventoriesQuery,

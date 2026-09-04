@@ -57,10 +57,7 @@ export const useCalendar = (enabled = true) => {
       return;
     }
 
-    const eventsQuery = query(
-      collection(db, 'calendar_events'),
-      orderBy('date', 'asc')
-    );
+    const eventsQuery = query(collection(db, 'calendar_events'), orderBy('date', 'asc'));
 
     const unsubscribe = onSnapshot(
       eventsQuery,
@@ -82,24 +79,21 @@ export const useCalendar = (enabled = true) => {
     return () => unsubscribe();
   }, [enabled]);
 
-  const addEvent = useCallback(
-    async (event: Omit<CalendarEvent, 'id' | 'createdAt'>) => {
-      await addDoc(collection(db, 'calendar_events'), {
-        title: event.title,
-        description: event.description,
-        date: event.date,
-        time: event.time || null,
-        user_id: event.userId,
-        created_by: event.createdBy,
-        type: event.type,
-        target_mode: event.targetMode || 'specific',
-        target_users: event.targetUsers || [],
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now(),
-      });
-    },
-    []
-  );
+  const addEvent = useCallback(async (event: Omit<CalendarEvent, 'id' | 'createdAt'>) => {
+    await addDoc(collection(db, 'calendar_events'), {
+      title: event.title,
+      description: event.description,
+      date: event.date,
+      time: event.time || null,
+      user_id: event.userId,
+      created_by: event.createdBy,
+      type: event.type,
+      target_mode: event.targetMode || 'specific',
+      target_users: event.targetUsers || [],
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+    });
+  }, []);
 
   const updateEvent = useCallback(
     async (

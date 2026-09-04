@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-} from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 
 interface MessageData {
   senderId: string;
@@ -55,20 +50,13 @@ export function useUnreadMessages(currentUserId: string | null) {
         snapshot.forEach((messageDoc) => {
           const message = messageDoc.data() as MessageData;
 
-          if (
-            message.read !== true &&
-            message.deleted !== true
-          ) {
+          if (message.read !== true && message.deleted !== true) {
             unreadCount++;
           }
         });
 
         // Não toca som no primeiro carregamento da página.
-        if (
-          initializedRef.current &&
-          unreadCount > previousCountRef.current &&
-          audioRef.current
-        ) {
+        if (initializedRef.current && unreadCount > previousCountRef.current && audioRef.current) {
           audioRef.current.currentTime = 0;
           audioRef.current.play().catch(() => {});
         }
@@ -78,10 +66,7 @@ export function useUnreadMessages(currentUserId: string | null) {
         setTotalUnread(unreadCount);
       },
       (error) => {
-        console.error(
-          'Erro ao acompanhar mensagens não lidas:',
-          error
-        );
+        console.error('Erro ao acompanhar mensagens não lidas:', error);
       }
     );
 

@@ -110,7 +110,11 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   baseItems.push({ icon: FolderOpen, label: 'Documentos', path: '/documentos' });
   baseItems.push({ icon: ScrollText, label: 'Políticas Internas', path: '/politicas-internas' });
   if (isAdminSector) {
-    baseItems.push({ icon: Archive, label: 'Histórico de Conversas', path: '/historico-conversas' });
+    baseItems.push({
+      icon: Archive,
+      label: 'Histórico de Conversas',
+      path: '/historico-conversas',
+    });
   }
   baseItems.push({ icon: UserCircle, label: 'Perfil', path: '/profile' });
   if (isAdmin) {

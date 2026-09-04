@@ -67,10 +67,7 @@ const InternalPoliciesPage = () => {
   };
 
   useEffect(() => {
-    const docsQuery = query(
-      collection(db, 'internal_policies'),
-      orderBy('created_at', 'desc')
-    );
+    const docsQuery = query(collection(db, 'internal_policies'), orderBy('created_at', 'desc'));
 
     const unsubscribe = onSnapshot(
       docsQuery,

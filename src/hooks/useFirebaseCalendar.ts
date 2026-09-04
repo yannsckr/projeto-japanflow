@@ -72,7 +72,10 @@ export function useFirebaseCalendar(enabled: boolean = true) {
   const getEventsForUser = useCallback(
     (userId: string) => {
       return events.filter(
-        (e: any) => e.userId === userId || e.createdBy === userId || (e.participants && e.participants.includes(userId))
+        (e: any) =>
+          e.userId === userId ||
+          e.createdBy === userId ||
+          (e.participants && e.participants.includes(userId))
       );
     },
     [events]

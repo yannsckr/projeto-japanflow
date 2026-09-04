@@ -38,27 +38,22 @@ export const useTaskPermissions = () => {
     const unsubscribe = onSnapshot(
       permissionsQuery,
       (snapshot) => {
-        const nextPermissions: TaskPermission[] = snapshot.docs.map(
-          (permissionDoc) => {
-            const data = permissionDoc.data() as TaskPermissionFirestore;
+        const nextPermissions: TaskPermission[] = snapshot.docs.map((permissionDoc) => {
+          const data = permissionDoc.data() as TaskPermissionFirestore;
 
-            return {
-              id: permissionDoc.id,
-              granterId: data.granterId,
-              targetType: data.targetType,
-              targetValue: data.targetValue,
-            };
-          }
-        );
+          return {
+            id: permissionDoc.id,
+            granterId: data.granterId,
+            targetType: data.targetType,
+            targetValue: data.targetValue,
+          };
+        });
 
         setPermissions(nextPermissions);
         setLoading(false);
       },
       (error) => {
-        console.error(
-          'Erro ao acompanhar permissões de tarefas:',
-          error
-        );
+        console.error('Erro ao acompanhar permissões de tarefas:', error);
         setLoading(false);
       }
     );
@@ -67,11 +62,7 @@ export const useTaskPermissions = () => {
   }, []);
 
   const addPermission = useCallback(
-    async (
-      granterId: string,
-      targetType: 'employee' | 'sector',
-      targetValue: string
-    ) => {
+    async (granterId: string, targetType: 'employee' | 'sector', targetValue: string) => {
       try {
         await addDoc(collection(db, 'task_permissions'), {
           granterId,
@@ -96,9 +87,7 @@ export const useTaskPermissions = () => {
 
   const getPermissionsForUser = useCallback(
     (userId: string) => {
-      return permissions.filter(
-        (permission) => permission.granterId === userId
-      );
+      return permissions.filter((permission) => permission.granterId === userId);
     },
     [permissions]
   );

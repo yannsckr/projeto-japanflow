@@ -415,10 +415,10 @@ function FreightCalculator() {
     setResult(null);
     try {
       const functions = getFunctions();
-      const freightCalc = httpsCallable<
-        { address: string },
-        FreightResult & { error?: string }
-      >(functions, 'freightCalc');
+      const freightCalc = httpsCallable<{ address: string }, FreightResult & { error?: string }>(
+        functions,
+        'freightCalc'
+      );
 
       const response = await freightCalc({
         address: address.trim(),

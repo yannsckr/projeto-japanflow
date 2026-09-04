@@ -124,7 +124,11 @@ const splitScheduleRecords = (sources: string[], referenceWeekStart?: string) =>
     }
   }
 
-  if (current && extractDateRangeWeekStart(current, referenceWeekStart) && extractTimeRanges(current).length) {
+  if (
+    current &&
+    extractDateRangeWeekStart(current, referenceWeekStart) &&
+    extractTimeRanges(current).length
+  ) {
     records.push(current);
   }
 
@@ -142,15 +146,23 @@ const splitScheduleRecords = (sources: string[], referenceWeekStart?: string) =>
     // Schedules exported from spreadsheets commonly put the week range as the
     // last cell of each row. Keep the text after the previous date up to this
     // date so the first week (ex: 06/07 a 12/07) is not swallowed by the next row.
-    const rowEndingAtDate = joined.slice(Math.max(0, previousEnd), Math.min(joined.length, matchEnd + 30));
+    const rowEndingAtDate = joined.slice(
+      Math.max(0, previousEnd),
+      Math.min(joined.length, matchEnd + 30)
+    );
     if (extractTimeRanges(rowEndingAtDate).length) records.push(rowEndingAtDate);
 
     // Also support layouts where the date appears before the hours, but only
     // when the hours are close after the date. This avoids mixing the current
     // week date with the next spreadsheet row's schedule.
-    const afterDateWindow = joined.slice(matchEnd, Math.min(joined.length, nextStart, matchEnd + 180));
+    const afterDateWindow = joined.slice(
+      matchEnd,
+      Math.min(joined.length, nextStart, matchEnd + 180)
+    );
     if (extractTimeRanges(afterDateWindow).length) {
-      records.push(joined.slice(Math.max(0, matchStart - 30), Math.min(joined.length, matchEnd + 180)));
+      records.push(
+        joined.slice(Math.max(0, matchStart - 30), Math.min(joined.length, matchEnd + 180))
+      );
     }
   }
 
@@ -244,7 +256,10 @@ const parseScheduleRows = (sources: string[], referenceWeekStart?: string): Pars
 };
 
 const normalizeAiWeeks = (
-  weeks: Array<{ weekStart?: string; days?: Record<string, { entry?: string; exit?: string }> }> = []
+  weeks: Array<{
+    weekStart?: string;
+    days?: Record<string, { entry?: string; exit?: string }>;
+  }> = []
 ): ParsedWeek[] =>
   weeks.map((week) => {
     const days = emptyDays();

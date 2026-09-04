@@ -156,7 +156,6 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
     setEditText('');
   };
 
-
   const isMessageRead = (msg: ChatMessage) => {
     if (msg.senderId !== currentUser.id) return false;
 
@@ -164,13 +163,11 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   };
 
   const renderMessage = (msg: ChatMessage) => {
-  const isMe = msg.senderId === currentUser.id;
+    const isMe = msg.senderId === currentUser.id;
 
-  const senderUser = users.find(
-    (u) => u.id === msg.senderId
-  );
+    const senderUser = users.find((u) => u.id === msg.senderId);
 
-  const read = isMe && isMessageRead(msg);
+    const read = isMe && isMessageRead(msg);
 
     return (
       <div key={msg.id} className={cn('flex group', isMe ? 'justify-end' : 'justify-start')}>
@@ -279,7 +276,6 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
               >
                 <Pencil className="w-3 h-3 text-muted-foreground" />
               </button>
-
             </div>
           )}
         </div>

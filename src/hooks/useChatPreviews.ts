@@ -1,12 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  setDoc,
-  Timestamp,
-} from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
 
 export interface ChatPreview {
   partnerUsername: string;
@@ -122,10 +116,7 @@ export function useChatPreviews(currentUsername: string | null) {
 
       if (!partnerUsername) continue;
 
-      readMap.set(
-        partnerUsername,
-        toIso(row.last_read_at || row.lastReadAt)
-      );
+      readMap.set(partnerUsername, toIso(row.last_read_at || row.lastReadAt));
     }
 
     const relevantMessages = messagesSnapshot
@@ -133,24 +124,16 @@ export function useChatPreviews(currentUsername: string | null) {
         // Suporta tanto o schema antigo quanto o schema Firestore atual.
         const senderUsername =
           message.sender_username ||
-          (message.senderId
-            ? usersMap.idToUsername.get(message.senderId)
-            : undefined);
+          (message.senderId ? usersMap.idToUsername.get(message.senderId) : undefined);
 
         const receiverUsername =
           message.receiver_username ||
-          (message.receiverId
-            ? usersMap.idToUsername.get(message.receiverId)
-            : undefined);
+          (message.receiverId ? usersMap.idToUsername.get(message.receiverId) : undefined);
 
         const senderId = message.senderId || null;
         const receiverId = message.receiverId || null;
 
-        const createdAt = toIso(
-          message.created_at ||
-          message.timestamp ||
-          message.createdAt
-        );
+        const createdAt = toIso(message.created_at || message.timestamp || message.createdAt);
 
         return {
           ...message,
@@ -170,16 +153,11 @@ export function useChatPreviews(currentUsername: string | null) {
 
         const byId =
           !!currentUserId &&
-          (message.senderId === currentUserId ||
-            message.receiverId === currentUserId);
+          (message.senderId === currentUserId || message.receiverId === currentUserId);
 
         return byUsername || byId;
       })
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() -
-          new Date(a.createdAt).getTime()
-      );
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const chatMap = new Map<
       string,
@@ -204,16 +182,12 @@ export function useChatPreviews(currentUsername: string | null) {
         });
       }
 
-      const isFromPartner =
-        message.senderUsername !== currentUsername;
+      const isFromPartner = message.senderUsername !== currentUsername;
 
       if (isFromPartner && !message.deleted) {
         const lastRead = readMap.get(partnerUsername);
 
-        if (
-          !lastRead ||
-          new Date(message.createdAt) > new Date(lastRead)
-        ) {
+        if (!lastRead || new Date(message.createdAt) > new Date(lastRead)) {
           chatMap.get(partnerUsername)!.unread += 1;
         }
       }
@@ -225,26 +199,17 @@ export function useChatPreviews(currentUsername: string | null) {
       result.push({
         partnerUsername,
         lastMessageAt: value.lastMsg.createdAt,
-        lastMessageContent: value.lastMsg.deleted
-          ? 'Mensagem apagada'
-          : value.lastMsg.content,
+        lastMessageContent: value.lastMsg.deleted ? 'Mensagem apagada' : value.lastMsg.content,
         unreadCount: value.unread,
       });
     });
 
     result.sort(
-      (a, b) =>
-        new Date(b.lastMessageAt).getTime() -
-        new Date(a.lastMessageAt).getTime()
+      (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
     );
 
     setPreviews(result);
-  }, [
-    currentUsername,
-    messagesSnapshot,
-    readStatuses,
-    usersMap,
-  ]);
+  }, [currentUsername, messagesSnapshot, readStatuses, usersMap]);
 
   useEffect(() => {
     rebuildPreviews();
@@ -261,12 +226,8 @@ export function useChatPreviews(currentUsername: string | null) {
         {
           username: currentUsername,
           partner_username: partnerUsername,
-          userId:
-            usersMap.usernameToId.get(currentUsername) ||
-            null,
-          partnerId:
-            usersMap.usernameToId.get(partnerUsername) ||
-            null,
+          userId: usersMap.usernameToId.get(currentUsername) || null,
+          partnerId: usersMap.usernameToId.get(partnerUsername) || null,
           last_read_at: Timestamp.now(),
           updated_at: Timestamp.now(),
         },

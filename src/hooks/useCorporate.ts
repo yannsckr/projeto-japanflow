@@ -106,9 +106,7 @@ export const useCorporate = () => {
             reactions: mappedReactions.filter((rx) => rx.postId === r.id),
           }))
           .sort(
-            (a, b) =>
-              Number(b.pinned) - Number(a.pinned) ||
-              b.createdAt.localeCompare(a.createdAt)
+            (a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt)
           )
       );
 
@@ -189,19 +187,16 @@ export const useCorporate = () => {
     return () => unsubs.forEach((unsubscribe) => unsubscribe());
   }, []);
 
-  const addBulletinPost = useCallback(
-    async (title: string, content: string, createdBy: string) => {
-      await addDoc(collection(db, 'bulletin_posts'), {
-        title,
-        content,
-        created_by: createdBy,
-        pinned: false,
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now(),
-      });
-    },
-    []
-  );
+  const addBulletinPost = useCallback(async (title: string, content: string, createdBy: string) => {
+    await addDoc(collection(db, 'bulletin_posts'), {
+      title,
+      content,
+      created_by: createdBy,
+      pinned: false,
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+    });
+  }, []);
 
   const deleteBulletinPost = useCallback(async (id: string) => {
     await deleteDoc(doc(db, 'bulletin_posts', id));
@@ -214,34 +209,29 @@ export const useCorporate = () => {
     });
   }, []);
 
-  const toggleReaction = useCallback(
-    async (postId: string, userId: string, emoji: string) => {
-      const snap = await getDocs(
-        query(
-          collection(db, 'bulletin_reactions'),
-          where('post_id', '==', postId),
-          where('user_id', '==', userId),
-          where('emoji', '==', emoji)
-        )
-      );
+  const toggleReaction = useCallback(async (postId: string, userId: string, emoji: string) => {
+    const snap = await getDocs(
+      query(
+        collection(db, 'bulletin_reactions'),
+        where('post_id', '==', postId),
+        where('user_id', '==', userId),
+        where('emoji', '==', emoji)
+      )
+    );
 
-      if (!snap.empty) {
-        await Promise.all(
-          snap.docs.map((reactionDoc) =>
-            deleteDoc(doc(db, 'bulletin_reactions', reactionDoc.id))
-          )
-        );
-      } else {
-        await addDoc(collection(db, 'bulletin_reactions'), {
-          post_id: postId,
-          user_id: userId,
-          emoji,
-          created_at: Timestamp.now(),
-        });
-      }
-    },
-    []
-  );
+    if (!snap.empty) {
+      await Promise.all(
+        snap.docs.map((reactionDoc) => deleteDoc(doc(db, 'bulletin_reactions', reactionDoc.id)))
+      );
+    } else {
+      await addDoc(collection(db, 'bulletin_reactions'), {
+        post_id: postId,
+        user_id: userId,
+        emoji,
+        created_at: Timestamp.now(),
+      });
+    }
+  }, []);
 
   const addSuggestion = useCallback(async (content: string, createdBy: string) => {
     await addDoc(collection(db, 'suggestions'), {
@@ -290,18 +280,15 @@ export const useCorporate = () => {
     []
   );
 
-  const votePoll = useCallback(
-    async (pollId: string, optionId: string, voterId: string) => {
-      const voteId = `${pollId}__${voterId}`;
-      await setDoc(doc(db, 'poll_votes', voteId), {
-        poll_id: pollId,
-        option_id: optionId,
-        voter_id: voterId,
-        created_at: Timestamp.now(),
-      });
-    },
-    []
-  );
+  const votePoll = useCallback(async (pollId: string, optionId: string, voterId: string) => {
+    const voteId = `${pollId}__${voterId}`;
+    await setDoc(doc(db, 'poll_votes', voteId), {
+      poll_id: pollId,
+      option_id: optionId,
+      voter_id: voterId,
+      created_at: Timestamp.now(),
+    });
+  }, []);
 
   const closePoll = useCallback(async (pollId: string) => {
     await updateDoc(doc(db, 'polls', pollId), {

@@ -7,19 +7,14 @@ const BUCKET_DEFAULT = 'attachments';
 const TTL_SECONDS = 60 * 60;
 const cache = new Map<string, { url: string; expiresAt: number }>();
 
-export function pathFromPublicUrl(
-  publicUrl: string,
-  bucket = BUCKET_DEFAULT
-): string | null {
+export function pathFromPublicUrl(publicUrl: string, bucket = BUCKET_DEFAULT): string | null {
   if (!publicUrl) return null;
 
   // URLs antigas do Supabase.
   const supabaseMarker = `/storage/v1/object/public/${bucket}/`;
   const supabaseIdx = publicUrl.indexOf(supabaseMarker);
   if (supabaseIdx !== -1) {
-    return decodeURIComponent(
-      publicUrl.slice(supabaseIdx + supabaseMarker.length).split('?')[0]
-    );
+    return decodeURIComponent(publicUrl.slice(supabaseIdx + supabaseMarker.length).split('?')[0]);
   }
 
   // Firebase Storage:

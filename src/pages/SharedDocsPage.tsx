@@ -25,15 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
-import {
-  FileText,
-  Upload,
-  Download,
-  Trash2,
-  Users,
-  Search,
-  Paperclip,
-} from 'lucide-react';
+import { FileText, Upload, Download, Trash2, Users, Search, Paperclip } from 'lucide-react';
 
 interface SharedDoc {
   id: string;
@@ -50,8 +42,7 @@ interface SharedDoc {
   created_at: string;
 }
 
-const ACCEPT =
-  '.pdf,.xml,.jpeg,.jpg,.png,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*,application/pdf';
+const ACCEPT = '.pdf,.xml,.jpeg,.jpg,.png,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*,application/pdf';
 
 const formatSize = (b: number | null) => {
   if (!b) return '';
@@ -81,10 +72,7 @@ const SharedDocsPage = () => {
   };
 
   useEffect(() => {
-    const docsQuery = query(
-      collection(db, 'shared_documents'),
-      orderBy('created_at', 'desc')
-    );
+    const docsQuery = query(collection(db, 'shared_documents'), orderBy('created_at', 'desc'));
 
     const unsubscribe = onSnapshot(
       docsQuery,
@@ -152,9 +140,7 @@ const SharedDocsPage = () => {
   };
 
   const toggleRecipient = (id: string) => {
-    setSharedWith((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSharedWith((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const handleUpload = async () => {
@@ -216,9 +202,7 @@ const SharedDocsPage = () => {
 
   const recipientNames = (doc: SharedDoc) => {
     if (doc.share_all) return 'Todos os usuários';
-    return doc.shared_with
-      .map((id) => users.find((u) => u.id === id)?.name || id)
-      .join(', ');
+    return doc.shared_with.map((id) => users.find((u) => u.id === id)?.name || id).join(', ');
   };
 
   if (!currentUser) return null;
@@ -280,10 +264,7 @@ const SharedDocsPage = () => {
                   <Users className="w-4 h-4" /> Compartilhar com
                 </Label>
                 <label className="flex items-center gap-2 text-sm p-2 rounded bg-secondary/50">
-                  <Checkbox
-                    checked={shareAll}
-                    onCheckedChange={(v) => setShareAll(!!v)}
-                  />
+                  <Checkbox checked={shareAll} onCheckedChange={(v) => setShareAll(!!v)} />
                   <span className="font-semibold">Todos os usuários</span>
                 </label>
                 {!shareAll && (
@@ -350,9 +331,7 @@ const SharedDocsPage = () => {
             <div className="flex-1 min-w-0">
               <p className="font-semibold truncate">{doc.title}</p>
               {doc.description && (
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  {doc.description}
-                </p>
+                <p className="text-xs text-muted-foreground line-clamp-2">{doc.description}</p>
               )}
               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground mt-1">
                 <span>📎 {doc.file_name}</span>
@@ -379,11 +358,7 @@ const SharedDocsPage = () => {
                 </a>
               </Button>
               {(doc.owner_id === currentUser.id || isAdmin) && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleDelete(doc)}
-                >
+                <Button size="sm" variant="ghost" onClick={() => handleDelete(doc)}>
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               )}

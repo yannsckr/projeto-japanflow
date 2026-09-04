@@ -1,12 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  setDoc,
-  Timestamp,
-} from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
 
 export type FeatureKey =
   | 'motoboy_management'
@@ -26,8 +20,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 };
 
 export const FEATURE_DESCRIPTIONS: Record<FeatureKey, string> = {
-  motoboy_management:
-    'Aprovar, criar, editar e excluir corridas (além da Patrícia/admins)',
+  motoboy_management: 'Aprovar, criar, editar e excluir corridas (além da Patrícia/admins)',
   request_reverse: 'Criar solicitações de envio reverso',
   tracking_warranties:
     'Adicionar/excluir rastreamentos e gerenciar garantias (além do William/admins)',
@@ -69,9 +62,7 @@ export const useFeaturePermissions = () => {
             };
           })
           .filter(
-            (permission) =>
-              permission.user_id &&
-              ALL_FEATURE_KEYS.includes(permission.feature_key)
+            (permission) => permission.user_id && ALL_FEATURE_KEYS.includes(permission.feature_key)
           );
 
         setPermissions(nextPermissions);
@@ -92,8 +83,7 @@ export const useFeaturePermissions = () => {
 
       setPermissions((prev) => {
         const filtered = prev.filter(
-          (permission) =>
-            !(permission.user_id === userId && permission.feature_key === featureKey)
+          (permission) => !(permission.user_id === userId && permission.feature_key === featureKey)
         );
 
         return [...filtered, { user_id: userId, feature_key: featureKey, enabled }];
@@ -125,9 +115,7 @@ export const useFeaturePermissions = () => {
       if (!userId) return false;
 
       const record = permissions.find(
-        (permission) =>
-          permission.user_id === userId &&
-          permission.feature_key === featureKey
+        (permission) => permission.user_id === userId && permission.feature_key === featureKey
       );
 
       return record?.enabled === true;

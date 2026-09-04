@@ -94,11 +94,7 @@ export const useWarranties = () => {
     const unsubscribeClaims = onSnapshot(
       query(collection(db, 'warranty_claims'), orderBy('created_at', 'desc')),
       (snapshot) => {
-        setClaims(
-          snapshot.docs.map((claimDoc) =>
-            mapClaim(claimDoc.id, claimDoc.data())
-          )
-        );
+        setClaims(snapshot.docs.map((claimDoc) => mapClaim(claimDoc.id, claimDoc.data())));
       },
       (error) => console.error('Erro ao carregar garantias:', error)
     );
@@ -106,11 +102,7 @@ export const useWarranties = () => {
     const unsubscribeUpdates = onSnapshot(
       query(collection(db, 'warranty_updates'), orderBy('created_at', 'asc')),
       (snapshot) => {
-        setUpdates(
-          snapshot.docs.map((updateDoc) =>
-            mapUpdate(updateDoc.id, updateDoc.data())
-          )
-        );
+        setUpdates(snapshot.docs.map((updateDoc) => mapUpdate(updateDoc.id, updateDoc.data())));
       },
       (error) => console.error('Erro ao carregar atualizações de garantia:', error)
     );

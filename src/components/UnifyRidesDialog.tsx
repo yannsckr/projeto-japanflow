@@ -11,14 +11,7 @@ import {
 } from '@/components/ui/select';
 import { Layers, Bike } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  Timestamp,
-} from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { MotoboyAssignment } from '@/hooks/useDepartmental';
 import { cn } from '@/lib/utils';
@@ -177,9 +170,7 @@ const UnifyRidesDialog = ({
 
         // Delete the original Kanban tasks so they collapse into the unified one
         if (originalTaskIds.length > 0) {
-          await Promise.all(
-            originalTaskIds.map((taskId) => deleteDoc(doc(db, 'tasks', taskId)))
-          );
+          await Promise.all(originalTaskIds.map((taskId) => deleteDoc(doc(db, 'tasks', taskId))));
         }
       }
 
@@ -234,9 +225,7 @@ const UnifyRidesDialog = ({
 
       // Delete originals
       const ids = selectedRides.map((r) => r.id);
-      await Promise.all(
-        ids.map((id) => deleteDoc(doc(db, 'motoboy_assignments', id)))
-      );
+      await Promise.all(ids.map((id) => deleteDoc(doc(db, 'motoboy_assignments', id))));
 
       toast.success(
         `${selectedRides.length} corridas unificadas em uma de ${formatCurrency(unifiedValue)}`

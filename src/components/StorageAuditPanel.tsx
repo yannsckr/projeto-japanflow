@@ -82,10 +82,7 @@ const StorageAuditPanel = () => {
 
       // Busca todas as linhas desse run e ordena no cliente.
       // Evita índice composto run_id + size_bytes.
-      const rowsQuery = query(
-        collection(db, 'storage_audit_log'),
-        where('run_id', '==', runId)
-      );
+      const rowsQuery = query(collection(db, 'storage_audit_log'), where('run_id', '==', runId));
 
       const rowsSnapshot = await getDocs(rowsQuery);
 
@@ -97,19 +94,13 @@ const StorageAuditPanel = () => {
             id: rowDoc.id,
             run_id: data.run_id || '',
             storage_path: data.storage_path || '',
-            size_bytes:
-              typeof data.size_bytes === 'number'
-                ? data.size_bytes
-                : null,
+            size_bytes: typeof data.size_bytes === 'number' ? data.size_bytes : null,
             category: data.category || '',
             action: data.action || 'reported',
             created_at: toIso(data.created_at),
           };
         })
-        .sort(
-          (a, b) =>
-            (b.size_bytes || 0) - (a.size_bytes || 0)
-        )
+        .sort((a, b) => (b.size_bytes || 0) - (a.size_bytes || 0))
         .slice(0, 500);
 
       setLatestRows(rows);
@@ -149,9 +140,7 @@ const StorageAuditPanel = () => {
 
       setResult(data);
 
-      toast.success(
-        `Auditoria concluída: ${data.orphans} órfãos / ${data.totalFiles} arquivos.`
-      );
+      toast.success(`Auditoria concluída: ${data.orphans} órfãos / ${data.totalFiles} arquivos.`);
 
       await loadLatestRun();
     } catch (error: any) {
@@ -168,9 +157,7 @@ const StorageAuditPanel = () => {
       return;
     }
 
-    const pendingRows = latestRows.filter(
-      (row) => row.action === 'reported'
-    );
+    const pendingRows = latestRows.filter((row) => row.action === 'reported');
 
     if (pendingRows.length === 0) {
       toast.info('Nada para apagar.');
@@ -205,10 +192,7 @@ const StorageAuditPanel = () => {
               continue;
             }
 
-            console.error(
-              `Erro ao apagar ${row.storage_path}:`,
-              error
-            );
+            console.error(`Erro ao apagar ${row.storage_path}:`, error);
           }
         }
 
@@ -216,13 +200,10 @@ const StorageAuditPanel = () => {
           const firestoreBatch = writeBatch(db);
 
           for (const row of deletedRows) {
-            firestoreBatch.update(
-              doc(db, 'storage_audit_log', row.id),
-              {
-                action: 'deleted',
-                notes: 'apagado via auditoria admin',
-              }
-            );
+            firestoreBatch.update(doc(db, 'storage_audit_log', row.id), {
+              action: 'deleted',
+              notes: 'apagado via auditoria admin',
+            });
           }
 
           await firestoreBatch.commit();
@@ -237,9 +218,7 @@ const StorageAuditPanel = () => {
       }
 
       if (done === pendingRows.length) {
-        toast.success(
-          `${done} arquivos órfãos removidos do Storage.`
-        );
+        toast.success(`${done} arquivos órfãos removidos do Storage.`);
       } else {
         toast.warning(
           `${done} de ${pendingRows.length} arquivos foram removidos. Verifique o console para os que falharam.`
@@ -256,23 +235,13 @@ const StorageAuditPanel = () => {
     }
   };
 
-  const pendingCount = latestRows.filter(
-    (row) => row.action === 'reported'
-  ).length;
+  const pendingCount = latestRows.filter((row) => row.action === 'reported').length;
 
   const totalBytes = latestRows
     .filter((row) => row.action === 'reported')
-    .reduce(
-      (total, row) =>
-        total + (row.size_bytes || 0),
-      0
-    );
+    .reduce((total, row) => total + (row.size_bytes || 0), 0);
 
-  const totalMB = (
-    totalBytes /
-    1024 /
-    1024
-  ).toFixed(2);
+  const totalMB = (totalBytes / 1024 / 1024).toFixed(2);
 
   return (
     <Card>
@@ -285,36 +254,20 @@ const StorageAuditPanel = () => {
 
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Lista arquivos presentes no Firebase Storage que <strong>não</strong> têm
-          registro em <code>image_assets</code> (uploads esquecidos, antigos, ou que
-          falharam ao registrar). O relatório fica salvo em{' '}
-          <code>storage_audit_log</code> para auditoria.
+          Lista arquivos presentes no Firebase Storage que <strong>não</strong> têm registro em{' '}
+          <code>image_assets</code> (uploads esquecidos, antigos, ou que falharam ao registrar). O
+          relatório fica salvo em <code>storage_audit_log</code> para auditoria.
         </p>
 
         <div className="flex flex-wrap gap-2">
           <Button onClick={runAudit} disabled={running}>
-            <FileSearch
-              className={`w-4 h-4 mr-2 ${
-                running ? 'animate-pulse' : ''
-              }`}
-            />
+            <FileSearch className={`w-4 h-4 mr-2 ${running ? 'animate-pulse' : ''}`} />
 
-            {running
-              ? 'Auditando...'
-              : 'Executar auditoria'}
+            {running ? 'Auditando...' : 'Executar auditoria'}
           </Button>
 
-          <Button
-            onClick={loadLatestRun}
-            variant="outline"
-            disabled={loadingRows}
-          >
-            <RefreshCw
-              className={`w-4 h-4 mr-2 ${
-                loadingRows ? 'animate-spin' : ''
-              }`}
-            />
-
+          <Button onClick={loadLatestRun} variant="outline" disabled={loadingRows}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loadingRows ? 'animate-spin' : ''}`} />
             Recarregar último relatório
           </Button>
         </div>
@@ -322,39 +275,23 @@ const StorageAuditPanel = () => {
         {result && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm border rounded-md p-3">
             <div>
-              <div className="text-muted-foreground">
-                Arquivos no Storage
-              </div>
-              <div className="font-bold">
-                {result.totalFiles}
-              </div>
+              <div className="text-muted-foreground">Arquivos no Storage</div>
+              <div className="font-bold">{result.totalFiles}</div>
             </div>
 
             <div>
-              <div className="text-muted-foreground">
-                Registros em image_assets
-              </div>
-              <div className="font-bold">
-                {result.knownAssets}
-              </div>
+              <div className="text-muted-foreground">Registros em image_assets</div>
+              <div className="font-bold">{result.knownAssets}</div>
             </div>
 
             <div>
-              <div className="text-muted-foreground">
-                Órfãos
-              </div>
-              <div className="font-bold text-destructive">
-                {result.orphans}
-              </div>
+              <div className="text-muted-foreground">Órfãos</div>
+              <div className="font-bold text-destructive">{result.orphans}</div>
             </div>
 
             <div>
-              <div className="text-muted-foreground">
-                Tamanho órfãos
-              </div>
-              <div className="font-bold">
-                {(result.orphanBytes / 1024 / 1024).toFixed(2)} MB
-              </div>
+              <div className="text-muted-foreground">Tamanho órfãos</div>
+              <div className="font-bold">{(result.orphanBytes / 1024 / 1024).toFixed(2)} MB</div>
             </div>
           </div>
         )}
@@ -362,55 +299,32 @@ const StorageAuditPanel = () => {
         {latestRows.length > 0 && (
           <>
             <div className="text-sm">
-              Último relatório:{' '}
-              <strong>{pendingCount}</strong>{' '}
-              órfãos pendentes ({totalMB} MB)
-              {latestRows.length >= 500
-                ? ' (mostrando os 500 maiores)'
-                : ''}
-              .
+              Último relatório: <strong>{pendingCount}</strong> órfãos pendentes ({totalMB} MB)
+              {latestRows.length >= 500 ? ' (mostrando os 500 maiores)' : ''}.
             </div>
 
             <div className="max-h-72 overflow-auto border rounded-md text-xs font-mono">
               <table className="w-full">
                 <thead className="bg-muted sticky top-0">
                   <tr>
-                    <th className="text-left p-2">
-                      Path
-                    </th>
-                    <th className="text-right p-2">
-                      KB
-                    </th>
-                    <th className="text-left p-2">
-                      Status
-                    </th>
+                    <th className="text-left p-2">Path</th>
+                    <th className="text-right p-2">KB</th>
+                    <th className="text-left p-2">Status</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {latestRows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="border-t"
-                    >
-                      <td className="p-2 break-all">
-                        {row.storage_path}
-                      </td>
+                    <tr key={row.id} className="border-t">
+                      <td className="p-2 break-all">{row.storage_path}</td>
 
                       <td className="p-2 text-right">
-                        {row.size_bytes
-                          ? (
-                              row.size_bytes /
-                              1024
-                            ).toFixed(0)
-                          : '?'}
+                        {row.size_bytes ? (row.size_bytes / 1024).toFixed(0) : '?'}
                       </td>
 
                       <td
                         className={`p-2 ${
-                          row.action === 'deleted'
-                            ? 'text-green-600'
-                            : 'text-amber-600'
+                          row.action === 'deleted' ? 'text-green-600' : 'text-amber-600'
                         }`}
                       >
                         {row.action}
@@ -423,32 +337,23 @@ const StorageAuditPanel = () => {
 
             {pendingCount > 0 && (
               <div className="space-y-2 border-t pt-3">
-                <Label
-                  htmlFor="confirm"
-                  className="text-destructive"
-                >
-                  Para apagar permanentemente os{' '}
-                  {pendingCount} arquivos órfãos,
-                  digite <strong>APAGAR</strong>:
+                <Label htmlFor="confirm" className="text-destructive">
+                  Para apagar permanentemente os {pendingCount} arquivos órfãos, digite{' '}
+                  <strong>APAGAR</strong>:
                 </Label>
 
                 <div className="flex gap-2">
                   <Input
                     id="confirm"
                     value={confirmText}
-                    onChange={(e) =>
-                      setConfirmText(e.target.value)
-                    }
+                    onChange={(e) => setConfirmText(e.target.value)}
                     placeholder="APAGAR"
                     className="max-w-xs"
                   />
 
                   <Button
                     onClick={deleteOrphans}
-                    disabled={
-                      deleting ||
-                      confirmText !== 'APAGAR'
-                    }
+                    disabled={deleting || confirmText !== 'APAGAR'}
                     variant="destructive"
                   >
                     <Trash2 className="w-4 h-4 mr-2" />

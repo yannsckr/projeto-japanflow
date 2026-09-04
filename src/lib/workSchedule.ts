@@ -1,11 +1,5 @@
 export type DayKey =
-  | 'monday'
-  | 'tuesday'
-  | 'wednesday'
-  | 'thursday'
-  | 'friday'
-  | 'saturday'
-  | 'sunday';
+  'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
 export interface DaySchedule {
   entry?: string;
@@ -108,7 +102,10 @@ export const TIME_OPTIONS: string[] = (() => {
 
 /** Normalize a manually-typed time string to HH:MM (24h). Returns '' if invalid. */
 export function normalizeTimeInput(raw: string): string {
-  const s = raw.trim().replace(/[hH.,]/g, ':').replace(/\s+/g, '');
+  const s = raw
+    .trim()
+    .replace(/[hH.,]/g, ':')
+    .replace(/\s+/g, '');
   if (!s) return '';
   const digits = s.replace(/\D/g, '');
   let hh = '';

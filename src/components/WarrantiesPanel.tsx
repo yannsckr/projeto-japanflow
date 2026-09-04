@@ -1,10 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import {
-  useWarranties,
-  WarrantyClaim,
-  WarrantyUpdate,
-} from '@/hooks/useWarranties';
+import { useWarranties, WarrantyClaim, WarrantyUpdate } from '@/hooks/useWarranties';
 import { db } from '@/lib/firebase';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';

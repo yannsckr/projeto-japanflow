@@ -44,8 +44,7 @@ export const OrderInfoBadges = ({ info, size = 'xs', className }: OrderInfoBadge
   const items: { label: string; positive: boolean; emphasis?: boolean }[] = [];
   if (info.pago !== undefined && info.pago !== null)
     items.push({ label: info.pago ? '💰 Pago' : '💰 Não Pago', positive: !!info.pago });
-  if (info.usarCreditos)
-    items.push({ label: '🪙 Usar Créditos', positive: true, emphasis: true });
+  if (info.usarCreditos) items.push({ label: '🪙 Usar Créditos', positive: true, emphasis: true });
   if (info.maquininha !== undefined && info.maquininha !== null)
     items.push({
       label: info.maquininha ? '💳 Maquininha' : '💳 Sem Maq.',

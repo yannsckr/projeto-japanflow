@@ -2,18 +2,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-} from 'firebase/firestore';
-import {
-  getMetadata,
-  getStorage,
-  listAll as listStorageAll,
-  ref,
-} from 'firebase/storage';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { getMetadata, getStorage, listAll as listStorageAll, ref } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -210,10 +200,7 @@ const AdminBackfillImagesPage = () => {
       try {
         if (onlyMissingAssets) {
           const existingSnapshot = await getDocs(
-            query(
-              collection(db, 'image_assets'),
-              where('storage_path', '==', file.path)
-            )
+            query(collection(db, 'image_assets'), where('storage_path', '==', file.path))
           );
 
           const alreadyWebp = existingSnapshot.docs.some(
@@ -357,9 +344,9 @@ const AdminBackfillImagesPage = () => {
       </div>
       <p className="text-sm text-muted-foreground">
         Converte as imagens antigas (JPEG/PNG) no bucket <code>attachments</code> para WebP
-        comprimido pelo backend, mantendo o mesmo caminho (as URLs existentes continuam
-        funcionando) e atualizando a tabela <code>image_assets</code>. O progresso é salvo no navegador
-        a cada arquivo — você pode atualizar a página ou parar, e ao voltar basta clicar em{' '}
+        comprimido pelo backend, mantendo o mesmo caminho (as URLs existentes continuam funcionando)
+        e atualizando a tabela <code>image_assets</code>. O progresso é salvo no navegador a cada
+        arquivo — você pode atualizar a página ou parar, e ao voltar basta clicar em{' '}
         <strong>Continuar</strong>.
       </p>
 

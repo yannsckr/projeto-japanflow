@@ -33,7 +33,7 @@ import { addDoc, collection, Timestamp } from 'firebase/firestore';
 
 const CorporateToolsPage = () => {
   const { currentUser, users } = useApp();
-  const corporate = useCorporate ();
+  const corporate = useCorporate();
   const featPerms = useFeaturePermissions();
   const baseAdmin = currentUser?.role === 'admin';
   const isAdmin = baseAdmin || featPerms.hasFeature(currentUser?.id, 'corporate_tools');

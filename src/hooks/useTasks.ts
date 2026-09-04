@@ -79,10 +79,7 @@ export const useTasks = (
       return;
     }
 
-    const tasksQuery = query(
-      collection(db, 'tasks'),
-      orderBy('created_at', 'desc')
-    );
+    const tasksQuery = query(collection(db, 'tasks'), orderBy('created_at', 'desc'));
 
     const unsubscribe = onSnapshot(
       tasksQuery,
@@ -94,9 +91,7 @@ export const useTasks = (
           })
         );
 
-        setTasks((prev) =>
-          JSON.stringify(prev) === JSON.stringify(newTasks) ? prev : newTasks
-        );
+        setTasks((prev) => (JSON.stringify(prev) === JSON.stringify(newTasks) ? prev : newTasks));
         setLoading(false);
       },
       (error) => {
@@ -111,9 +106,7 @@ export const useTasks = (
   const addTask = useCallback(
     async (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'statusHistory'>) => {
       const nowIso = new Date().toISOString();
-      const statusHistory: StatusHistoryEntry[] = [
-        { status: task.status, enteredAt: nowIso },
-      ];
+      const statusHistory: StatusHistoryEntry[] = [{ status: task.status, enteredAt: nowIso }];
 
       await addDoc(collection(db, 'tasks'), {
         title: task.title,
@@ -164,9 +157,7 @@ export const useTasks = (
     if (!currentSnapshot.exists()) return;
 
     const currentData = currentSnapshot.data();
-    const history = [
-      ...((currentData.status_history as StatusHistoryEntry[]) || []),
-    ];
+    const history = [...((currentData.status_history as StatusHistoryEntry[]) || [])];
 
     if (history.length > 0 && !history[history.length - 1].exitedAt) {
       history[history.length - 1] = {
@@ -203,11 +194,7 @@ export const useTasks = (
     }
 
     const directSnapshot = await getDocs(
-      query(
-        collection(db, 'motoboy_assignments'),
-        where('task_id', '==', taskId),
-        limit(1)
-      )
+      query(collection(db, 'motoboy_assignments'), where('task_id', '==', taskId), limit(1))
     );
 
     if (!directSnapshot.empty) {
@@ -227,15 +214,9 @@ export const useTasks = (
     const description = String(currentData.description || '');
     const assigneeId = String(currentData.assignee_id || '');
 
-    if (
-      status === 'done' &&
-      (title.includes('Corrida') || title.includes('Entrega'))
-    ) {
+    if (status === 'done' && (title.includes('Corrida') || title.includes('Entrega'))) {
       const legacySnapshot = await getDocs(
-        query(
-          collection(db, 'motoboy_assignments'),
-          where('assigned_to', '==', assigneeId)
-        )
+        query(collection(db, 'motoboy_assignments'), where('assigned_to', '==', assigneeId))
       );
 
       const match = legacySnapshot.docs.find((assignmentDoc) => {
@@ -243,8 +224,7 @@ export const useTasks = (
         if (assignment.status === 'completed') return false;
 
         return (
-          (!!assignment.client_name &&
-            title.includes(String(assignment.client_name))) ||
+          (!!assignment.client_name && title.includes(String(assignment.client_name))) ||
           description.includes(String(assignment.description || ''))
         );
       });
