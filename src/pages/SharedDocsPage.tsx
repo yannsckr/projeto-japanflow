@@ -183,19 +183,23 @@ const SharedDocsPage = () => {
     }
   };
 
-  const handleDelete = async (doc: SharedDoc) => {
+  const handleDelete = async (sharedDoc: SharedDoc) => {
     if (!currentUser) return;
-    if (doc.owner_id !== currentUser.id && !isAdmin) {
+
+    if (sharedDoc.owner_id !== currentUser.id && !isAdmin) {
       return toast.error('Apenas o dono ou administrador pode excluir');
     }
-    if (!confirm(`Excluir "${doc.title}"?`)) return;
+
+    if (!confirm(`Excluir "${sharedDoc.title}"?`)) return;
+
     try {
-      await deleteDoc(doc(db, 'shared_documents', doc.id));
+      await deleteDoc(doc(db, 'shared_documents', sharedDoc.id));
     } catch (error) {
       console.error(error);
       toast.error('Erro ao excluir');
       return;
     }
+
     toast.success('Documento excluído');
     fetchDocs();
   };

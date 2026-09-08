@@ -100,6 +100,7 @@ export interface ChatMessage {
   groupId?: string;
   content: string;
   timestamp: string;
+  read?: boolean;
   attachmentUrl?: string;
   attachmentType?: 'image' | 'file' | 'audio';
   attachmentName?: string;

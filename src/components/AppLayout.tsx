@@ -30,32 +30,37 @@ const AppLayout = () => {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isChatRoute = location.pathname === '/chat';
-  const { updatePresence } = usePresence(currentUser?.id || null);
-  usePushNotifications(currentUser?.username || null, currentUser?.id || null);
+
+  const { updatePresenceStatus } = usePresence(currentUser?.id || null);
+  usePushNotifications();
+
   const { totalUnread: unreadMessages } = useUnreadMessages(currentUser?.id || null);
   const unreadNotifs = currentUser
     ? notifications.filter((n) => n.userId === currentUser.id && !n.read).length
     : 0;
+
   useTabTitleNotifications(unreadNotifs + unreadMessages);
 
-  // Bloqueio por rede: funcionários (não-admins) só podem usar o app
-  // a partir da rede da empresa. Admins têm acesso irrestrito.
   useEffect(() => {
     if (!currentUser) return;
     if (currentUser.role === 'admin') return;
+
     let cancelled = false;
+
     (async () => {
       const ip = await getClientPublicIp();
       if (cancelled) return;
       if (isIpAllowed(ip)) return;
-      // Fora da rede: verifica se este usuário tem liberação individual
+
       const allowed = await userCanAccessExternally(currentUser.id);
       if (cancelled) return;
+
       if (!allowed) {
         logout();
         navigate('/login');
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -69,7 +74,6 @@ const AppLayout = () => {
       <BulletinAlertPopup />
       <AdminPopupAlert />
       <NewTaskPopup />
-      {/* Desktop sidebar */}
       {!isMobile && <AppSidebar />}
 
       <div className="flex-1 flex flex-col h-screen max-h-screen min-w-0">
@@ -89,9 +93,11 @@ const AppLayout = () => {
             )}
             <img src={logoImg} alt="JapanFlow" className="h-8 md:h-10 object-contain" />
           </div>
+
           <InventoryHeaderBanner />
+
           <div className="flex items-center gap-1 md:gap-2">
-            <PauseButton updatePresence={updatePresence} />
+            <PauseButton updatePresence={updatePresenceStatus} />
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-8 w-8">
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -111,6 +117,7 @@ const AppLayout = () => {
             )}
           </div>
         </header>
+
         <main
           className={
             isChatRoute

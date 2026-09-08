@@ -7,13 +7,11 @@ import {
   onSnapshot,
   doc,
   setDoc,
-  getDoc,
   updateDoc,
   addDoc,
   getDocs,
   Timestamp,
 } from 'firebase/firestore';
-import { useApp } from '@/contexts/AppContext';
 
 export type PresenceStatus = 'online' | 'offline' | 'paused';
 
@@ -25,25 +23,41 @@ export interface UserPresence {
   last_seen_at: Date;
 }
 
-// Mapeamento de usuários online em tempo real (para evitar requisições repetidas ao Firestore)
+interface FirestorePresenceData {
+  user_id?: string;
+  status?: PresenceStatus;
+  pause_type?: string | null;
+  pause_started_at?: Date | Timestamp | null;
+  last_seen_at?: Date | Timestamp | null;
+}
+
 const onlineUsers = new Map<string, UserPresence>();
 
 const updateOnlineUser = (user: UserPresence) => {
   onlineUsers.set(user.user_id, user);
 };
 
+const toDate = (value: Date | Timestamp | null | undefined): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (value instanceof Timestamp) return value.toDate();
+  return null;
+};
+
 export const usePresence = (userId: string | null) => {
-  const { user, setIsLoading } = useApp();
   const [presences, setPresences] = useState<UserPresence[]>([]);
   const stateRef = useRef<{
     status: PresenceStatus;
     pauseType: string | null;
     pauseStartedAt: Date | null;
-  }>({ status: 'online', pauseType: null, pauseStartedAt: null });
+  }>({
+    status: 'online',
+    pauseType: null,
+    pauseStartedAt: null,
+  });
 
-  const currentUserId = user?.id || null;
+  const currentUserId = userId;
 
-  // Efeito para atualizar o status de presença do usuário atual no Firestore
   useEffect(() => {
     if (!currentUserId) return;
 
@@ -58,70 +72,77 @@ export const usePresence = (userId: string | null) => {
         pause_started_at: stateRef.current.pauseStartedAt,
         last_seen_at: now,
       };
+
       await setDoc(userPresenceDocRef, presenceData, { merge: true });
       updateOnlineUser(presenceData);
     };
 
-    // Atualiza a presença ao montar e a cada 30 segundos
-    updateFirestorePresence();
-    const interval = setInterval(updateFirestorePresence, 30000);
+    void updateFirestorePresence();
 
-    // Monitora o estado de visibilidade da aba para atualizar a presença
+    const interval = window.setInterval(() => {
+      void updateFirestorePresence();
+    }, 30000);
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         stateRef.current.status = 'online';
-        updateFirestorePresence();
-      } else {
-        // Opcional: Marcar como ausente ou offline após um tempo em segundo plano
+        void updateFirestorePresence();
       }
     };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Marca offline ao fechar a aba
-    const handleBeforeUnload = async () => {
-      if (currentUserId) {
-        const offlineData: Partial<UserPresence> = { status: 'offline', last_seen_at: new Date() };
-        await updateDoc(userPresenceDocRef, offlineData);
-        onlineUsers.set(currentUserId, { ...onlineUsers.get(currentUserId)!, ...offlineData });
+    const handleBeforeUnload = () => {
+      const offlineData = {
+        status: 'offline' as PresenceStatus,
+        last_seen_at: new Date(),
+      };
+
+      void updateDoc(userPresenceDocRef, offlineData);
+
+      const existing = onlineUsers.get(currentUserId);
+      if (existing) {
+        onlineUsers.set(currentUserId, {
+          ...existing,
+          ...offlineData,
+        });
       }
     };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      clearInterval(interval);
+      window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      // Opcional: Marcar offline imediatamente ao desmontar o hook
-      if (currentUserId) {
-        updateDoc(userPresenceDocRef, { status: 'offline', last_seen_at: new Date() });
-        onlineUsers.delete(currentUserId);
-      }
+
+      void updateDoc(userPresenceDocRef, {
+        status: 'offline',
+        last_seen_at: new Date(),
+      });
+
+      onlineUsers.delete(currentUserId);
     };
   }, [currentUserId]);
 
-  // Efeito para escutar as mudanças de presença de TODOS os usuários no Firestore
   useEffect(() => {
     const presenceCollection = collection(db, 'presence');
+
     const unsubscribe = onSnapshot(presenceCollection, (snapshot) => {
       const currentPresences: UserPresence[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as UserPresence;
+
+      snapshot.forEach((snapshotDoc) => {
+        const data = snapshotDoc.data() as FirestorePresenceData;
+
         currentPresences.push({
-          ...data,
-          last_seen_at:
-            data.last_seen_at instanceof Date
-              ? data.last_seen_at
-              : data.last_seen_at && typeof data.last_seen_at.toDate === 'function'
-                ? data.last_seen_at.toDate()
-                : data.last_seen_at, // Converte timestamp se necessário
-          pause_started_at:
-            data.pause_started_at instanceof Date
-              ? data.pause_started_at
-              : data.pause_started_at && typeof data.pause_started_at.toDate === 'function'
-                ? data.pause_started_at.toDate()
-                : data.pause_started_at, // Converte timestamp se necessário
+          user_id: data.user_id ?? snapshotDoc.id,
+          status: data.status ?? 'offline',
+          pause_type: data.pause_type ?? null,
+          pause_started_at: toDate(data.pause_started_at),
+          last_seen_at: toDate(data.last_seen_at) ?? new Date(),
         });
       });
+
       setPresences(currentPresences);
       currentPresences.forEach(updateOnlineUser);
     });
@@ -132,77 +153,122 @@ export const usePresence = (userId: string | null) => {
   const updatePresenceStatus = useCallback(
     async (status: PresenceStatus, pauseType?: string | null) => {
       if (!currentUserId) return;
+
       const now = new Date();
+      const pauseStartedAt = status === 'paused' ? now : null;
+
       stateRef.current = {
         status,
         pauseType: pauseType ?? null,
-        pauseStartedAt: status === 'paused' ? now : null,
+        pauseStartedAt,
       };
+
       const userPresenceDocRef = doc(db, 'presence', currentUserId);
-      const updatedData: Partial<UserPresence> = {
+
+      await setDoc(
+        userPresenceDocRef,
+        {
+          user_id: currentUserId,
+          status,
+          pause_type: pauseType ?? null,
+          pause_started_at: pauseStartedAt,
+          last_seen_at: now,
+        },
+        { merge: true }
+      );
+
+      const existing = onlineUsers.get(currentUserId);
+
+      updateOnlineUser({
+        ...(existing ?? {
+          user_id: currentUserId,
+          status,
+          pause_type: pauseType ?? null,
+          pause_started_at: pauseStartedAt,
+          last_seen_at: now,
+        }),
+        user_id: currentUserId,
         status,
         pause_type: pauseType ?? null,
-        pause_started_at: status === 'paused' ? now : null,
+        pause_started_at: pauseStartedAt,
         last_seen_at: now,
-      };
-      await updateDoc(userPresenceDocRef, updatedData);
-      updateOnlineUser({ ...onlineUsers.get(currentUserId)!, ...updatedData } as UserPresence);
+      });
     },
     [currentUserId]
   );
 
   const startSession = useCallback(async () => {
     if (!currentUserId) return;
+
     const now = new Date();
     const sessionsCollection = collection(db, 'presence_sessions');
 
-    // Finaliza sessões abertas anteriores
     const openSessionsQuery = query(
       sessionsCollection,
       where('user_id', '==', currentUserId),
       where('ended_at', '==', null)
     );
+
     const openSessionsSnapshot = await getDocs(openSessionsQuery);
-    openSessionsSnapshot.forEach(async (d) => {
-      const sessionData = d.data();
-      const startedAt = sessionData.started_at.toDate();
+
+    for (const sessionDoc of openSessionsSnapshot.docs) {
+      const sessionData = sessionDoc.data();
+      const startedAt = toDate(sessionData.started_at as Date | Timestamp | null);
+
+      if (!startedAt) continue;
+
       const duration = Math.floor((now.getTime() - startedAt.getTime()) / 1000);
-      await updateDoc(d.ref, { ended_at: now, duration_seconds: duration });
-    });
+
+      await updateDoc(sessionDoc.ref, {
+        ended_at: now,
+        duration_seconds: duration,
+      });
+    }
 
     await addDoc(sessionsCollection, {
       user_id: currentUserId,
       status: 'online',
       started_at: now,
+      ended_at: null,
     });
   }, [currentUserId]);
 
   const endSession = useCallback(async () => {
     if (!currentUserId) return;
+
     const now = new Date();
     const sessionsCollection = collection(db, 'presence_sessions');
-    const q = query(
+
+    const sessionsQuery = query(
       sessionsCollection,
       where('user_id', '==', currentUserId),
       where('status', '==', 'online'),
       where('ended_at', '==', null)
-      // orderBy("started_at", "desc"), // Firestore não permite orderBy em queries de igualdade sem índice
-      // limit(1)
     );
-    const querySnapshot = await getDocs(q);
 
-    if (!querySnapshot.empty) {
-      const latestSessionDoc = querySnapshot.docs[0]; // Pega o primeiro (mais antigo se não houver orderby)
-      const sessionData = latestSessionDoc.data();
-      const startedAt = sessionData.started_at.toDate();
-      const duration = Math.floor((now.getTime() - startedAt.getTime()) / 1000);
-      await updateDoc(latestSessionDoc.ref, { ended_at: now, duration_seconds: duration });
-    }
+    const querySnapshot = await getDocs(sessionsQuery);
+    if (querySnapshot.empty) return;
+
+    const latestSessionDoc = querySnapshot.docs[0];
+    const sessionData = latestSessionDoc.data();
+    const startedAt = toDate(sessionData.started_at as Date | Timestamp | null);
+
+    if (!startedAt) return;
+
+    const duration = Math.floor((now.getTime() - startedAt.getTime()) / 1000);
+
+    await updateDoc(latestSessionDoc.ref, {
+      ended_at: now,
+      duration_seconds: duration,
+    });
   }, [currentUserId]);
 
-  // TODO: Migrar as chamadas startSession e endSession para um Provider ou useEffect com controle mais preciso
-
-  return { presences, updatePresenceStatus, startSession, endSession };
+  return {
+    presences,
+    updatePresenceStatus,
+    startSession,
+    endSession,
+  };
 };
 
 export const useAllPresences = () => {
@@ -210,26 +276,22 @@ export const useAllPresences = () => {
 
   useEffect(() => {
     const presenceCollection = collection(db, 'presence');
+
     const unsubscribe = onSnapshot(presenceCollection, (snapshot) => {
       const allPresences: UserPresence[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as UserPresence;
+
+      snapshot.forEach((snapshotDoc) => {
+        const data = snapshotDoc.data() as FirestorePresenceData;
+
         allPresences.push({
-          ...data,
-          last_seen_at:
-            data.last_seen_at instanceof Date
-              ? data.last_seen_at
-              : data.last_seen_at && typeof data.last_seen_at.toDate === 'function'
-                ? data.last_seen_at.toDate()
-                : data.last_seen_at,
-          pause_started_at:
-            data.pause_started_at instanceof Date
-              ? data.pause_started_at
-              : data.pause_started_at && typeof data.pause_started_at.toDate === 'function'
-                ? data.pause_started_at.toDate()
-                : data.pause_started_at,
+          user_id: data.user_id ?? snapshotDoc.id,
+          status: data.status ?? 'offline',
+          pause_type: data.pause_type ?? null,
+          pause_started_at: toDate(data.pause_started_at),
+          last_seen_at: toDate(data.last_seen_at) ?? new Date(),
         });
       });
+
       setPresences(allPresences);
     });
 
@@ -237,15 +299,24 @@ export const useAllPresences = () => {
   }, []);
 
   const getStatus = (userId: string): PresenceStatus => {
-    const p = presences.find((p) => p.user_id === userId);
-    if (!p) return 'offline';
-    return p.status;
+    const presence = presences.find((item) => item.user_id === userId);
+    return presence?.status ?? 'offline';
   };
 
   const getPauseInfo = (userId: string) => {
-    const p = presences.find((p) => p.user_id === userId);
-    return p ? { pauseType: p.pause_type, pauseStartedAt: p.pause_started_at } : null;
+    const presence = presences.find((item) => item.user_id === userId);
+
+    return presence
+      ? {
+          pauseType: presence.pause_type,
+          pauseStartedAt: presence.pause_started_at,
+        }
+      : null;
   };
 
-  return { presences, getStatus, getPauseInfo };
+  return {
+    presences,
+    getStatus,
+    getPauseInfo,
+  };
 };

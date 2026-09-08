@@ -171,16 +171,18 @@ const InternalPoliciesPage = () => {
     }
   };
 
-  const handleDelete = async (doc: PolicyDoc) => {
+  const handleDelete = async (policy: PolicyDoc) => {
     if (!isAdmin) return toast.error('Apenas administradores podem excluir');
-    if (!confirm(`Excluir "${doc.title}"?`)) return;
+    if (!confirm(`Excluir "${policy.title}"?`)) return;
+
     try {
-      await deleteDoc(doc(db, 'internal_policies', doc.id));
+      await deleteDoc(doc(db, 'internal_policies', policy.id));
     } catch (error) {
       console.error(error);
       toast.error('Erro ao excluir');
       return;
     }
+
     toast.success('Documento excluído');
     fetchDocs();
   };

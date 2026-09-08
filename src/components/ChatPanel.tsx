@@ -28,10 +28,7 @@ interface ChatPanelProps {
 
 const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   const { currentUser, users } = useApp();
-  const { messages, sendMessage, editMessage } = useChat(
-    currentUser?.username || null,
-    otherUser.username
-  );
+  const { messages, sendMessage, editMessage, getMessagesForChat } = useChat();
 
   const [text, setText] = useState('');
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
@@ -42,6 +39,14 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!currentUser?.id || !otherUser.id) return;
+
+    const unsubscribe = getMessagesForChat(currentUser.id, otherUser.id);
+
+    return () => unsubscribe();
+  }, [currentUser?.id, otherUser.id, getMessagesForChat]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -56,7 +61,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
 
   const handleSend = () => {
     if (!text.trim()) return;
-    sendMessage({ content: text.trim() });
+    sendMessage({ receiverId: otherUser.id, content: text.trim() });
     setText('');
   };
 
@@ -79,6 +84,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
     const reader = new FileReader();
     reader.onload = () => {
       sendMessage({
+        receiverId: otherUser.id,
         content: type === 'image' ? '📷 Imagem' : `📎 ${file.name}`,
         attachmentUrl: reader.result as string,
         attachmentType: type,
@@ -105,6 +111,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
         const reader = new FileReader();
         reader.onload = () => {
           sendMessage({
+            receiverId: otherUser.id,
             content: '🎤 Áudio',
             attachmentUrl: reader.result as string,
             attachmentType: 'audio',
@@ -137,6 +144,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
         const reader = new FileReader();
         reader.onload = () => {
           sendMessage({
+            receiverId: otherUser.id,
             content: '📷 Imagem',
             attachmentUrl: reader.result as string,
             attachmentType: 'image',
@@ -214,27 +222,27 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
             </div>
           ) : (
             <>
-              {msg.attachment_url && !msg.deleted && (
+              {msg.attachmentUrl && !msg.deleted && (
                 <div className="mb-2">
-                  {msg.attachment_type === 'image' && (
+                  {msg.attachmentType === 'image' && (
                     <img
-                      src={msg.attachment_url}
+                      src={msg.attachmentUrl}
                       alt="attachment"
                       className="max-w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-80 transition-opacity"
-                      onClick={() => setEnlargedImage(msg.attachment_url)}
+                      onClick={() => setEnlargedImage(msg.attachmentUrl)}
                     />
                   )}
-                  {msg.attachment_type === 'audio' && (
-                    <audio controls src={msg.attachment_url} className="max-w-full" />
+                  {msg.attachmentType === 'audio' && (
+                    <audio controls src={msg.attachmentUrl} className="max-w-full" />
                   )}
-                  {msg.attachment_type === 'file' && (
+                  {msg.attachmentType === 'file' && (
                     <a
-                      href={msg.attachment_url}
-                      download={msg.attachment_name}
+                      href={msg.attachmentUrl}
+                      download={msg.attachmentName}
                       className="flex items-center gap-2 underline text-xs break-all"
                     >
                       <FileText className="w-4 h-4 shrink-0" />
-                      <span className="min-w-0">{msg.attachment_name}</span>
+                      <span className="min-w-0">{msg.attachmentName}</span>
                     </a>
                   )}
                 </div>

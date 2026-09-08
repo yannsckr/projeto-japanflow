@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -8,7 +8,6 @@ import {
   addDoc,
   updateDoc,
   doc,
-  deleteDoc,
   where,
   Timestamp,
 } from 'firebase/firestore';
@@ -22,77 +21,48 @@ interface MessageData {
   receiverId: string;
   timestamp: Timestamp;
   read: boolean;
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'file' | 'audio';
+  attachmentName?: string;
   edited?: boolean;
   deleted?: boolean;
+}
+
+interface SendMessageInput {
+  content: string;
+  receiverId: string;
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'file' | 'audio';
+  attachmentName?: string;
 }
 
 export const useChat = () => {
   const { currentUser } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
-
-  const userId = currentUser?.id;
-
-  useEffect(() => {
-    if (!userId) {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-      setMessages([]);
-      return;
-    }
-
-    const q = query(
-      collection(db, 'messages'),
-      orderBy('timestamp', 'asc'),
-      where('receiverId', '==', userId)
-    );
-
-    unsubscribeRef.current = onSnapshot(q, (snapshot) => {
-      const fetchedMessages: ChatMessage[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as MessageData;
-        fetchedMessages.push({
-          id: doc.id,
-          content: data.content,
-          senderId: data.senderId,
-          receiverId: data.receiverId,
-          timestamp: data.timestamp.toDate().toISOString(),
-          read: data.read,
-          edited: data.edited,
-          deleted: data.deleted,
-        });
-      });
-      setMessages(fetchedMessages);
-    });
-
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-    };
-  }, [userId]);
 
   const sendMessage = useCallback(
-    async (msg: Omit<ChatMessage, 'id' | 'timestamp' | 'read'>) => {
-      if (!userId) return;
+    async (msg: SendMessageInput) => {
+      if (!currentUser?.id) return;
+
       const newMessage: MessageData = {
-        ...msg,
-        timestamp: Timestamp.fromDate(new Date()),
+        content: msg.content,
+        senderId: currentUser.id,
+        receiverId: msg.receiverId,
+        timestamp: Timestamp.now(),
         read: false,
+        attachmentUrl: msg.attachmentUrl,
+        attachmentType: msg.attachmentType,
+        attachmentName: msg.attachmentName,
       };
+
       try {
         await addDoc(collection(db, 'messages'), newMessage);
-        if (msg.receiverId) {
-          await sendPushToUser(msg.receiverId, 'Nova mensagem', msg.content);
-        }
+        await sendPushToUser(msg.receiverId, 'Nova mensagem', msg.content);
       } catch (error) {
         console.error('Error sending message:', error);
       }
     },
-    [userId]
+    [currentUser?.id]
   );
 
   const editMessage = useCallback(async (messageId: string, newContent: string) => {
@@ -125,31 +95,37 @@ export const useChat = () => {
   const getMessagesForChat = useCallback((user1Id: string, user2Id: string) => {
     const chatQuery = query(
       collection(db, 'messages'),
-      orderBy('timestamp', 'asc'),
       where('senderId', 'in', [user1Id, user2Id]),
-      where('receiverId', 'in', [user1Id, user2Id])
+      orderBy('timestamp', 'asc')
     );
+
     return onSnapshot(chatQuery, (snapshot) => {
       const chatMessages: ChatMessage[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as MessageData;
-        // Ensure that messages are strictly between user1Id and user2Id
-        if (
+
+      snapshot.forEach((messageDoc) => {
+        const data = messageDoc.data() as MessageData;
+
+        const belongsToChat =
           (data.senderId === user1Id && data.receiverId === user2Id) ||
-          (data.senderId === user2Id && data.receiverId === user1Id)
-        ) {
-          chatMessages.push({
-            id: doc.id,
-            content: data.content,
-            senderId: data.senderId,
-            receiverId: data.receiverId,
-            timestamp: data.timestamp.toDate().toISOString(),
-            read: data.read,
-            edited: data.edited,
-            deleted: data.deleted,
-          });
-        }
+          (data.senderId === user2Id && data.receiverId === user1Id);
+
+        if (!belongsToChat) return;
+
+        chatMessages.push({
+          id: messageDoc.id,
+          content: data.content,
+          senderId: data.senderId,
+          receiverId: data.receiverId,
+          timestamp: data.timestamp.toDate().toISOString(),
+          attachmentUrl: data.attachmentUrl,
+          attachmentType: data.attachmentType,
+          attachmentName: data.attachmentName,
+          edited: data.edited,
+          deleted: data.deleted,
+          read: data.read,
+        });
       });
+
       setMessages(chatMessages);
     });
   }, []);
