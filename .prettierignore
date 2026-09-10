@@ -1,0 +1,6 @@
+.agents/
+.claude/
+functions/
+supabase/
+dist/
+node_modules/

@@ -300,9 +300,10 @@ const AdminBackfillImagesPage = () => {
         <h1 className="text-2xl font-bold">Backfill de Imagens (WebP)</h1>
       </div>
       <p className="text-sm text-muted-foreground">
-        Escaneia imagens JPEG/PNG já presentes no Cloudflare R2. Neste estágio, arquivos históricos são preservados sem conversão destrutiva; novos uploads já chegam comprimidos em WebP pelo cliente. O progresso é salvo no navegador a cada
-        arquivo — você pode atualizar a página ou parar, e ao voltar basta clicar em{' '}
-        <strong>Continuar</strong>.
+        Escaneia imagens JPEG/PNG já presentes no Cloudflare R2. Neste estágio, arquivos históricos
+        são preservados sem conversão destrutiva; novos uploads já chegam comprimidos em WebP pelo
+        cliente. O progresso é salvo no navegador a cada arquivo — você pode atualizar a página ou
+        parar, e ao voltar basta clicar em <strong>Continuar</strong>.
       </p>
 
       {resumedAt && (

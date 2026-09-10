@@ -12,7 +12,7 @@
   "r2_buckets": [
     {
       "binding": "ATTACHMENTS",
-      "bucket_name": "japanbucket"
-    }
-  ]
+      "bucket_name": "japanbucket",
+    },
+  ],
 }
