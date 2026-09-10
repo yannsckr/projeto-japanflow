@@ -1,14 +1,23 @@
 // src/lib/signedUrl.ts
-// Compatibilidade com a API antiga de signed URL.
-// No Firebase Storage, o download URL já contém um token de acesso e não expira por TTL do cliente.
-import { getDownloadURL, getStorage, ref } from 'firebase/storage';
+// Compatibilidade entre URLs antigas (Supabase/Firebase) e novos arquivos no R2.
+import { API_BASE_URL, storageFileUrl } from '@/lib/api';
 
 const BUCKET_DEFAULT = 'attachments';
-const TTL_SECONDS = 60 * 60;
-const cache = new Map<string, { url: string; expiresAt: number }>();
 
 export function pathFromPublicUrl(publicUrl: string, bucket = BUCKET_DEFAULT): string | null {
   if (!publicUrl) return null;
+
+  // Novas URLs servidas pelo JapanFlow Worker/R2.
+  try {
+    const url = new URL(publicUrl);
+    const workerBase = new URL(API_BASE_URL);
+
+    if (url.origin === workerBase.origin && url.pathname.startsWith('/storage/file/')) {
+      return decodeURIComponent(url.pathname.slice('/storage/file/'.length));
+    }
+  } catch {
+    // Pode ser um path interno.
+  }
 
   // URLs antigas do Supabase.
   const supabaseMarker = `/storage/v1/object/public/${bucket}/`;
@@ -17,8 +26,7 @@ export function pathFromPublicUrl(publicUrl: string, bucket = BUCKET_DEFAULT): s
     return decodeURIComponent(publicUrl.slice(supabaseIdx + supabaseMarker.length).split('?')[0]);
   }
 
-  // Firebase Storage:
-  // https://firebasestorage.googleapis.com/v0/b/<bucket>/o/attachments%2Farquivo.pdf?...
+  // URLs antigas do Firebase Storage.
   try {
     const url = new URL(publicUrl);
     const marker = '/o/';
@@ -27,7 +35,7 @@ export function pathFromPublicUrl(publicUrl: string, bucket = BUCKET_DEFAULT): s
       return decodeURIComponent(url.pathname.slice(idx + marker.length));
     }
   } catch {
-    // Não é URL válida; pode já ser um path interno.
+    // Não é URL válida.
   }
 
   return null;
@@ -36,35 +44,32 @@ export function pathFromPublicUrl(publicUrl: string, bucket = BUCKET_DEFAULT): s
 export async function getSignedUrl(
   pathOrPublicUrl: string,
   bucket = BUCKET_DEFAULT,
-  ttl = TTL_SECONDS
+  _ttl = 60 * 60
 ): Promise<string> {
   if (!pathOrPublicUrl) return pathOrPublicUrl;
 
-  // URLs HTTP que não são reconhecidas como Storage permanecem intactas.
-  const path = pathOrPublicUrl.startsWith('http')
-    ? pathFromPublicUrl(pathOrPublicUrl, bucket)
-    : pathOrPublicUrl;
+  // URLs antigas continuam intactas até a migração histórica.
+  if (/^https?:\/\//i.test(pathOrPublicUrl)) {
+    try {
+      const url = new URL(pathOrPublicUrl);
+      const workerBase = new URL(API_BASE_URL);
 
-  if (!path) return pathOrPublicUrl;
+      if (url.origin === workerBase.origin && url.pathname.startsWith('/storage/file/')) {
+        return pathOrPublicUrl;
+      }
+    } catch {
+      return pathOrPublicUrl;
+    }
 
-  const key = `${bucket}:${path}`;
-  const cached = cache.get(key);
-  const now = Date.now();
-
-  if (cached && cached.expiresAt > now + 30_000) {
-    return cached.url;
-  }
-
-  try {
-    const storage = getStorage();
-    const url = await getDownloadURL(ref(storage, path));
-    cache.set(key, {
-      url,
-      expiresAt: now + ttl * 1000,
-    });
-    return url;
-  } catch (error) {
-    console.warn('Não foi possível gerar URL do Firebase Storage:', error);
     return pathOrPublicUrl;
   }
+
+  const path = pathOrPublicUrl.replace(/^\/+/, '');
+
+  // Evita transformar paths de buckets legados diferentes.
+  if (!path.startsWith(`${bucket}/`) && bucket === BUCKET_DEFAULT) {
+    return storageFileUrl(path.startsWith('attachments/') ? path : `attachments/${path}`);
+  }
+
+  return storageFileUrl(path);
 }

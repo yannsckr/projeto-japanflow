@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Calculator, Loader2, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { freightCalcApi } from '@/lib/api';
 
 const formatBRL = (v: number) =>
   isFinite(v) ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—';
@@ -414,21 +414,9 @@ function FreightCalculator() {
     setError(null);
     setResult(null);
     try {
-      const functions = getFunctions();
-      const freightCalc = httpsCallable<{ address: string }, FreightResult & { error?: string }>(
-        functions,
-        'freightCalc'
-      );
-
-      const response = await freightCalc({
+      const data = await freightCalcApi({
         address: address.trim(),
       });
-
-      const data = response.data;
-
-      if (data?.error) {
-        throw new Error(data.error);
-      }
 
       setResult(data as FreightResult);
     } catch (e: any) {

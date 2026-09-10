@@ -18,6 +18,7 @@ import { ptBR } from 'date-fns/locale';
 import { Plus, Pencil, Trash2, CalendarDays, Clock, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import AICalendarCreator from '@/components/AICalendarCreator';
 
 interface EmployeeCalendarProps {
   userId: string;
@@ -226,17 +227,20 @@ const EmployeeCalendar = ({ userId }: EmployeeCalendarProps) => {
                 ? format(selectedDate, "dd 'de' MMMM", { locale: ptBR })
                 : 'Selecione uma data'}
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                resetForm();
-                setShowAddDialog(true);
-              }}
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              Novo
-            </Button>
+            <div className="flex items-center gap-2">
+              <AICalendarCreator />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  resetForm();
+                  setShowAddDialog(true);
+                }}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Novo
+              </Button>
+            </div>
           </div>
 
           {eventsForDate.length === 0 ? (

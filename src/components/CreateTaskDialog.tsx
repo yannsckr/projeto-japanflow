@@ -25,10 +25,10 @@ import { Switch } from '@/components/ui/switch';
 
 import { db } from '@/lib/firebase';
 import { addDoc, collection, onSnapshot, orderBy, query, Timestamp } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { transcribeImageApi } from '@/lib/api';
 
 interface CreateTaskDialogProps {
   preselectedAssignee?: string;
@@ -276,14 +276,8 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
           setOcrImage(base64);
           setOcrLoading(true);
           try {
-            const functions = getFunctions();
-            const transcribeImage = httpsCallable<{ imageBase64: string }, { text?: string }>(
-              functions,
-              'transcribeImage'
-            );
-
-            const resp = await transcribeImage({ imageBase64: base64 });
-            const transcribed = resp.data?.text || '';
+            const resp = await transcribeImageApi({ imageBase64: base64 });
+            const transcribed = resp.text || '';
             setDescription((prev) => (prev ? `${prev}\n\n${transcribed}` : transcribed));
             toast.success('Texto transcrito com sucesso!');
           } catch (err) {

@@ -12,7 +12,6 @@ import {
   Timestamp,
   updateDoc,
 } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import { Plus, Play, FileText, CheckCircle2, Trash2, X, Camera, Loader2 } from 'lucide-react';
 import { Sector } from '@/types';
+import { parseInventoryLabelApi } from '@/lib/api';
 
 const MOISES_ID = 'emp-10';
 
@@ -76,14 +76,10 @@ const InventoryPage = () => {
     setScanningIdx(idx);
     try {
       const { base64, mimeType } = await fileToBase64(file);
-      const parseInventoryLabel = httpsCallable<
-        { imageBase64: string; mimeType: string },
-        { type?: string; code?: string; error?: string }
-      >(getFunctions(), 'parseInventoryLabel');
-
-      const response = await parseInventoryLabel({ imageBase64: base64, mimeType });
-      const data = response.data;
-      if (data?.error) throw new Error(data.error);
+      const data = await parseInventoryLabelApi({
+        imageBase64: base64,
+        mimeType,
+      });
       const type = (data?.type || '').toString();
       const code = (data?.code || '').toString();
       if (!type && !code) {

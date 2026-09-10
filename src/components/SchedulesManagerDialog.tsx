@@ -19,7 +19,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { useApp } from '@/contexts/AppContext';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useWorkSchedules, upsertSchedule, deleteSchedule } from '@/hooks/useWorkSchedules';
 import {
   DAY_KEYS,
@@ -34,6 +33,7 @@ import {
   normalizeTimeInput,
 } from '@/lib/workSchedule';
 import { Calendar, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { parseScheduleApi } from '@/lib/api';
 
 const SchedulesManagerDialog = () => {
   const { users, currentUser } = useApp();
@@ -113,27 +113,16 @@ const SchedulesManagerDialog = () => {
     try {
       const userName = users.find((u) => u.id === selectedUserId)?.name;
 
-      const functions = getFunctions();
-      const parseSchedule = httpsCallable<
-        {
-          imageBase64?: string;
-          mimeType?: string;
-          text?: string;
-          userName?: string;
-          referenceWeekStart: string;
-        },
-        {
-          weeks?: Array<{ weekStart?: string; days: Partial<WeekDays> }>;
-        }
-      >(functions, 'parseSchedule');
-
-      const result = await parseSchedule({
+      const result = await parseScheduleApi({
         ...payload,
         userName,
         referenceWeekStart: weekStart,
       });
 
-      const weeks = result.data?.weeks || [];
+      const weeks = (result.weeks || []) as Array<{
+        weekStart?: string;
+        days: Partial<WeekDays>;
+      }>;
 
       if (!weeks.length) {
         toast({ title: 'IA não retornou dados', variant: 'destructive' });

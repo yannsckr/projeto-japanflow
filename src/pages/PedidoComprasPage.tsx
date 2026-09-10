@@ -12,7 +12,6 @@ import {
   Timestamp,
   updateDoc,
 } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -34,6 +33,7 @@ import {
 import { toast } from 'sonner';
 import { Plus, Trash2, FileUp, Loader2, Eye, Pencil, Printer, Save } from 'lucide-react';
 import logoImg from '@/assets/logo_japan_imports.png';
+import { parsePurchaseOrderApi } from '@/lib/api';
 
 interface Supplier {
   id: string;
@@ -190,18 +190,16 @@ const PedidoComprasPage = () => {
         reader.onerror = rej;
         reader.readAsDataURL(file);
       });
-      const parsePurchaseOrder = httpsCallable<
-        { fileBase64: string; mimeType: string },
-        { supplier?: Partial<Supplier>; items?: PurchaseItem[]; error?: string }
-      >(getFunctions(), 'parsePurchaseOrder');
-
-      const response = await parsePurchaseOrder({
+      const parsed = (await parsePurchaseOrderApi({
         fileBase64: dataUrl,
         mimeType: file.type,
-      });
-
-      const parsed = response.data;
-      if (parsed?.error) throw new Error(parsed.error);
+      })) as {
+        supplier?: Partial<Supplier> & {
+          razaoSocial?: string;
+          municipioUf?: string;
+        };
+        items?: PurchaseItem[];
+      };
       if (parsed.supplier) {
         setSupplierId('new');
         setSupplierData({

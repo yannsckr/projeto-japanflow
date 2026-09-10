@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "japanflow-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-09",
+  "vars": {
+    "GEMINI_MODEL": "gemini-3.8-flash",
+    "ALLOWED_ORIGIN": "*",
+    "FIREBASE_PROJECT_ID": "japanflow-9b196",
+    "FIREBASE_API_KEY": "AIzaSyBd92G-2dP1zfttU3q2rxhKzlZFR4ZBfuY"
+  },
+
+  "r2_buckets": [
+    {
+      "binding": "ATTACHMENTS",
+      "bucket_name": "japanbucket"
+    }
+  ]
+}

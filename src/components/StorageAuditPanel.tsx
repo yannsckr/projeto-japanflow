@@ -1,7 +1,7 @@
-// src/components/StorageAuditPanel.tsx
 import { useState, useEffect } from 'react';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import {
+  addDoc,
   collection,
   doc,
   getDocs,
@@ -10,15 +10,15 @@ import {
   query,
   where,
   writeBatch,
+  Timestamp,
 } from 'firebase/firestore';
-import { deleteObject, ref } from 'firebase/storage';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ShieldAlert, Trash2, RefreshCw, FileSearch } from 'lucide-react';
 import { toast } from 'sonner';
+import { deleteStorageFileApi, storageAuditReportApi } from '@/lib/api';
 
 interface AuditResult {
   runId: string;
@@ -122,23 +122,49 @@ const StorageAuditPanel = () => {
     setResult(null);
 
     try {
-      const functions = getFunctions();
-      const storageAuditReport = httpsCallable<
-        { writeLog: boolean },
-        AuditResult & { error?: string }
-      >(functions, 'storageAuditReport');
+      const assetsSnapshot = await getDocs(collection(db, 'image_assets'));
+      const knownPaths = assetsSnapshot.docs
+        .map((assetDoc) => assetDoc.data().storage_path)
+        .filter((path): path is string => typeof path === 'string' && path.length > 0);
 
-      const response = await storageAuditReport({
-        writeLog: true,
-      });
-
-      const data = response.data;
-
-      if (data?.error) {
-        throw new Error(data.error);
-      }
+      const data = await storageAuditReportApi({ knownPaths });
 
       setResult(data);
+
+      // O Worker compara o R2; o cliente autenticado grava o log no Firestore.
+      // Fazemos em lotes para respeitar o limite de 500 operações do batch.
+      for (let i = 0; i < data.orphanFiles.length; i += 450) {
+        const chunk = data.orphanFiles.slice(i, i + 450);
+        const batch = writeBatch(db);
+
+        for (const file of chunk) {
+          const logRef = doc(collection(db, 'storage_audit_log'));
+          batch.set(logRef, {
+            run_id: data.runId,
+            storage_path: file.path,
+            size_bytes: file.size,
+            category: 'orphan',
+            action: 'reported',
+            storage_provider: 'cloudflare-r2',
+            created_at: Timestamp.now(),
+          });
+        }
+
+        await batch.commit();
+      }
+
+      // Mantém ao menos uma linha para registrar auditorias sem órfãos.
+      if (data.orphanFiles.length === 0) {
+        await addDoc(collection(db, 'storage_audit_log'), {
+          run_id: data.runId,
+          storage_path: '',
+          size_bytes: 0,
+          category: 'summary',
+          action: 'clean',
+          storage_provider: 'cloudflare-r2',
+          created_at: Timestamp.now(),
+        });
+      }
 
       toast.success(`Auditoria concluída: ${data.orphans} órfãos / ${data.totalFiles} arquivos.`);
 
@@ -181,17 +207,11 @@ const StorageAuditPanel = () => {
 
         for (const row of currentBatch) {
           try {
-            // Os novos uploads usam caminhos como:
-            // attachments/tasks/...
-            await deleteObject(ref(storage, row.storage_path));
+            // Os novos uploads usam caminhos como attachments/tasks/...
+            await deleteStorageFileApi(row.storage_path);
             deletedRows.push(row);
           } catch (error: any) {
-            // Se o arquivo já não existe, podemos considerar o órfão resolvido.
-            if (error?.code === 'storage/object-not-found') {
-              deletedRows.push(row);
-              continue;
-            }
-
+            // DELETE no R2 é idempotente; falhas reais chegam como erro HTTP.
             console.error(`Erro ao apagar ${row.storage_path}:`, error);
           }
         }
@@ -218,7 +238,7 @@ const StorageAuditPanel = () => {
       }
 
       if (done === pendingRows.length) {
-        toast.success(`${done} arquivos órfãos removidos do Storage.`);
+        toast.success(`${done} arquivos órfãos removidos do R2.`);
       } else {
         toast.warning(
           `${done} de ${pendingRows.length} arquivos foram removidos. Verifique o console para os que falharam.`
@@ -229,7 +249,7 @@ const StorageAuditPanel = () => {
       await loadLatestRun();
     } catch (error) {
       console.error('Erro ao apagar órfãos:', error);
-      toast.error('Erro durante a limpeza do Storage');
+      toast.error('Erro durante a limpeza do R2');
     } finally {
       setDeleting(false);
     }
@@ -248,13 +268,13 @@ const StorageAuditPanel = () => {
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <ShieldAlert className="w-4 h-4" />
-          Auditoria de Storage (Órfãos)
+          Auditoria do R2 (Órfãos)
         </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Lista arquivos presentes no Firebase Storage que <strong>não</strong> têm registro em{' '}
+          Lista arquivos presentes no Cloudflare R2 que <strong>não</strong> têm registro em{' '}
           <code>image_assets</code> (uploads esquecidos, antigos, ou que falharam ao registrar). O
           relatório fica salvo em <code>storage_audit_log</code> para auditoria.
         </p>
@@ -275,7 +295,7 @@ const StorageAuditPanel = () => {
         {result && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm border rounded-md p-3">
             <div>
-              <div className="text-muted-foreground">Arquivos no Storage</div>
+              <div className="text-muted-foreground">Arquivos no R2</div>
               <div className="font-bold">{result.totalFiles}</div>
             </div>
 

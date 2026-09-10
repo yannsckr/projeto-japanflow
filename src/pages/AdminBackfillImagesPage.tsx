@@ -3,8 +3,6 @@ import { Navigate } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { getMetadata, getStorage, listAll as listStorageAll, ref } from 'firebase/storage';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -14,9 +12,10 @@ import { Switch } from '@/components/ui/switch';
 import { Play, Square, RefreshCw, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import StorageAuditPanel from '@/components/StorageAuditPanel';
+import { backfillWebpApi, listAllStorageFilesApi } from '@/lib/api';
 
 const BUCKET = 'attachments';
-const SKIP_PREFIXES = ['thumbs/'];
+const SKIP_PREFIXES = ['attachments/thumbs/', 'thumbs/'];
 const IMAGE_EXT = /\.(jpe?g|png)$/i;
 const STORAGE_KEY = 'backfill-webp-state-v2';
 
@@ -83,41 +82,16 @@ function clearPersisted() {
   } catch {}
 }
 
-async function listAll(prefix = ''): Promise<StorageFile[]> {
-  const storage = getStorage();
-  const out: StorageFile[] = [];
-  const stack = [ref(storage, prefix)];
+async function listAll(prefix = 'attachments/'): Promise<StorageFile[]> {
+  const objects = await listAllStorageFilesApi(prefix || 'attachments/');
 
-  while (stack.length) {
-    const current = stack.pop()!;
-    const result = await listStorageAll(current);
-
-    for (const folder of result.prefixes) {
-      if (SKIP_PREFIXES.some((p) => folder.fullPath.startsWith(p))) continue;
-      stack.push(folder);
-    }
-
-    for (const itemRef of result.items) {
-      if (SKIP_PREFIXES.some((p) => itemRef.fullPath.startsWith(p))) continue;
-
-      try {
-        const metadata = await getMetadata(itemRef);
-        out.push({
-          path: itemRef.fullPath,
-          size: metadata.size ?? null,
-          mimetype: metadata.contentType ?? null,
-        });
-      } catch {
-        out.push({
-          path: itemRef.fullPath,
-          size: null,
-          mimetype: null,
-        });
-      }
-    }
-  }
-
-  return out;
+  return objects
+    .filter((object) => !SKIP_PREFIXES.some((p) => object.path.startsWith(p)))
+    .map((object) => ({
+      path: object.path,
+      size: object.size,
+      mimetype: object.mimetype,
+    }));
 }
 
 function isConvertible(f: StorageFile): boolean {
@@ -174,7 +148,7 @@ const AdminBackfillImagesPage = () => {
   const scan = async () => {
     setScanning(true);
     try {
-      const all = await listAll('');
+      const all = await listAll('attachments/');
       const candidates = all.filter(isConvertible);
       setFiles(candidates);
       filesRef.current = candidates;
@@ -216,20 +190,7 @@ const AdminBackfillImagesPage = () => {
           }
         }
 
-        const backfillWebp = httpsCallable<
-          {
-            mode: 'paths';
-            paths: string[];
-            maxDimension: number;
-            quality: number;
-            updateAssetsRow: boolean;
-            inPlace: boolean;
-            skipIfLarger: boolean;
-          },
-          { results?: any[]; error?: string }
-        >(getFunctions(), 'backfillWebp');
-
-        const response = await backfillWebp({
+        const response = await backfillWebpApi({
           mode: 'paths',
           paths: [file.path],
           maxDimension,
@@ -239,11 +200,7 @@ const AdminBackfillImagesPage = () => {
           skipIfLarger: true,
         });
 
-        if (response.data?.error) {
-          throw new Error(response.data.error);
-        }
-
-        const result = response.data?.results?.[0];
+        const result = response.results?.[0];
         if (!result) throw new Error('resposta vazia do backend');
 
         if (result.status === 'ok') {
@@ -343,9 +300,7 @@ const AdminBackfillImagesPage = () => {
         <h1 className="text-2xl font-bold">Backfill de Imagens (WebP)</h1>
       </div>
       <p className="text-sm text-muted-foreground">
-        Converte as imagens antigas (JPEG/PNG) no bucket <code>attachments</code> para WebP
-        comprimido pelo backend, mantendo o mesmo caminho (as URLs existentes continuam funcionando)
-        e atualizando a tabela <code>image_assets</code>. O progresso é salvo no navegador a cada
+        Escaneia imagens JPEG/PNG já presentes no Cloudflare R2. Neste estágio, arquivos históricos são preservados sem conversão destrutiva; novos uploads já chegam comprimidos em WebP pelo cliente. O progresso é salvo no navegador a cada
         arquivo — você pode atualizar a página ou parar, e ao voltar basta clicar em{' '}
         <strong>Continuar</strong>.
       </p>

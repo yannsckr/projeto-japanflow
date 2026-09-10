@@ -6,8 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sparkles, Loader2, Check, X, CalendarDays, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sector, SECTOR_LABELS } from '@/types';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { cn } from '@/lib/utils';
+import { parseCalendarEventsApi } from '@/lib/api';
 
 interface ParsedEvent {
   title: string;
@@ -38,27 +38,13 @@ const AICalendarCreator = () => {
       const sectors = Object.entries(SECTOR_LABELS).map(([k, v]) => ({ id: k, label: v }));
       const usersList = users.map((u) => ({ id: u.id, name: u.name, sectors: u.sectors }));
 
-      const functions = getFunctions();
-      const parseCalendarEvents = httpsCallable<
-        {
-          text: string;
-          users: Array<{ id: string; name: string; sectors?: Sector[] }>;
-          sectors: Array<{ id: string; label: string }>;
-        },
-        { events?: any[]; error?: string }
-      >(functions, 'parseCalendarEvents');
-
-      const result = await parseCalendarEvents({
+      const data = await parseCalendarEventsApi({
         text: text.trim(),
         users: usersList,
         sectors,
       });
 
-      const data = result.data;
-
-      if (data?.error) throw new Error(data.error);
-
-      const events = (data.events || []).map((e: any) => ({ ...e, selected: true }));
+      const events = (data.events || []).map((e) => ({ ...e, selected: true }));
       if (events.length === 0) {
         toast.error('Nenhum evento identificado no texto');
         return;
