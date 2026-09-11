@@ -11,13 +11,17 @@ interface ApiErrorPayload {
 }
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
-  const data = (await response.json().catch(() => ({}))) as T | ApiErrorPayload;
+  const data = (await response.json().catch(() => ({}))) as unknown;
 
   if (!response.ok) {
     const message =
-      'error' in data && typeof data.error === 'string'
-        ? data.error
+      typeof data === 'object' &&
+      data !== null &&
+      'error' in data &&
+      typeof (data as ApiErrorPayload).error === 'string'
+        ? (data as ApiErrorPayload).error!
         : `Erro HTTP ${response.status}`;
+
     throw new Error(message);
   }
 
