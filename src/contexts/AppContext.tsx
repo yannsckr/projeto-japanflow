@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { CreateUserInput } from '@/types';
 import {
   User,
   Task,
@@ -11,13 +12,13 @@ import {
   Sector,
 } from '@/types';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot, setDoc, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { useFirebaseTasks } from '@/hooks/useFirebaseTasks';
 import { useFirebaseCalendar } from '@/hooks/useFirebaseCalendar';
 import { useFirebaseNotifications } from '@/hooks/useFirebaseNotifications';
 import { useFirebaseUsers } from '@/hooks/useFirebaseUsers';
-import { saveSession, loadSession, clearSession } from '@/hooks/useSessionPersistence';
 import { sendPushToUser } from '@/hooks/usePushNotifications';
+import { loginUser, logoutUser, subscribeToAuthChanges } from '@/lib/authService';
 
 interface AppContextType {
   currentUser: User | null;
@@ -28,14 +29,15 @@ interface AppContextType {
   messages: ChatMessage[];
   notifications: Notification[];
   calendarEvents: CalendarEvent[];
-  login: (username: string, password: string) => boolean;
-  logout: () => void;
-  addUser: (user: Omit<User, 'id'>) => void;
+  authLoading: boolean;
+  login: (username: string, password: string) => Promise<User>;
+  logout: () => Promise<void>;
+  addUser: (user: CreateUserInput) => Promise<void>;
   updateUser: (
     userId: string,
-    updates: Partial<Pick<User, 'name' | 'username' | 'password' | 'sectors' | 'function'>>
-  ) => void;
-  deleteUser: (userId: string) => void;
+    updates: Partial<Pick<User, 'name' | 'role' | 'sectors' | 'function' | 'active' | 'avatar'>>
+  ) => Promise<void>;
+  deleteUser: (userId: string) => Promise<void>;
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'statusHistory'>) => void;
   updateTask: (
     taskId: string,
@@ -83,7 +85,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const location = useLocation();
   const isLoginRoute = location.pathname === '/login';
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => loadSession());
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sectorAssignEnabled, setSectorAssignEnabled] = useState<boolean>(() => {
     const stored = localStorage.getItem('sectorAssignEnabled');
@@ -97,9 +100,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('sectorAssignEnabled', String(enabled));
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthChanges(
+      (user) => setCurrentUser(user),
+      () => setAuthLoading(false)
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const dataEnabled = Boolean(currentUser) && !isLoginRoute;
+
   // Monitorar configurações globais em tempo real no Firestore (app_settings)
   useEffect(() => {
-    if (isLoginRoute) return;
+    if (!dataEnabled) return;
 
     const settingsRef = doc(db, 'app_settings', 'global');
     const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
@@ -115,7 +129,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => unsubscribe();
-  }, [isLoginRoute]);
+  }, [dataEnabled]);
 
   const persistSetting = useCallback(async (key: string, value: boolean) => {
     const settingsRef = doc(db, 'app_settings', 'global');
@@ -143,17 +157,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   // Hooks do Firebase
-  const firebaseUsers = useFirebaseUsers();
+  const firebaseUsers = useFirebaseUsers(Boolean(currentUser));
   const users = firebaseUsers.users;
 
   const usersForAutoAssign = users.map((u) => ({ id: u.id, role: u.role, sectors: u.sectors }));
-  const firebaseTasks = useFirebaseTasks(usersForAutoAssign, !isLoginRoute);
+  const firebaseTasks = useFirebaseTasks(usersForAutoAssign, dataEnabled);
   const tasks = firebaseTasks.tasks;
 
-  const firebaseCalendar = useFirebaseCalendar(!isLoginRoute);
+  const firebaseCalendar = useFirebaseCalendar(dataEnabled);
   const calendarEvents = firebaseCalendar.events;
 
-  const firebaseNotifications = useFirebaseNotifications(!isLoginRoute);
+  const firebaseNotifications = useFirebaseNotifications(dataEnabled);
   const notifications = firebaseNotifications.notifications;
 
   const prevNotifCount = useRef(0);
@@ -174,13 +188,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
-    if (!currentUser || isLoginRoute) return;
+    if (!currentUser || !dataEnabled) return;
     const userNotifs = notifications.filter((n) => n.userId === currentUser.id && !n.read);
     if (userNotifs.length > prevNotifCount.current) {
       playNotificationSound();
     }
     prevNotifCount.current = userNotifs.length;
-  }, [notifications, currentUser, playNotificationSound, isLoginRoute]);
+  }, [notifications, currentUser, playNotificationSound, dataEnabled]);
 
   // Sincronizar currentUser quando a lista de usuários atualizar
   useEffect(() => {
@@ -188,62 +202,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = users.find((u) => u.id === currentUser.id);
     if (updated && JSON.stringify(updated) !== JSON.stringify(currentUser)) {
       setCurrentUser(updated);
-      saveSession(updated);
     }
   }, [users, currentUser]);
 
-  const login = useCallback(
-    (username: string, password: string) => {
-      const normalizedUsername = username.trim().toLowerCase();
-      const normalizedPassword = password.trim();
-      const user = users.find(
-        (u) =>
-          u.username.trim().toLowerCase() === normalizedUsername &&
-          (u.password === password || u.password === normalizedPassword)
-      );
-      if (user) {
-        setCurrentUser(user);
-        saveSession(user);
-        return true;
-      }
-      return false;
-    },
-    [users]
-  );
+  const login = useCallback(async (username: string, password: string) => {
+    const user = await loginUser(username, password);
+    setCurrentUser(user);
+    return user;
+  }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     setCurrentUser(null);
-    clearSession();
+    await logoutUser();
   }, []);
 
   const addUser = useCallback(
-    (user: Omit<User, 'id'>) => {
-      firebaseUsers.addUser(user);
+    async (user: CreateUserInput) => {
+      await firebaseUsers.addUser(user);
     },
     [firebaseUsers]
   );
 
   const updateUser = useCallback(
-    (
+    async (
       userId: string,
-      updates: Partial<Pick<User, 'name' | 'username' | 'password' | 'sectors' | 'function'>>
+      updates: Partial<Pick<User, 'name' | 'role' | 'sectors' | 'function' | 'active' | 'avatar'>>
     ) => {
-      firebaseUsers.updateUser(userId, updates);
+      await firebaseUsers.updateUser(userId, updates);
     },
     [firebaseUsers]
   );
 
   const deleteUser = useCallback(
-    (userId: string) => {
-      firebaseUsers.deleteUser(userId);
+    async (userId: string) => {
+      await firebaseUsers.deleteUser(userId);
     },
     [firebaseUsers]
   );
 
   const updateProfile = useCallback(
-    (updates: { avatar?: string; backgroundColor?: string }) => {
+    async (updates: { avatar?: string; backgroundColor?: string }) => {
       if (!currentUser) return;
-      firebaseUsers.updateProfile(currentUser.id, updates);
+      await firebaseUsers.updateProfile(currentUser.id, updates);
     },
     [currentUser, firebaseUsers]
   );
@@ -414,6 +414,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider
       value={{
         currentUser,
+        authLoading,
         users,
         usersLoading: firebaseUsers.loading,
         usersError: firebaseUsers.error,

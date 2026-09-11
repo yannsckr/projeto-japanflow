@@ -1,9 +1,12 @@
+import { auth } from '@/lib/firebase';
+import { CreateUserInput, User } from '@/types';
+
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8787').replace(
   /\/+$/,
   ''
 );
 
-const REQUEST_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 const STORAGE_TIMEOUT_MS = 60_000;
 
 interface ApiErrorPayload {
@@ -28,6 +31,18 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
+async function getAuthHeaders(extra?: HeadersInit): Promise<Headers> {
+  const headers = new Headers(extra);
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('Sessão expirada. Entre novamente.');
+  }
+
+  headers.set('Authorization', `Bearer ${await user.getIdToken()}`);
+  return headers;
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -35,7 +50,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -45,6 +60,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('A IA/API demorou demais para responder. Tente novamente.');
     }
+
     throw error;
   } finally {
     clearTimeout(timeoutId);
@@ -59,6 +75,8 @@ function encodeStoragePath(path: string): string {
     .join('/');
 }
 
+// Leitura continua por URL direta para não quebrar <img>, anexos e URLs já salvas.
+// Upload, listagem e exclusão já exigem Firebase ID Token no Worker.
 export function storageFileUrl(path: string): string {
   return `${API_BASE_URL}/storage/file/${encodeStoragePath(path)}`;
 }
@@ -102,9 +120,9 @@ export async function uploadStorageFileApi(
   try {
     const response = await fetch(`${API_BASE_URL}/storage/upload?${params.toString()}`, {
       method: 'POST',
-      headers: {
+      headers: await getAuthHeaders({
         'Content-Type': file.type || 'application/octet-stream',
-      },
+      }),
       body: file,
       signal: controller.signal,
     });
@@ -114,6 +132,7 @@ export async function uploadStorageFileApi(
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('O upload demorou demais para responder. Tente novamente.');
     }
+
     throw error;
   } finally {
     clearTimeout(timeoutId);
@@ -125,6 +144,7 @@ export async function deleteStorageFileApi(
 ): Promise<{ ok: boolean; storagePath: string }> {
   const response = await fetch(`${API_BASE_URL}/storage/file/${encodeStoragePath(storagePath)}`, {
     method: 'DELETE',
+    headers: await getAuthHeaders(),
   });
 
   return parseApiResponse(response);
@@ -141,7 +161,9 @@ export async function listStorageFilesApi(
   const params = new URLSearchParams({ prefix });
   if (cursor) params.set('cursor', cursor);
 
-  const response = await fetch(`${API_BASE_URL}/storage/list?${params.toString()}`);
+  const response = await fetch(`${API_BASE_URL}/storage/list?${params.toString()}`, {
+    headers: await getAuthHeaders(),
+  });
   return parseApiResponse(response);
 }
 
@@ -160,6 +182,10 @@ export async function listAllStorageFilesApi(
   return files;
 }
 
+export async function adminCreateUserApi(input: CreateUserInput): Promise<{ user: User }> {
+  return postJson<{ user: User }>('/admin/users/create', input);
+}
+
 export interface ParsedCalendarEvent {
   title: string;
   description?: string;
@@ -170,11 +196,32 @@ export interface ParsedCalendarEvent {
   targetInfo: string;
 }
 
+export interface ParsedTaskItem {
+  kind: 'task';
+  title: string;
+  description: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  priority: 'high' | 'medium' | 'low';
+  deadline: string | null;
+  time: string | null;
+}
+
+export interface ParsedCalendarItem extends ParsedCalendarEvent {
+  kind: 'calendar';
+}
+
+export type ParsedAiItem = ParsedTaskItem | ParsedCalendarItem;
+
 export const parseCalendarEventsApi = (input: {
   text: string;
   users: unknown[];
   sectors: unknown[];
-}) => postJson<{ events: ParsedCalendarEvent[] }>('/parse-calendar-events', input);
+}) =>
+  postJson<{
+    items: ParsedAiItem[];
+    events: ParsedCalendarEvent[];
+  }>('/parse-calendar-events', input);
 
 export const parseScheduleApi = (input: {
   imageBase64?: string;

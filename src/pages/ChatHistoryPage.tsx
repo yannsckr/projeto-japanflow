@@ -101,7 +101,7 @@ const ChatHistoryPage = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const usersSnapshot = await getDocs(collection(db, 'app_users'));
+      const usersSnapshot = await getDocs(collection(db, 'users'));
       const nameMap: Record<string, string> = {};
       const usernameById = new Map<string, string>();
 

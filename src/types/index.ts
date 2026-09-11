@@ -44,12 +44,23 @@ export interface User {
   id: string;
   name: string;
   username: string;
-  password: string;
   role: UserRole;
   avatar?: string;
   sectors: Sector[];
   function?: string;
   backgroundColor?: string;
+  authUid?: string;
+  authEmail?: string;
+  active: boolean;
+}
+
+export interface CreateUserInput {
+  name: string;
+  username: string;
+  password: string;
+  role: UserRole;
+  sectors: Sector[];
+  function?: string;
 }
 
 export interface StatusHistoryEntry {

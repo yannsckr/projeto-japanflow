@@ -2,18 +2,87 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
-    match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2026, 9, 27);
+    function ownLinkPath() {
+      return /databases/$(database)/documents/auth_links/$(request.auth.uid);
+    }
+
+    function hasOwnLink() {
+      return signedIn() && exists(ownLinkPath());
+    }
+
+    function ownLink() {
+      return get(ownLinkPath()).data;
+    }
+
+    function isActive() {
+      return hasOwnLink() && ownLink().active != false;
+    }
+
+    function isAdmin() {
+      return isActive() && ownLink().role == 'admin';
+    }
+
+    function currentUserId() {
+      return ownLink().user_id;
+    }
+
+    match /auth_links/{uid} {
+      allow read: if isActive() && (request.auth.uid == uid || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isActive();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isActive() &&
+        currentUserId() == userId &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'avatar', 'backgroundColor', 'updated_at'])
+      );
+    }
+
+    match /user_feature_permissions/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /user_tab_permissions/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /task_permissions/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /app_settings/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /freight_destinations/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    // Regra transitória do v1: dados operacionais continuam disponíveis para
+    // usuários ativos. Identidade, permissões e configurações ficam protegidas
+    // pelas regras específicas acima. O endurecimento por coleção entra no backlog.
+    match /{collection}/{document=**} {
+      allow read, write: if isActive()
+        && collection != 'users'
+        && collection != 'auth_links'
+        && collection != 'user_feature_permissions'
+        && collection != 'user_tab_permissions'
+        && collection != 'task_permissions'
+        && collection != 'app_settings'
+        && collection != 'freight_destinations';
     }
   }
 }

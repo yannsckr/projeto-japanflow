@@ -18,12 +18,12 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import logoImg from '@/assets/logo_japanflow.png';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { getClientPublicIp, isIpAllowed } from '@/lib/networkGuard';
 import { userCanAccessExternally } from '@/lib/externalAccess';
 
 const AppLayout = () => {
-  const { currentUser, logout, notifications } = useApp();
+  const { currentUser, authLoading, logout, notifications } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useThemeToggle();
@@ -56,7 +56,7 @@ const AppLayout = () => {
       if (cancelled) return;
 
       if (!allowed) {
-        logout();
+        await logout();
         navigate('/login');
       }
     })();
@@ -65,6 +65,14 @@ const AppLayout = () => {
       cancelled = true;
     };
   }, [currentUser, logout, navigate]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center text-sm text-muted-foreground">
+        Verificando sessão...
+      </div>
+    );
+  }
 
   if (!currentUser) return <Navigate to="/login" replace />;
 
@@ -107,8 +115,8 @@ const AppLayout = () => {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  logout();
+                onClick={async () => {
+                  await logout();
                   navigate('/login');
                 }}
               >

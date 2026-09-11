@@ -23,13 +23,320 @@ function corsHeaders(origin: string) {
 function allowedOrigin(request: Request, env: Env): string {
   const configured = env.ALLOWED_ORIGIN?.trim() || '*';
   if (configured === '*') return '*';
-  return request.headers.get('Origin') === configured ? configured : 'null';
+
+  const requestOrigin = request.headers.get('Origin');
+  const allowed = configured
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!requestOrigin) return allowed[0] || 'null';
+  return allowed.includes(requestOrigin) ? requestOrigin : 'null';
 }
 
 function json(request: Request, env: Env, data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: corsHeaders(allowedOrigin(request, env)),
+  });
+}
+
+type FirebaseTokenPayload = {
+  sub: string;
+  aud: string;
+  iss: string;
+  exp: number;
+  iat: number;
+  user_id?: string;
+};
+
+type AuthenticatedCaller = {
+  uid: string;
+  token: string;
+  userId: string;
+  role: 'admin' | 'employee';
+};
+
+let firebaseJwksCache: { expiresAt: number; keys: JsonWebKey[] } | null = null;
+
+function base64UrlToBytes(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+function decodeJwtPart<T>(value: string): T {
+  return JSON.parse(new TextDecoder().decode(base64UrlToBytes(value))) as T;
+}
+
+async function getFirebaseJwks(): Promise<JsonWebKey[]> {
+  if (firebaseJwksCache && firebaseJwksCache.expiresAt > Date.now()) {
+    return firebaseJwksCache.keys;
+  }
+
+  const response = await fetch(
+    'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'
+  );
+  if (!response.ok) throw new Error(`Firebase JWKS HTTP ${response.status}`);
+
+  const data = (await response.json()) as { keys?: JsonWebKey[] };
+  const keys = Array.isArray(data.keys) ? data.keys : [];
+  if (!keys.length) throw new Error('Firebase JWKS vazio');
+
+  const cacheControl = response.headers.get('Cache-Control') || '';
+  const maxAge = Number(cacheControl.match(/max-age=(\d+)/)?.[1] || 3600);
+  firebaseJwksCache = { expiresAt: Date.now() + Math.max(300, maxAge) * 1000, keys };
+  return keys;
+}
+
+async function verifyFirebaseIdToken(token: string, env: Env): Promise<FirebaseTokenPayload> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('Token inválido');
+
+  const header = decodeJwtPart<{ alg?: string; kid?: string }>(parts[0]);
+  const payload = decodeJwtPart<FirebaseTokenPayload>(parts[1]);
+
+  if (header.alg !== 'RS256' || !header.kid) throw new Error('Cabeçalho JWT inválido');
+
+  const now = Math.floor(Date.now() / 1000);
+  if (!payload.sub || payload.exp <= now || payload.iat > now + 60)
+    throw new Error('Token expirado');
+  if (payload.aud !== env.FIREBASE_PROJECT_ID) throw new Error('Audience inválida');
+  if (payload.iss !== `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`) {
+    throw new Error('Issuer inválido');
+  }
+
+  const jwk = (await getFirebaseJwks()).find((key: any) => key.kid === header.kid);
+  if (!jwk) throw new Error('Chave Firebase não encontrada');
+
+  const key = await crypto.subtle.importKey(
+    'jwk',
+    jwk,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['verify']
+  );
+
+  const verified = await crypto.subtle.verify(
+    'RSASSA-PKCS1-v1_5',
+    key,
+    toArrayBuffer(base64UrlToBytes(parts[2])),
+    toArrayBuffer(new TextEncoder().encode(`${parts[0]}.${parts[1]}`))
+  );
+
+  if (!verified) throw new Error('Assinatura JWT inválida');
+  return payload;
+}
+
+function bearerToken(request: Request): string | null {
+  const authorization = request.headers.get('Authorization') || '';
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+async function readAuthLink(
+  env: Env,
+  uid: string,
+  idToken: string
+): Promise<{ userId: string; role: 'admin' | 'employee'; active: boolean }> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/auth_links/${encodeURIComponent(uid)}`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+
+  if (!response.ok) throw new Error(`Vínculo de autenticação indisponível (${response.status})`);
+  const document: any = await response.json();
+  const fields = document?.fields || {};
+
+  return {
+    userId: String(fields.user_id?.stringValue || ''),
+    role: fields.role?.stringValue === 'admin' ? 'admin' : 'employee',
+    active: fields.active?.booleanValue !== false,
+  };
+}
+
+async function authenticateRequest(
+  request: Request,
+  env: Env
+): Promise<AuthenticatedCaller | Response> {
+  const token = bearerToken(request);
+  if (!token) return json(request, env, { error: 'Não autenticado' }, 401);
+
+  try {
+    const payload = await verifyFirebaseIdToken(token, env);
+    const link = await readAuthLink(env, payload.sub, token);
+
+    if (!link.userId || !link.active) {
+      return json(request, env, { error: 'Acesso desativado' }, 403);
+    }
+
+    return { uid: payload.sub, token, userId: link.userId, role: link.role };
+  } catch (error) {
+    console.warn('auth', error);
+    return json(request, env, { error: 'Sessão inválida ou expirada' }, 401);
+  }
+}
+
+function requireAdmin(request: Request, env: Env, caller: AuthenticatedCaller): Response | null {
+  return caller.role === 'admin'
+    ? null
+    : json(request, env, { error: 'Acesso de administrador necessário' }, 403);
+}
+
+function normalizeUsername(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9._-]/g, '.');
+}
+
+function authEmailForUsername(username: string): string {
+  return `${normalizeUsername(username)}@japanflow.local`;
+}
+
+function firestoreField(value: unknown): any {
+  if (value === null || value === undefined) return { nullValue: null };
+  if (typeof value === 'string') return { stringValue: value };
+  if (typeof value === 'boolean') return { booleanValue: value };
+  if (typeof value === 'number')
+    return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(firestoreField) } };
+  throw new Error('Valor Firestore não suportado');
+}
+
+async function adminCreateUser(
+  request: Request,
+  env: Env,
+  caller: AuthenticatedCaller
+): Promise<Response> {
+  const denied = requireAdmin(request, env, caller);
+  if (denied) return denied;
+  if (!env.FIREBASE_API_KEY || !env.FIREBASE_PROJECT_ID) {
+    return json(request, env, { error: 'Firebase não configurado no Worker' }, 500);
+  }
+
+  const body: any = await request.json().catch(() => ({}));
+  const name = String(body.name || '').trim();
+  const username = normalizeUsername(String(body.username || ''));
+  const password = String(body.password || '');
+  const role = body.role === 'admin' ? 'admin' : 'employee';
+  const sectors = Array.isArray(body.sectors)
+    ? body.sectors.filter((value: unknown) => typeof value === 'string')
+    : [];
+  const userFunction = String(body.function || '').trim();
+
+  if (!name || !username || password.length < 6) {
+    return json(request, env, { error: 'Nome, usuário e senha válida são obrigatórios' }, 400);
+  }
+
+  const authEmail = authEmailForUsername(username);
+  const signup = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: authEmail, password, returnSecureToken: true }),
+    }
+  );
+
+  const signupData: any = await signup.json().catch(() => ({}));
+  if (!signup.ok || !signupData.localId) {
+    const message =
+      signupData?.error?.message === 'EMAIL_EXISTS'
+        ? 'Usuário já existe'
+        : 'Não foi possível criar a conta no Firebase Auth';
+    return json(request, env, { error: message }, 400);
+  }
+
+  const authUid = String(signupData.localId);
+  const prefix = role === 'admin' ? 'admin' : 'emp';
+  const userId = `${prefix}-${Date.now()}`;
+  const now = new Date().toISOString();
+  const databaseRoot = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+
+  const userFields: Record<string, any> = {
+    name: firestoreField(name),
+    username: firestoreField(username),
+    role: firestoreField(role),
+    sectors: firestoreField(sectors),
+    function: firestoreField(userFunction || null),
+    avatar: firestoreField(null),
+    backgroundColor: firestoreField(null),
+    auth_uid: firestoreField(authUid),
+    auth_email: firestoreField(authEmail),
+    active: firestoreField(true),
+    created_at: { timestampValue: now },
+    updated_at: { timestampValue: now },
+  };
+
+  const linkFields: Record<string, any> = {
+    user_id: firestoreField(userId),
+    role: firestoreField(role),
+    active: firestoreField(true),
+    created_at: { timestampValue: now },
+    updated_at: { timestampValue: now },
+  };
+
+  const commit = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents:commit`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${caller.token}`,
+      },
+      body: JSON.stringify({
+        writes: [
+          { update: { name: `${databaseRoot}/users/${userId}`, fields: userFields } },
+          { update: { name: `${databaseRoot}/auth_links/${authUid}`, fields: linkFields } },
+        ],
+      }),
+    }
+  );
+
+  if (!commit.ok) {
+    console.error('admin-create-user Firestore', await commit.text());
+    return json(
+      request,
+      env,
+      {
+        error:
+          'Conta Auth criada, mas o perfil não pôde ser salvo. Não tente novamente sem revisar o Firebase Auth.',
+      },
+      500
+    );
+  }
+
+  return json(request, env, {
+    user: {
+      id: userId,
+      name,
+      username,
+      role,
+      sectors,
+      function: userFunction || undefined,
+      authUid,
+      authEmail,
+      active: true,
+    },
   });
 }
 
@@ -51,7 +358,8 @@ async function callGemini(
   model: string,
   prompt: string,
   inlineData?: { mimeType: string; data: string },
-  systemInstruction?: string
+  systemInstruction?: string,
+  jsonMode = false
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GEMINI_ATTEMPT_TIMEOUT_MS);
@@ -73,7 +381,10 @@ async function callGemini(
             ? { systemInstruction: { parts: [{ text: systemInstruction }] } }
             : {}),
           contents: [{ role: 'user', parts }],
-          generationConfig: { temperature: 0.1 },
+          generationConfig: {
+            temperature: 0.1,
+            ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+          },
         }),
         signal: controller.signal,
       }
@@ -95,33 +406,82 @@ async function geminiText(
   env: Env,
   prompt: string,
   inlineData?: { mimeType: string; data: string },
-  systemInstruction?: string
+  systemInstruction?: string,
+  jsonMode = false
 ): Promise<{ text: string; model: string }> {
-  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY não configurada');
-
-  const models = [...new Set([env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash', 'gemini-2.5-flash'])];
-
-  let last = '';
-  for (const model of models) {
-    const response = await callGemini(env, model, prompt, inlineData, systemInstruction);
-    if (response.ok) {
-      const data: any = await response.json();
-      const text = (data?.candidates?.[0]?.content?.parts || [])
-        .map((p: any) => p?.text || '')
-        .join('\n')
-        .trim();
-      return { text, model };
-    }
-
-    last = await response.text();
-    console.error(`Gemini ${model} HTTP ${response.status}`, last);
-    if (response.status !== 429 && response.status !== 503) break;
+  if (!env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY não configurada');
   }
 
-  throw new Error(last || 'Gemini indisponível');
+  const models = [
+    ...new Set([
+      env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash',
+      'gemini-3.7-flash',
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+    ]),
+  ];
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  let lastError = '';
+
+  for (const model of models) {
+    for (let attempt = 1; attempt <= 1; attempt += 1) {
+      const response = await callGemini(
+        env,
+        model,
+        prompt,
+        inlineData,
+        systemInstruction,
+        jsonMode
+      );
+
+      if (response.ok) {
+        const data: any = await response.json();
+
+        const text = (data?.candidates?.[0]?.content?.parts || [])
+          .map((part: any) => part?.text || '')
+          .join('\n')
+          .trim();
+
+        if (!text) {
+          console.warn(`Gemini ${model} respondeu sem texto`);
+          lastError = `Modelo ${model} respondeu sem conteúdo`;
+          break;
+        }
+
+        console.log(`Gemini OK: ${model} tentativa ${attempt}`);
+
+        return {
+          text,
+          model,
+        };
+      }
+
+      const responseText = await response.text();
+      lastError = responseText;
+
+      console.error(`Gemini ${model} HTTP ${response.status} tentativa ${attempt}`, responseText);
+
+      const retryable =
+        response.status === 429 ||
+        response.status === 500 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        response.status === 504;
+
+      if (!retryable) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(lastError || 'Todos os modelos Gemini estão temporariamente indisponíveis');
 }
 
-/* CALENDAR */
+/* CALENDAR + TASK AI */
 async function parseCalendarEvents(request: Request, env: Env) {
   const body: any = await request.json().catch(() => ({}));
   const text = typeof body.text === 'string' ? body.text.trim() : '';
@@ -134,24 +494,161 @@ async function parseCalendarEvents(request: Request, env: Env) {
     day: '2-digit',
   }).format(new Date());
 
-  const system = `Extraia eventos de calendário em português.
+  const users = Array.isArray(body.users) ? body.users : [];
+  const sectors = Array.isArray(body.sectors) ? body.sectors : [];
+
+  const system = `Você é o assistente operacional do ERP JapanFlow.
+Interprete comandos em português e transforme cada ação solicitada em um item estruturado.
+
 Hoje: ${today}.
-Usuários: ${JSON.stringify(body.users || [])}
-Setores: ${JSON.stringify(body.sectors || [])}
-Retorne SOMENTE JSON:
-{"events":[{"title":"","description":"","date":"YYYY-MM-DD","time":null,"type":"event","targetMode":"all","targetInfo":"todos"}]}
-type = event|reminder; targetMode = all|sector|specific; sem horário => null.`;
+Usuários disponíveis: ${JSON.stringify(users)}
+Setores disponíveis: ${JSON.stringify(sectors)}
+
+Existem 3 tipos de item:
+1. task: trabalho que alguém precisa executar. Exemplos: separar produto, conferir pedido, fazer entrega, imprimir documento, ligar para cliente, cobrar alguém, revisar algo.
+2. event: compromisso/agendamento de calendário. Exemplos: reunião, visita, treinamento, compromisso em determinado horário.
+3. reminder: lembrete de calendário, quando o usuário explicitamente pede para lembrar/avisar de algo.
+
+REGRAS PARA TASK:
+- title: ação curta e objetiva, sem o nome do funcionário e sem detalhes que pertencem à descrição.
+- description: detalhes operacionais mencionados pelo usuário. Ex.: número do pedido, cliente, local, observações.
+- assigneeId: use EXATAMENTE o id de um usuário disponível quando houver correspondência clara pelo nome. Nunca invente id.
+- assigneeName: nome do funcionário identificado no comando.
+- priority: high, medium ou low. Se não houver indicação, use medium.
+- deadline: YYYY-MM-DD somente quando houver prazo/data explícita. Caso contrário null.
+- time: HH:mm somente quando houver horário explícito. Caso contrário null. Se houver horário, inclua-o também de forma natural na description quando relevante.
+
+REGRAS PARA EVENT/REMINDER:
+- date: YYYY-MM-DD. Resolva "hoje", "amanhã", dias da semana e datas relativas usando a data de hoje acima.
+- time: HH:mm ou null.
+- type: event ou reminder.
+- targetMode: all, sector ou specific.
+- targetInfo: "todos", nome/label do setor, ou nome(s) das pessoas.
+
+Se o comando contiver várias ações, retorne vários itens, inclusive misturando tarefas e calendário.
+Não transforme uma tarefa operacional em evento só porque possui horário.
+Exemplo: "criar entrega para motoboy Rafael na MHS às 15h" é TASK, não evento.
+Exemplo: "separar produto pedido 123 para Ryan" é TASK com title "Separar produto" e description "Pedido número 123".
+
+Retorne SOMENTE JSON válido neste formato:
+{"items":[
+  {"kind":"task","title":"","description":"","assigneeId":null,"assigneeName":null,"priority":"medium","deadline":null,"time":null},
+  {"kind":"calendar","title":"","description":"","date":"YYYY-MM-DD","time":null,"type":"event","targetMode":"all","targetInfo":"todos"}
+]}`;
 
   try {
-    const { text: raw, model } = await geminiText(env, text, undefined, system);
-    const parsed = JSON.parse(cleanJsonText(raw));
+    let raw = '';
+    let model = '';
+
+    try {
+      const result = await geminiText(env, text, undefined, system, true);
+      raw = result.text;
+      model = result.model;
+    } catch (error) {
+      console.warn('parse-calendar-events json mode failed, retrying in normal mode', error);
+      const result = await geminiText(env, text, undefined, system);
+      raw = result.text;
+      model = result.model;
+    }
+
+    const cleaned = cleanJsonText(raw);
+    let parsed: any;
+
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (firstParseError) {
+      const extracted = cleaned.match(/\{[\s\S]*\}/)?.[0];
+
+      if (extracted) {
+        try {
+          parsed = JSON.parse(extracted);
+        } catch {
+          parsed = undefined;
+        }
+      }
+
+      if (!parsed) {
+        console.warn('Gemini returned invalid JSON, attempting one repair pass', {
+          model,
+          preview: cleaned.slice(0, 500),
+        });
+
+        const repairSystem = `Converta o conteúdo recebido em JSON válido.
+Não invente novas ações.
+Não explique nada.
+Retorne SOMENTE um objeto JSON no formato:
+{"items":[
+  {"kind":"task","title":"","description":"","assigneeId":null,"assigneeName":null,"priority":"medium","deadline":null,"time":null},
+  {"kind":"calendar","title":"","description":"","date":"YYYY-MM-DD","time":null,"type":"event","targetMode":"all","targetInfo":"todos"}
+]}`;
+
+        const repaired = await geminiText(
+          env,
+          `Corrija este conteúdo para JSON válido:\n${cleaned}`,
+          undefined,
+          repairSystem,
+          true
+        );
+
+        model = repaired.model;
+        const repairedCleaned = cleanJsonText(repaired.text);
+        parsed = JSON.parse(repairedCleaned.match(/\{[\s\S]*\}/)?.[0] || repairedCleaned || '{}');
+      }
+    }
+
+    const rawItems = Array.isArray(parsed?.items) ? parsed.items : [];
+
+    const items = rawItems
+      .map((item: any) => {
+        if (item?.kind === 'task') {
+          const priority = ['high', 'medium', 'low'].includes(item.priority)
+            ? item.priority
+            : 'medium';
+
+          return {
+            kind: 'task',
+            title: String(item.title || '').trim(),
+            description: String(item.description || '').trim(),
+            assigneeId: item.assigneeId ? String(item.assigneeId) : null,
+            assigneeName: item.assigneeName ? String(item.assigneeName) : null,
+            priority,
+            deadline: item.deadline ? String(item.deadline) : null,
+            time: item.time ? String(item.time) : null,
+          };
+        }
+
+        return {
+          kind: 'calendar',
+          title: String(item?.title || '').trim(),
+          description: String(item?.description || '').trim(),
+          date: String(item?.date || today),
+          time: item?.time ? String(item.time) : null,
+          type: item?.type === 'reminder' ? 'reminder' : 'event',
+          targetMode: ['all', 'sector', 'specific'].includes(item?.targetMode)
+            ? item.targetMode
+            : 'all',
+          targetInfo: String(item?.targetInfo || 'todos'),
+        };
+      })
+      .filter((item: any) => item.title);
+
+    // Mantém `events` por compatibilidade com qualquer consumidor antigo.
+    const events = items
+      .filter((item: any) => item.kind === 'calendar')
+      .map(({ kind: _kind, ...event }: any) => event);
+
     return json(request, env, {
-      events: Array.isArray(parsed?.events) ? parsed.events : [],
+      items,
+      events,
       meta: { model },
     });
   } catch (e) {
     console.error('parse-calendar-events', e);
-    return json(request, env, { error: 'Não foi possível processar os eventos com a IA.' }, 502);
+    const detail =
+      e instanceof SyntaxError
+        ? 'A IA devolveu uma resposta inválida. Tente novamente.'
+        : 'Não foi possível interpretar o comando com a IA.';
+    return json(request, env, { error: detail }, 502);
   }
 }
 
@@ -707,7 +1204,7 @@ function firestoreValueToJs(value: any): any {
   return null;
 }
 
-async function getFreightDestination(env: Env, slug: string): Promise<any | null> {
+async function getFreightDestination(env: Env, slug: string, idToken: string): Promise<any | null> {
   if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_API_KEY) {
     throw new Error('FIREBASE_PROJECT_ID/FIREBASE_API_KEY não configurados.');
   }
@@ -727,7 +1224,9 @@ async function getFreightDestination(env: Env, slug: string): Promise<any | null
   const url =
     `${base}${encodeURIComponent(documentId)}` + `?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`;
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
 
   if (response.status === 404) {
     console.log(`Freight destination não encontrado: ${documentId}`);
@@ -754,6 +1253,8 @@ async function getFreightDestination(env: Env, slug: string): Promise<any | null
 
 async function freightCalc(request: Request, env: Env) {
   const body: any = await request.json().catch(() => ({}));
+  const idToken = bearerToken(request);
+  if (!idToken) return json(request, env, { error: 'Não autenticado' }, 401);
   const address = typeof body.address === 'string' ? body.address.trim() : '';
 
   if (address.length < 5) {
@@ -779,7 +1280,7 @@ async function freightCalc(request: Request, env: Env) {
 
       const rawSlug = normalizeCity(parsed.city);
       const slug = ALIASES[rawSlug] || rawSlug;
-      const dest = await getFreightDestination(env, slug);
+      const dest = await getFreightDestination(env, slug, idToken);
 
       if (!dest) {
         return json(request, env, {
@@ -822,7 +1323,7 @@ async function freightCalc(request: Request, env: Env) {
 
     const rawSlug = normalizeCity(geo.city || parsed.city || '');
     const slug = ALIASES[rawSlug] || rawSlug;
-    const dest = await getFreightDestination(env, slug);
+    const dest = await getFreightDestination(env, slug, idToken);
 
     let result: any = {
       city: geo.city || parsed.city,
@@ -896,7 +1397,7 @@ function normalizeStoragePath(input: string): string | null {
     // Mantém o path original se houver escape inválido.
   }
 
-  if (!path || path.includes(' ')) return null;
+  if (!path || path.includes('')) return null;
   if (!path.startsWith('attachments/')) return null;
 
   return path;
@@ -1259,6 +1760,7 @@ export default {
       return json(request, env, {
         ok: true,
         service: 'japanflow-api',
+        auth: 'firebase-id-token',
         routes: [
           'parse-calendar-events',
           'parse-schedule',
@@ -1267,15 +1769,18 @@ export default {
           'transcribe-image',
           'freight-calc',
           'storage-upload',
-          'storage-file',
-          'storage-list',
+          'storage-file-public-read',
+          'storage-list-admin',
           'process-image',
-          'storage-audit-report',
-          'backfill-webp',
+          'storage-audit-report-admin',
+          'backfill-webp-admin',
+          'admin-users-create',
         ],
       });
     }
 
+    // Leitura R2 permanece pública temporariamente para preservar URLs já salvas
+    // e <img src>. Mutações e APIs internas exigem Firebase Auth.
     if (
       (request.method === 'GET' || request.method === 'HEAD') &&
       url.pathname.startsWith(storageFilePrefix)
@@ -1288,8 +1793,17 @@ export default {
       );
     }
 
+    const authenticated = await authenticateRequest(request, env);
+    if (authenticated instanceof Response) return authenticated;
+    const caller = authenticated;
+
+    if (request.method === 'POST' && url.pathname === '/admin/users/create') {
+      return adminCreateUser(request, env, caller);
+    }
+
     if (request.method === 'GET' && url.pathname === '/storage/list') {
-      return listStorageFiles(request, env);
+      const denied = requireAdmin(request, env, caller);
+      return denied || listStorageFiles(request, env);
     }
 
     if (request.method === 'DELETE' && url.pathname.startsWith(storageFilePrefix)) {
@@ -1319,10 +1833,14 @@ export default {
         return freightCalc(request, env);
       case '/process-image':
         return processImageR2(request, env);
-      case '/storage-audit-report':
-        return storageAuditReportR2(request, env);
-      case '/backfill-webp':
-        return backfillWebpR2(request, env);
+      case '/storage-audit-report': {
+        const denied = requireAdmin(request, env, caller);
+        return denied || storageAuditReportR2(request, env);
+      }
+      case '/backfill-webp': {
+        const denied = requireAdmin(request, env, caller);
+        return denied || backfillWebpR2(request, env);
+      }
       default:
         return json(request, env, { error: 'Rota não encontrada' }, 404);
     }

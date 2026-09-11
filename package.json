@@ -13,7 +13,8 @@
     "format:check": "prettier --check .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "auth:bootstrap": "node scripts/bootstrap-firebase-auth.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -53,8 +53,10 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   const isFinanceiro = currentUser.sectors?.includes('financeiro' as Sector);
   const isMotoboy = currentUser.sectors?.includes('motoboys' as Sector);
   const isPatricia = currentUser.id === 'emp-1';
-  const employees = users.filter((u) => u.role === 'employee');
-  const admins = users.filter((u) => u.role === 'admin' && u.id !== currentUser.id);
+  const employees = users.filter((u) => u.role === 'employee' && u.active !== false);
+  const admins = users.filter(
+    (u) => u.role === 'admin' && u.active !== false && u.id !== currentUser.id
+  );
 
   const baseItems = isAdmin
     ? [
@@ -259,7 +261,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
               Equipe
             </p>
             {users
-              .filter((u) => u.id !== currentUser.id)
+              .filter((u) => u.active !== false && u.id !== currentUser.id)
               .map((u) => (
                 <div
                   key={u.id}
@@ -324,8 +326,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
           </div>
           <button
             onClick={() => {
-              logout();
-              navigate('/login');
+              void logout().finally(() => navigate('/login'));
             }}
             className="p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
           >

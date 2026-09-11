@@ -1,12 +1,13 @@
-import { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Camera, Save, Pencil, X } from 'lucide-react';
+import { Camera, KeyRound, Pencil, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SECTOR_LABELS } from '@/types';
 import { uploadImage } from '@/lib/uploadImage';
+import { changeOwnPassword } from '@/lib/authService';
 
 const ProfilePage = () => {
   const { currentUser, updateProfile, updateUser } = useApp();
@@ -14,8 +15,9 @@ const ProfilePage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
-  const [editUsername, setEditUsername] = useState('');
-  const [editPassword, setEditPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   if (!currentUser) return null;
 
@@ -57,21 +59,41 @@ const ProfilePage = () => {
 
   const startEditing = () => {
     setEditName(currentUser.name);
-    setEditUsername(currentUser.username);
-    setEditPassword('');
     setEditing(true);
   };
 
-  const handleSaveProfile = () => {
-    if (!editName.trim() || !editUsername.trim()) {
-      toast.error('Nome e usuário são obrigatórios');
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      toast.error('Nome é obrigatório');
       return;
     }
-    const updates: any = { name: editName.trim(), username: editUsername.trim() };
-    if (editPassword.trim()) updates.password = editPassword.trim();
-    updateUser(currentUser.id, updates);
-    setEditing(false);
-    toast.success('Perfil atualizado!');
+
+    try {
+      await updateUser(currentUser.id, { name: editName.trim() });
+      setEditing(false);
+      toast.success('Perfil atualizado!');
+    } catch {
+      toast.error('Não foi possível atualizar o perfil');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentPassword || newPassword.length < 6) {
+      toast.error('Informe a senha atual e uma nova senha com pelo menos 6 caracteres.');
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+      await changeOwnPassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      toast.success('Senha atualizada!');
+    } catch {
+      toast.error('Não foi possível alterar a senha. Confira a senha atual.');
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   return (
@@ -153,17 +175,10 @@ const ProfilePage = () => {
                 onChange={(e) => setEditName(e.target.value)}
                 placeholder="Nome completo"
               />
-              <Input
-                value={editUsername}
-                onChange={(e) => setEditUsername(e.target.value)}
-                placeholder="Usuário"
-              />
-              <Input
-                type="password"
-                value={editPassword}
-                onChange={(e) => setEditPassword(e.target.value)}
-                placeholder="Nova senha (deixe vazio para manter)"
-              />
+              <Input value={currentUser.username} disabled aria-label="Usuário" />
+              <p className="text-xs text-muted-foreground">
+                O nome de usuário fica fixo porque também identifica a conta no Firebase Auth.
+              </p>
               <div className="flex gap-2">
                 <Button size="sm" onClick={handleSaveProfile}>
                   <Save className="w-3 h-3 mr-1" />
@@ -189,6 +204,34 @@ const ProfilePage = () => {
               </Button>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <KeyRound className="w-4 h-4" />
+            Alterar senha
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Senha atual"
+            autoComplete="current-password"
+          />
+          <Input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Nova senha"
+            autoComplete="new-password"
+          />
+          <Button size="sm" onClick={handleChangePassword} disabled={changingPassword}>
+            {changingPassword ? 'Alterando...' : 'Alterar senha'}
+          </Button>
         </CardContent>
       </Card>
     </div>

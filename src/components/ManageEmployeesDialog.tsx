@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { UserPlus, Pencil, Trash2, Key, Save, X } from 'lucide-react';
+import { UserPlus, Pencil, Save, X, UserX, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Sector, SECTOR_LABELS } from '@/types';
@@ -72,90 +72,98 @@ const ManageEmployeesDialog = () => {
   const [newFunction, setNewFunction] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [editUsername, setEditUsername] = useState('');
   const [editSectors, setEditSectors] = useState<Sector[]>([]);
   const [editFunction, setEditFunction] = useState('');
-  const [changingPasswordId, setChangingPasswordId] = useState<string | null>(null);
-  const [newPwd, setNewPwd] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const employees = users.filter((u) => u.role === 'employee');
 
-  const handleAdd = () => {
-    if (!newName.trim() || !newUsername.trim() || !newPassword.trim()) {
-      toast.error('Preencha todos os campos obrigatórios');
+  const handleAdd = async () => {
+    if (!newName.trim() || !newUsername.trim() || newPassword.length < 6) {
+      toast.error('Preencha nome, usuário e uma senha com pelo menos 6 caracteres');
       return;
     }
     if (newSectors.length === 0) {
       toast.error('Selecione ao menos um setor');
       return;
     }
-    if (users.some((u) => u.username === newUsername.trim())) {
+    if (users.some((u) => u.username.toLowerCase() === newUsername.trim().toLowerCase())) {
       toast.error('Usuário já existe');
       return;
     }
-    addUser({
-      name: newName.trim(),
-      username: newUsername.trim(),
-      password: newPassword.trim(),
-      role: 'employee',
-      sectors: newSectors,
-      function: newFunction.trim() || undefined,
-    });
-    setNewName('');
-    setNewUsername('');
-    setNewPassword('');
-    setNewSectors([]);
-    setNewFunction('');
-    setShowAdd(false);
-    toast.success('Funcionário cadastrado');
+
+    setSaving(true);
+    try {
+      await addUser({
+        name: newName.trim(),
+        username: newUsername.trim().toLowerCase(),
+        password: newPassword,
+        role: 'employee',
+        sectors: newSectors,
+        function: newFunction.trim() || undefined,
+      });
+      setNewName('');
+      setNewUsername('');
+      setNewPassword('');
+      setNewSectors([]);
+      setNewFunction('');
+      setShowAdd(false);
+      toast.success('Funcionário cadastrado no Firebase Auth');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao cadastrar funcionário');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleEdit = (id: string) => {
-    if (!editName.trim() || !editUsername.trim()) {
-      toast.error('Preencha todos os campos');
+  const handleEdit = async (id: string) => {
+    if (!editName.trim()) {
+      toast.error('Preencha o nome');
       return;
     }
     if (editSectors.length === 0) {
       toast.error('Selecione ao menos um setor');
       return;
     }
-    if (users.some((u) => u.username === editUsername.trim() && u.id !== id)) {
-      toast.error('Usuário já existe');
-      return;
+
+    setSaving(true);
+    try {
+      await updateUser(id, {
+        name: editName.trim(),
+        sectors: editSectors,
+        function: editFunction.trim() || undefined,
+      });
+      setEditingId(null);
+      toast.success('Funcionário atualizado');
+    } catch {
+      toast.error('Erro ao atualizar funcionário');
+    } finally {
+      setSaving(false);
     }
-    updateUser(id, {
-      name: editName.trim(),
-      username: editUsername.trim(),
-      sectors: editSectors,
-      function: editFunction.trim() || undefined,
-    });
-    setEditingId(null);
-    toast.success('Funcionário atualizado');
   };
 
-  const handleChangePassword = (id: string) => {
-    if (!newPwd.trim()) {
-      toast.error('Digite a nova senha');
-      return;
+  const handleToggleActive = async (id: string, active: boolean) => {
+    setSaving(true);
+    try {
+      if (active) {
+        await deleteUser(id);
+        toast.success('Acesso desativado. O histórico foi preservado.');
+      } else {
+        await updateUser(id, { active: true });
+        toast.success('Acesso reativado.');
+      }
+    } catch {
+      toast.error('Não foi possível alterar o acesso');
+    } finally {
+      setSaving(false);
     }
-    updateUser(id, { password: newPwd.trim() });
-    setChangingPasswordId(null);
-    setNewPwd('');
-    toast.success('Senha alterada');
-  };
-
-  const handleDelete = (id: string) => {
-    deleteUser(id);
-    toast.success('Funcionário removido');
   };
 
   const startEdit = (emp: (typeof employees)[0]) => {
     setEditingId(emp.id);
     setEditName(emp.name);
-    setEditUsername(emp.username);
     setEditSectors(emp.sectors || []);
     setEditFunction(emp.function || '');
-    setChangingPasswordId(null);
   };
 
   return (
@@ -173,7 +181,13 @@ const ManageEmployeesDialog = () => {
 
         <div className="space-y-3 mt-2">
           {employees.map((emp) => (
-            <div key={emp.id} className="border border-border rounded-lg p-3 space-y-2">
+            <div
+              key={emp.id}
+              className={cn(
+                'border border-border rounded-lg p-3 space-y-2',
+                !emp.active && 'opacity-60'
+              )}
+            >
               {editingId === emp.id ? (
                 <div className="space-y-2">
                   <Input
@@ -181,11 +195,7 @@ const ManageEmployeesDialog = () => {
                     onChange={(e) => setEditName(e.target.value)}
                     placeholder="Nome"
                   />
-                  <Input
-                    value={editUsername}
-                    onChange={(e) => setEditUsername(e.target.value)}
-                    placeholder="Usuário"
-                  />
+                  <Input value={emp.username} disabled aria-label="Usuário" />
                   <Input
                     value={editFunction}
                     onChange={(e) => setEditFunction(e.target.value)}
@@ -196,7 +206,7 @@ const ManageEmployeesDialog = () => {
                     <SectorPicker selected={editSectors} onChange={setEditSectors} />
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={() => handleEdit(emp.id)}>
+                    <Button size="sm" onClick={() => handleEdit(emp.id)} disabled={saving}>
                       <Save className="w-3 h-3 mr-1" />
                       Salvar
                     </Button>
@@ -206,41 +216,15 @@ const ManageEmployeesDialog = () => {
                     </Button>
                   </div>
                 </div>
-              ) : changingPasswordId === emp.id ? (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Nova senha para {emp.name}</p>
-                  <Input
-                    type="password"
-                    value={newPwd}
-                    onChange={(e) => setNewPwd(e.target.value)}
-                    placeholder="Nova senha"
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => handleChangePassword(emp.id)}>
-                      <Save className="w-3 h-3 mr-1" />
-                      Salvar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setChangingPasswordId(null);
-                        setNewPwd('');
-                      }}
-                    >
-                      <X className="w-3 h-3 mr-1" />
-                      Cancelar
-                    </Button>
-                  </div>
-                </div>
               ) : (
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium">{emp.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      @{emp.username} {emp.function ? `• ${emp.function}` : ''}
+                      @{emp.username} {emp.function ? `• ${emp.function}` : ''}{' '}
+                      {!emp.active ? '• DESATIVADO' : ''}
                     </p>
-                    {emp.sectors && emp.sectors.length > 0 && (
+                    {emp.sectors.length > 0 && (
                       <div className="flex gap-1 flex-wrap mt-1">
                         {emp.sectors.map((s) => (
                           <span
@@ -265,21 +249,19 @@ const ManageEmployeesDialog = () => {
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-8 w-8"
-                      onClick={() => {
-                        setChangingPasswordId(emp.id);
-                        setEditingId(null);
-                      }}
+                      className={cn(
+                        'h-8 w-8',
+                        emp.active && 'text-destructive hover:text-destructive'
+                      )}
+                      onClick={() => handleToggleActive(emp.id, emp.active)}
+                      disabled={saving}
+                      title={emp.active ? 'Desativar acesso' : 'Reativar acesso'}
                     >
-                      <Key className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(emp.id)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {emp.active ? (
+                        <UserX className="w-3.5 h-3.5" />
+                      ) : (
+                        <UserCheck className="w-3.5 h-3.5" />
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -298,12 +280,14 @@ const ManageEmployeesDialog = () => {
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
                 placeholder="Nome de usuário"
+                autoComplete="off"
               />
               <Input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Senha"
+                placeholder="Senha inicial (mín. 6 caracteres)"
+                autoComplete="new-password"
               />
               <Input
                 value={newFunction}
@@ -315,9 +299,9 @@ const ManageEmployeesDialog = () => {
                 <SectorPicker selected={newSectors} onChange={setNewSectors} />
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleAdd}>
+                <Button size="sm" onClick={handleAdd} disabled={saving}>
                   <Save className="w-3 h-3 mr-1" />
-                  Cadastrar
+                  {saving ? 'Cadastrando...' : 'Cadastrar'}
                 </Button>
                 <Button
                   size="sm"

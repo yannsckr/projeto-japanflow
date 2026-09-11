@@ -9,7 +9,7 @@ import { getClientPublicIp, isIpAllowed } from '@/lib/networkGuard';
 import { userCanAccessExternally } from '@/lib/externalAccess';
 
 const LoginPage = () => {
-  const { login, users, usersLoading, usersError } = useApp();
+  const { login, logout, authLoading } = useApp();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -17,42 +17,32 @@ const LoginPage = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const hasUsersAvailable = users.length > 0;
-
-    if (!hasUsersAvailable && usersLoading) {
-      toast.error('Carregando usuários, tente novamente em instantes.');
-      return;
-    }
+    if (authLoading || isLoggingIn) return;
 
     setIsLoggingIn(true);
 
-    // Verifica se o usuário é admin (admins podem acessar de qualquer rede)
-    const normalizedUsername = username.trim().toLowerCase();
-    const candidate = users.find((u) => u.username.trim().toLowerCase() === normalizedUsername);
-    const isAdmin = candidate?.role === 'admin';
+    try {
+      const user = await login(username, password);
 
-    if (!isAdmin) {
-      const ip = await getClientPublicIp();
-      if (!isIpAllowed(ip)) {
-        // Verifica liberação individual para acesso fora da rede
-        const allowedExternal = candidate ? await userCanAccessExternally(candidate.id) : false;
-        if (!allowedExternal) {
-          toast.error('Credenciais inválidas');
-          setIsLoggingIn(false);
-          return;
+      if (user.role !== 'admin') {
+        const ip = await getClientPublicIp();
+        if (!isIpAllowed(ip)) {
+          const allowedExternal = await userCanAccessExternally(user.id);
+          if (!allowedExternal) {
+            await logout();
+            toast.error('Credenciais inválidas');
+            return;
+          }
         }
       }
-    }
 
-    const success = login(username, password);
-    if (success) {
-      navigate(isAdmin ? '/admin' : '/board');
-    } else if (!hasUsersAvailable && usersError) {
-      toast.error('Não foi possível validar o acesso agora. Tente novamente em instantes.');
-    } else {
+      navigate(user.role === 'admin' ? '/admin' : '/board');
+    } catch (error) {
+      console.warn('Falha no login:', error);
       toast.error('Credenciais inválidas');
+    } finally {
+      setIsLoggingIn(false);
     }
-    setIsLoggingIn(false);
   };
 
   return (
@@ -74,6 +64,7 @@ const LoginPage = () => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="seu.usuario"
+              autoComplete="username"
               required
             />
           </div>
@@ -84,11 +75,12 @@ const LoginPage = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              autoComplete="current-password"
               required
             />
           </div>
-          <Button type="submit" className="w-full" disabled={isLoggingIn}>
-            {isLoggingIn ? 'Entrando...' : 'Entrar'}
+          <Button type="submit" className="w-full" disabled={isLoggingIn || authLoading}>
+            {isLoggingIn ? 'Entrando...' : authLoading ? 'Verificando sessão...' : 'Entrar'}
           </Button>
         </form>
       </div>

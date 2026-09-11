@@ -65,14 +65,11 @@ export function useGroupChat(groupId: string | null) {
 
     const unsubscribe = onSnapshot(
       messagesQuery,
-      (snapshot) => {
+      (snapshot) =>
         setMessages(
           snapshot.docs.map((messageDoc) => mapMessage(messageDoc.id, messageDoc.data()))
-        );
-      },
-      (error) => {
-        console.error('Erro ao carregar mensagens do grupo:', error);
-      }
+        ),
+      (error) => console.error('Erro ao carregar mensagens do grupo:', error)
     );
 
     return () => unsubscribe();
@@ -103,37 +100,24 @@ export function useGroupChat(groupId: string | null) {
         updated_at: Timestamp.now(),
       });
 
-      // Push continua usando o helper atual.
-      // Ele será migrado na etapa de Cloud Functions / FCM.
       try {
         const groupSnapshot = await getDoc(doc(db, 'custom_groups', groupId));
-
         if (!groupSnapshot.exists()) return;
 
         const participants = Array.isArray(groupSnapshot.data().participants)
           ? groupSnapshot.data().participants
           : [];
-
         if (participants.length === 0) return;
 
-        const usersSnapshot = await getDocs(collection(db, 'app_users'));
-
+        const usersSnapshot = await getDocs(collection(db, 'users'));
         const matchingUsers = usersSnapshot.docs
-          .map((userDoc) => ({
-            id: userDoc.id,
-            ...userDoc.data(),
-          }))
-          .filter((user: any) => {
-            // Suporta grupos antigos salvos com username
-            // e grupos novos salvos com user ID.
-            return participants.includes(user.id) || participants.includes(user.username);
-          });
+          .map((userDoc) => ({ id: userDoc.id, ...userDoc.data() }))
+          .filter(
+            (user: any) => participants.includes(user.id) || participants.includes(user.username)
+          );
 
         for (const user of matchingUsers as any[]) {
-          if (user.username === senderUsername) {
-            continue;
-          }
-
+          if (user.username === senderUsername || user.active === false) continue;
           sendPushToUser(
             user.id,
             'Nova mensagem de grupo',
@@ -163,10 +147,5 @@ export function useGroupChat(groupId: string | null) {
     });
   }, []);
 
-  return {
-    messages,
-    sendMessage,
-    editMessage,
-    deleteMessage,
-  };
+  return { messages, sendMessage, editMessage, deleteMessage };
 }
