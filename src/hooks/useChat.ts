@@ -21,9 +21,9 @@ interface MessageData {
   receiverId: string;
   timestamp: Timestamp;
   read: boolean;
-  attachmentUrl?: string;
-  attachmentType?: 'image' | 'file' | 'audio';
-  attachmentName?: string;
+  attachmentUrl?: string | null;
+  attachmentType?: 'image' | 'file' | 'audio' | null;
+  attachmentName?: string | null;
   edited?: boolean;
   deleted?: boolean;
 }
@@ -50,25 +50,55 @@ export const useChat = () => {
         receiverId: msg.receiverId,
         timestamp: Timestamp.now(),
         read: false,
-        attachmentUrl: msg.attachmentUrl,
-        attachmentType: msg.attachmentType,
-        attachmentName: msg.attachmentName,
+
+        // Firestore não aceita undefined.
+        attachmentUrl: msg.attachmentUrl ?? null,
+        attachmentType: msg.attachmentType ?? null,
+        attachmentName: msg.attachmentName ?? null,
+
+        edited: false,
+        deleted: false,
       };
 
       try {
         await addDoc(collection(db, 'messages'), newMessage);
-        await sendPushToUser(msg.receiverId, 'Nova mensagem', msg.content);
+
+        await addDoc(collection(db, 'notifications'), {
+          user_id: msg.receiverId,
+          message: 'Nova mensagem recebida',
+          type: 'chat_message',
+          read: false,
+          created_at: Timestamp.now(),
+        });
+
+        try {
+          await sendPushToUser(
+            msg.receiverId,
+            'Nova mensagem',
+            msg.content,
+            '/chat'
+          );
+        } catch (pushError) {
+          console.warn(
+            'Mensagem enviada, mas o push falhou:',
+            pushError
+          );
+        }
       } catch (error) {
         console.error('Error sending message:', error);
       }
     },
-    [currentUser?.id]
+    []
   );
 
   const editMessage = useCallback(async (messageId: string, newContent: string) => {
     try {
       const messageRef = doc(db, 'messages', messageId);
-      await updateDoc(messageRef, { content: newContent, edited: true });
+
+      await updateDoc(messageRef, {
+        content: newContent,
+        edited: true,
+      });
     } catch (error) {
       console.error('Error editing message:', error);
     }
@@ -77,7 +107,11 @@ export const useChat = () => {
   const deleteMessage = useCallback(async (messageId: string) => {
     try {
       const messageRef = doc(db, 'messages', messageId);
-      await updateDoc(messageRef, { deleted: true, content: 'Mensagem apagada' });
+
+      await updateDoc(messageRef, {
+        deleted: true,
+        content: 'Mensagem apagada',
+      });
     } catch (error) {
       console.error('Error deleting message:', error);
     }
@@ -86,7 +120,10 @@ export const useChat = () => {
   const markMessageAsRead = useCallback(async (messageId: string) => {
     try {
       const messageRef = doc(db, 'messages', messageId);
-      await updateDoc(messageRef, { read: true });
+
+      await updateDoc(messageRef, {
+        read: true,
+      });
     } catch (error) {
       console.error('Error marking message as read:', error);
     }
@@ -99,35 +136,41 @@ export const useChat = () => {
       orderBy('timestamp', 'asc')
     );
 
-    return onSnapshot(chatQuery, (snapshot) => {
-      const chatMessages: ChatMessage[] = [];
+    return onSnapshot(
+      chatQuery,
+      (snapshot) => {
+        const chatMessages: ChatMessage[] = [];
 
-      snapshot.forEach((messageDoc) => {
-        const data = messageDoc.data() as MessageData;
+        snapshot.forEach((messageDoc) => {
+          const data = messageDoc.data() as MessageData;
 
-        const belongsToChat =
-          (data.senderId === user1Id && data.receiverId === user2Id) ||
-          (data.senderId === user2Id && data.receiverId === user1Id);
+          const belongsToChat =
+            (data.senderId === user1Id && data.receiverId === user2Id) ||
+            (data.senderId === user2Id && data.receiverId === user1Id);
 
-        if (!belongsToChat) return;
+          if (!belongsToChat) return;
 
-        chatMessages.push({
-          id: messageDoc.id,
-          content: data.content,
-          senderId: data.senderId,
-          receiverId: data.receiverId,
-          timestamp: data.timestamp.toDate().toISOString(),
-          attachmentUrl: data.attachmentUrl,
-          attachmentType: data.attachmentType,
-          attachmentName: data.attachmentName,
-          edited: data.edited,
-          deleted: data.deleted,
-          read: data.read,
+          chatMessages.push({
+            id: messageDoc.id,
+            content: data.content,
+            senderId: data.senderId,
+            receiverId: data.receiverId,
+            timestamp: data.timestamp.toDate().toISOString(),
+            attachmentUrl: data.attachmentUrl ?? undefined,
+            attachmentType: data.attachmentType ?? undefined,
+            attachmentName: data.attachmentName ?? undefined,
+            edited: data.edited ?? false,
+            deleted: data.deleted ?? false,
+            read: data.read,
+          });
         });
-      });
 
-      setMessages(chatMessages);
-    });
+        setMessages(chatMessages);
+      },
+      (error) => {
+        console.error('Error loading chat messages:', error);
+      }
+    );
   }, []);
 
   return {

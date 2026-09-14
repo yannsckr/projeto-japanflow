@@ -51,18 +51,24 @@ export function useUnreadMessages(currentUserId: string | null) {
           const message = messageDoc.data() as MessageData;
 
           if (message.read !== true && message.deleted !== true) {
-            unreadCount++;
+            unreadCount += 1;
           }
         });
 
-        // Não toca som no primeiro carregamento da página.
-        if (initializedRef.current && unreadCount > previousCountRef.current && audioRef.current) {
+        if (
+          initializedRef.current &&
+          unreadCount > previousCountRef.current &&
+          audioRef.current
+        ) {
           audioRef.current.currentTime = 0;
           audioRef.current.play().catch(() => {});
         }
 
         initializedRef.current = true;
+
+        // Atualiza SEMPRE o valor anterior.
         previousCountRef.current = unreadCount;
+
         setTotalUnread(unreadCount);
       },
       (error) => {
@@ -73,6 +79,7 @@ export function useUnreadMessages(currentUserId: string | null) {
     return () => {
       unsubscribe();
       initializedRef.current = false;
+      previousCountRef.current = 0;
     };
   }, [currentUserId]);
 

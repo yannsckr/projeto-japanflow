@@ -9,11 +9,12 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { UserPlus, Pencil, Save, X, UserX, UserCheck } from 'lucide-react';
+import { UserPlus, Pencil, Save, X, UserX, UserCheck, KeyRound, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Sector, SECTOR_LABELS } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
+import { auth } from '@/lib/firebase';
 
 const ALL_SECTORS: Sector[] = [
   'vendas',
@@ -75,6 +76,9 @@ const ManageEmployeesDialog = () => {
   const [editSectors, setEditSectors] = useState<Sector[]>([]);
   const [editFunction, setEditFunction] = useState('');
   const [saving, setSaving] = useState(false);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
+  const [resetEmployeeName, setResetEmployeeName] = useState('');
 
   const employees = users.filter((u) => u.role === 'employee');
 
@@ -159,6 +163,61 @@ const ManageEmployeesDialog = () => {
     }
   };
 
+  const handleResetAccess = async (id: string, name: string) => {
+    if (!window.confirm(`Redefinir o acesso de ${name}? A senha atual deixará de funcionar.`)) return;
+
+    const firebaseUser = auth.currentUser;
+    const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
+    if (!firebaseUser || !apiBaseUrl) {
+      toast.error('Sessão administrativa ou API indisponível');
+      return;
+    }
+
+    setResettingId(id);
+    setTemporaryPassword(null);
+
+    try {
+      const token = await firebaseUser.getIdToken();
+      const response = await fetch(`${apiBaseUrl}/admin/users/reset-access`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ userId: id }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        temporaryPassword?: string;
+      };
+
+      if (!response.ok || !data.temporaryPassword) {
+        throw new Error(data.error || 'Não foi possível redefinir o acesso');
+      }
+
+      setResetEmployeeName(name);
+      setTemporaryPassword(data.temporaryPassword);
+      toast.success('Acesso redefinido. Copie a senha temporária.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao redefinir acesso');
+    } finally {
+      setResettingId(null);
+    }
+  };
+
+  const copyTemporaryPassword = async () => {
+    if (!temporaryPassword) return;
+
+    try {
+      await navigator.clipboard.writeText(temporaryPassword);
+      toast.success('Senha temporária copiada');
+    } catch {
+      toast.error('Não foi possível copiar automaticamente');
+    }
+  };
+
   const startEdit = (emp: (typeof employees)[0]) => {
     setEditingId(emp.id);
     setEditName(emp.name);
@@ -179,6 +238,34 @@ const ManageEmployeesDialog = () => {
           <DialogTitle>Gerenciar Funcionários</DialogTitle>
         </DialogHeader>
 
+        {temporaryPassword && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+            <div>
+              <p className="text-sm font-medium">Acesso redefinido para {resetEmployeeName}</p>
+              <p className="text-xs text-muted-foreground">
+                Esta senha aparece apenas agora. Entregue ao funcionário por um canal seguro.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Input value={temporaryPassword} readOnly className="font-mono" />
+              <Button type="button" size="icon" variant="outline" onClick={copyTemporaryPassword} title="Copiar senha">
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setTemporaryPassword(null);
+                setResetEmployeeName('');
+              }}
+            >
+              Fechar
+            </Button>
+          </div>
+        )}
+
         <div className="space-y-3 mt-2">
           {employees.map((emp) => (
             <div
@@ -190,17 +277,9 @@ const ManageEmployeesDialog = () => {
             >
               {editingId === emp.id ? (
                 <div className="space-y-2">
-                  <Input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="Nome"
-                  />
+                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome" />
                   <Input value={emp.username} disabled aria-label="Usuário" />
-                  <Input
-                    value={editFunction}
-                    onChange={(e) => setEditFunction(e.target.value)}
-                    placeholder="Função (ex: Vendedor)"
-                  />
+                  <Input value={editFunction} onChange={(e) => setEditFunction(e.target.value)} placeholder="Função (ex: Vendedor)" />
                   <div>
                     <p className="text-xs font-medium mb-1.5">Setores (máx. 3)</p>
                     <SectorPicker selected={editSectors} onChange={setEditSectors} />
@@ -221,16 +300,12 @@ const ManageEmployeesDialog = () => {
                   <div>
                     <p className="text-sm font-medium">{emp.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      @{emp.username} {emp.function ? `• ${emp.function}` : ''}{' '}
-                      {!emp.active ? '• DESATIVADO' : ''}
+                      @{emp.username} {emp.function ? `• ${emp.function}` : ''} {!emp.active ? '• DESATIVADO' : ''}
                     </p>
                     {emp.sectors.length > 0 && (
                       <div className="flex gap-1 flex-wrap mt-1">
                         {emp.sectors.map((s) => (
-                          <span
-                            key={s}
-                            className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium"
-                          >
+                          <span key={s} className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
                             {SECTOR_LABELS[s]}
                           </span>
                         ))}
@@ -238,30 +313,28 @@ const ManageEmployeesDialog = () => {
                     )}
                   </div>
                   <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8"
-                      onClick={() => startEdit(emp)}
-                    >
+                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(emp)}>
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
                     <Button
                       size="icon"
                       variant="ghost"
-                      className={cn(
-                        'h-8 w-8',
-                        emp.active && 'text-destructive hover:text-destructive'
-                      )}
+                      className="h-8 w-8"
+                      onClick={() => handleResetAccess(emp.id, emp.name)}
+                      disabled={saving || resettingId === emp.id}
+                      title="Resetar acesso"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className={cn('h-8 w-8', emp.active && 'text-destructive hover:text-destructive')}
                       onClick={() => handleToggleActive(emp.id, emp.active)}
                       disabled={saving}
                       title={emp.active ? 'Desativar acesso' : 'Reativar acesso'}
                     >
-                      {emp.active ? (
-                        <UserX className="w-3.5 h-3.5" />
-                      ) : (
-                        <UserCheck className="w-3.5 h-3.5" />
-                      )}
+                      {emp.active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
                     </Button>
                   </div>
                 </div>
@@ -271,29 +344,10 @@ const ManageEmployeesDialog = () => {
 
           {showAdd ? (
             <div className="border border-dashed border-primary/40 rounded-lg p-3 space-y-2">
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Nome completo"
-              />
-              <Input
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                placeholder="Nome de usuário"
-                autoComplete="off"
-              />
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Senha inicial (mín. 6 caracteres)"
-                autoComplete="new-password"
-              />
-              <Input
-                value={newFunction}
-                onChange={(e) => setNewFunction(e.target.value)}
-                placeholder="Função (ex: Vendedor)"
-              />
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome completo" />
+              <Input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="Nome de usuário" autoComplete="off" />
+              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Senha inicial (mín. 6 caracteres)" autoComplete="new-password" />
+              <Input value={newFunction} onChange={(e) => setNewFunction(e.target.value)} placeholder="Função (ex: Vendedor)" />
               <div>
                 <p className="text-xs font-medium mb-1.5">Setores (máx. 3)</p>
                 <SectorPicker selected={newSectors} onChange={setNewSectors} />

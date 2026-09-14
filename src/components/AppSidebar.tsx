@@ -42,7 +42,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   const { currentUser, logout, users } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
-  const { totalUnread } = useUnreadMessages(currentUser?.username || null);
+  const { totalUnread } = useUnreadMessages(currentUser?.id || null);
   const { getStatus } = useAllPresences();
   const { isTabEnabled } = useTabPermissions();
   const { hasFeature } = useFeaturePermissions();
@@ -134,12 +134,12 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   };
 
   return (
-    <aside className="w-64 md:w-64 h-full max-h-screen sidebar-gradient flex flex-col overflow-hidden">
+    <aside className="w-64 md:w-64 h-screen min-h-0 sidebar-gradient flex flex-col overflow-hidden shrink-0">
       <div className="p-3 border-b border-sidebar-border flex justify-center bg-black">
         <img src={logoImg} alt="JapanFlow" className="w-full object-contain" />
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto overscroll-contain">
         {navItems.map((item) => (
           <button
             key={item.path}

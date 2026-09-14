@@ -4,6 +4,8 @@ interface Env {
   ALLOWED_ORIGIN?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_API_KEY?: string;
+  FIREBASE_CLIENT_EMAIL?: string;
+  FIREBASE_PRIVATE_KEY?: string;
   ATTACHMENTS: R2Bucket;
 }
 
@@ -1380,6 +1382,459 @@ async function freightCalc(request: Request, env: Env) {
   }
 }
 
+
+/* SCHEDULED TASKS / CRON */
+type ScheduledTaskRecord = {
+  id: string;
+  title: string;
+  description: string;
+  priority: string;
+  assignee_id: string | null;
+  sector: string | null;
+  assign_mode: 'employee' | 'sector';
+  schedule_time: string;
+  recurrence: 'daily' | 'specific_days';
+  days_of_week: number[];
+  active: boolean;
+  created_by: string;
+  last_created_at: string | null;
+};
+
+type ScheduledTasksRunSummary = {
+  checked: number;
+  due: number;
+  created: number;
+  alreadyCreated: number;
+  skipped: number;
+  failed: number;
+};
+
+let googleAccessTokenCache: { token: string; expiresAt: number } | null = null;
+
+function base64UrlEncodeBytes(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlEncodeText(value: string): string {
+  return base64UrlEncodeBytes(new TextEncoder().encode(value));
+}
+
+function privateKeyPemToArrayBuffer(pem: string): ArrayBuffer {
+  const normalized = pem.replace(/\\n/g, '\n').trim();
+  const base64 = normalized
+    .replace('-----BEGIN PRIVATE KEY-----', '')
+    .replace('-----END PRIVATE KEY-----', '')
+    .replace(/\s+/g, '');
+
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return toArrayBuffer(bytes);
+}
+
+async function getGoogleAccessToken(env: Env): Promise<string> {
+  if (googleAccessTokenCache && googleAccessTokenCache.expiresAt > Date.now() + 60_000) {
+    return googleAccessTokenCache.token;
+  }
+
+  if (!env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) {
+    throw new Error(
+      'FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY não configurados para os jobs automáticos'
+    );
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64UrlEncodeText(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload = base64UrlEncodeText(
+    JSON.stringify({
+      iss: env.FIREBASE_CLIENT_EMAIL,
+      scope:
+        'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/cloud-platform',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now - 30,
+      exp: now + 3600,
+    })
+  );
+
+  const unsigned = `${header}.${payload}`;
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    privateKeyPemToArrayBuffer(env.FIREBASE_PRIVATE_KEY),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    key,
+    toArrayBuffer(new TextEncoder().encode(unsigned))
+  );
+
+  const assertion = `${unsigned}.${base64UrlEncodeBytes(new Uint8Array(signature))}`;
+  const body = new URLSearchParams({
+    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    assertion,
+  });
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+
+  const data: any = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) {
+    throw new Error(`Google OAuth HTTP ${response.status}: ${JSON.stringify(data)}`);
+  }
+
+  const expiresIn = Math.max(300, Number(data.expires_in || 3600));
+  googleAccessTokenCache = {
+    token: String(data.access_token),
+    expiresAt: Date.now() + expiresIn * 1000,
+  };
+
+  return googleAccessTokenCache.token;
+}
+
+function firestoreRestValueToJs(value: any): any {
+  if (!value || typeof value !== 'object') return null;
+  if ('stringValue' in value) return value.stringValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return Number(value.doubleValue);
+  if ('booleanValue' in value) return value.booleanValue;
+  if ('timestampValue' in value) return value.timestampValue;
+  if ('nullValue' in value) return null;
+  if ('arrayValue' in value) {
+    return (value.arrayValue?.values || []).map((item: any) => firestoreRestValueToJs(item));
+  }
+  if ('mapValue' in value) {
+    return firestoreRestFieldsToJs(value.mapValue?.fields || {});
+  }
+  return null;
+}
+
+function firestoreRestFieldsToJs(fields: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(fields || {}).map(([key, value]) => [key, firestoreRestValueToJs(value)])
+  );
+}
+
+function firestoreString(value: unknown): any {
+  return { stringValue: String(value ?? '') };
+}
+
+function firestoreNullableString(value: unknown): any {
+  return value === null || value === undefined || value === ''
+    ? { nullValue: null }
+    : { stringValue: String(value) };
+}
+
+function firestoreStringArray(values: unknown[]): any {
+  return {
+    arrayValue: {
+      values: values.map((value) => firestoreString(value)),
+    },
+  };
+}
+
+function scheduledTaskDocumentId(scheduleId: string, localDate: string): string {
+  const safeScheduleId = scheduleId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `scheduled_${safeScheduleId}_${localDate}`;
+}
+
+function saoPauloClock(date = new Date()): {
+  date: string;
+  time: string;
+  dayOfWeek: number;
+} {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value || '';
+
+  const year = Number(get('year'));
+  const month = Number(get('month'));
+  const day = Number(get('day'));
+  const hour = get('hour').padStart(2, '0');
+  const minute = get('minute').padStart(2, '0');
+
+  return {
+    date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    time: `${hour}:${minute}`,
+    dayOfWeek: new Date(Date.UTC(year, month - 1, day)).getUTCDay(),
+  };
+}
+
+function isoDateInSaoPaulo(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return saoPauloClock(date).date;
+}
+
+function isScheduleDueToday(schedule: ScheduledTaskRecord, clock: ReturnType<typeof saoPauloClock>) {
+  if (!schedule.active) return false;
+
+  if (
+    schedule.recurrence === 'specific_days' &&
+    !schedule.days_of_week.includes(clock.dayOfWeek)
+  ) {
+    return false;
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(schedule.schedule_time)) return false;
+  if (clock.time < schedule.schedule_time) return false;
+
+  return isoDateInSaoPaulo(schedule.last_created_at) !== clock.date;
+}
+
+async function listScheduledTasks(env: Env, accessToken: string): Promise<ScheduledTaskRecord[]> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const root =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    '/databases/(default)/documents/scheduled_tasks';
+
+  const result: ScheduledTaskRecord[] = [];
+  let pageToken = '';
+
+  do {
+    const url = new URL(root);
+    url.searchParams.set('pageSize', '1000');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Firestore scheduled_tasks HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    const data: any = await response.json().catch(() => ({}));
+    for (const document of data.documents || []) {
+      const id = String(document.name || '').split('/').pop() || '';
+      const row = firestoreRestFieldsToJs(document.fields || {});
+
+      result.push({
+        id,
+        title: String(row.title || ''),
+        description: String(row.description || ''),
+        priority: ['high', 'medium', 'low'].includes(row.priority)
+          ? row.priority
+          : 'medium',
+        assignee_id: row.assignee_id ? String(row.assignee_id) : null,
+        sector: row.sector ? String(row.sector) : null,
+        assign_mode: row.assign_mode === 'sector' ? 'sector' : 'employee',
+        schedule_time: String(row.schedule_time || '08:00'),
+        recurrence: row.recurrence === 'specific_days' ? 'specific_days' : 'daily',
+        days_of_week: Array.isArray(row.days_of_week)
+          ? row.days_of_week.map(Number).filter(Number.isFinite)
+          : [],
+        active: row.active !== false,
+        created_by: String(row.created_by || ''),
+        last_created_at: row.last_created_at ? String(row.last_created_at) : null,
+      });
+    }
+
+    pageToken = String(data.nextPageToken || '');
+  } while (pageToken);
+
+  return result;
+}
+
+async function createFirestoreDocument(
+  env: Env,
+  accessToken: string,
+  collectionName: string,
+  documentId: string,
+  fields: Record<string, any>
+): Promise<'created' | 'already-exists'> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/${encodeURIComponent(collectionName)}` +
+    `?documentId=${encodeURIComponent(documentId)}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ fields }),
+  });
+
+  if (response.status === 409) return 'already-exists';
+
+  if (!response.ok) {
+    throw new Error(
+      `Firestore create ${collectionName}/${documentId} HTTP ${response.status}: ${await response.text()}`
+    );
+  }
+
+  return 'created';
+}
+
+async function patchScheduledTaskRun(
+  env: Env,
+  accessToken: string,
+  scheduleId: string,
+  nowIso: string,
+  occurrenceKey: string
+): Promise<void> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/scheduled_tasks/${encodeURIComponent(scheduleId)}` +
+    '?updateMask.fieldPaths=last_created_at' +
+    '&updateMask.fieldPaths=last_occurrence_key' +
+    '&updateMask.fieldPaths=updated_at';
+
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fields: {
+        last_created_at: { timestampValue: nowIso },
+        last_occurrence_key: firestoreString(occurrenceKey),
+        updated_at: { timestampValue: nowIso },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Firestore update scheduled_tasks/${scheduleId} HTTP ${response.status}: ${await response.text()}`
+    );
+  }
+}
+
+async function createScheduledTaskOccurrence(
+  env: Env,
+  accessToken: string,
+  schedule: ScheduledTaskRecord,
+  localDate: string
+): Promise<'created' | 'already-exists'> {
+  const nowIso = new Date().toISOString();
+  const taskId = scheduledTaskDocumentId(schedule.id, localDate);
+
+  const taskResult = await createFirestoreDocument(env, accessToken, 'tasks', taskId, {
+    title: firestoreString(schedule.title),
+    description: firestoreString(schedule.description),
+    status: firestoreString('todo'),
+    priority: firestoreString(schedule.priority),
+    assignee_id: firestoreString(schedule.assign_mode === 'employee' ? schedule.assignee_id || '' : ''),
+    created_by: firestoreString(schedule.created_by),
+    deadline: firestoreString(localDate),
+    sector: firestoreNullableString(schedule.assign_mode === 'sector' ? schedule.sector : null),
+    status_history: {
+      arrayValue: {
+        values: [
+          {
+            mapValue: {
+              fields: {
+                status: firestoreString('todo'),
+                enteredAt: firestoreString(nowIso),
+              },
+            },
+          },
+        ],
+      },
+    },
+    image_url: { nullValue: null },
+    image_urls: firestoreStringArray([]),
+    response: { nullValue: null },
+    scheduled_task_id: firestoreString(schedule.id),
+    scheduled_occurrence: firestoreString(localDate),
+    created_at: { timestampValue: nowIso },
+    updated_at: { timestampValue: nowIso },
+  });
+
+  // Notificação interna: usa ID determinístico para não duplicar em reexecuções.
+  if (schedule.assign_mode === 'employee' && schedule.assignee_id) {
+    await createFirestoreDocument(env, accessToken, 'notifications', taskId, {
+      user_id: firestoreString(schedule.assignee_id),
+      message: firestoreString(`Nova tarefa atribuída: ${schedule.title}`),
+      type: firestoreString('task_created'),
+      read: { booleanValue: false },
+      task_id: firestoreString(taskId),
+      scheduled_task_id: firestoreString(schedule.id),
+      created_at: { timestampValue: nowIso },
+    });
+  }
+
+  await patchScheduledTaskRun(env, accessToken, schedule.id, nowIso, localDate);
+
+  return taskResult;
+}
+
+async function processScheduledTasks(env: Env): Promise<ScheduledTasksRunSummary> {
+  const accessToken = await getGoogleAccessToken(env);
+  const schedules = await listScheduledTasks(env, accessToken);
+  const clock = saoPauloClock();
+
+  const summary: ScheduledTasksRunSummary = {
+    checked: schedules.length,
+    due: 0,
+    created: 0,
+    alreadyCreated: 0,
+    skipped: 0,
+    failed: 0,
+  };
+
+  for (const schedule of schedules) {
+    if (!isScheduleDueToday(schedule, clock)) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    summary.due += 1;
+
+    try {
+      const result = await createScheduledTaskOccurrence(
+        env,
+        accessToken,
+        schedule,
+        clock.date
+      );
+
+      if (result === 'created') summary.created += 1;
+      else summary.alreadyCreated += 1;
+    } catch (error) {
+      summary.failed += 1;
+      console.error(`scheduled-task ${schedule.id}`, error);
+    }
+  }
+
+  console.log('scheduled-tasks summary', {
+    ...summary,
+    localDate: clock.date,
+    localTime: clock.time,
+  });
+
+  return summary;
+}
+
+
 /* R2 STORAGE */
 type StorageObjectInfo = {
   path: string;
@@ -1744,6 +2199,594 @@ async function backfillWebpR2(request: Request, env: Env): Promise<Response> {
   return json(request, env, { results });
 }
 
+
+
+/* ADMIN ACCESS RESET */
+function randomTemporaryPassword(length = 14): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
+
+async function getUserAuthUid(
+  env: Env,
+  accessToken: string,
+  userId: string
+): Promise<string | null> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/users/${encodeURIComponent(userId)}`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Firestore user lookup HTTP ${response.status}: ${await response.text()}`);
+  }
+
+  const document: any = await response.json();
+  const fields = document?.fields || {};
+  const authUid = String(fields.auth_uid?.stringValue || '').trim();
+  return authUid || null;
+}
+
+async function patchUserResetMetadata(
+  env: Env,
+  accessToken: string,
+  userId: string,
+  resetBy: string
+): Promise<void> {
+  if (!env.FIREBASE_PROJECT_ID) return;
+
+  const nowIso = new Date().toISOString();
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/users/${encodeURIComponent(userId)}` +
+    '?updateMask.fieldPaths=access_reset_at&updateMask.fieldPaths=access_reset_by&updateMask.fieldPaths=must_change_password&updateMask.fieldPaths=updated_at';
+
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fields: {
+        access_reset_at: { timestampValue: nowIso },
+        access_reset_by: firestoreString(resetBy),
+        must_change_password: { booleanValue: true },
+        updated_at: { timestampValue: nowIso },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    console.warn('reset-access metadata', response.status, await response.text());
+  }
+}
+
+async function adminResetUserAccess(
+  request: Request,
+  env: Env,
+  caller: AuthenticatedCaller
+): Promise<Response> {
+  const denied = requireAdmin(request, env, caller);
+  if (denied) return denied;
+
+  if (!env.FIREBASE_PROJECT_ID) {
+    return json(request, env, { error: 'FIREBASE_PROJECT_ID não configurado' }, 500);
+  }
+
+  const body: any = await request.json().catch(() => ({}));
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+
+  if (!userId) {
+    return json(request, env, { error: 'userId é obrigatório' }, 400);
+  }
+
+  try {
+    const accessToken = await getGoogleAccessToken(env);
+    const authUid = await getUserAuthUid(env, accessToken, userId);
+
+    if (!authUid) {
+      return json(request, env, { error: 'Usuário sem vínculo com Firebase Auth' }, 404);
+    }
+
+    const temporaryPassword = randomTemporaryPassword();
+
+    const response = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/accounts:update`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          localId: authUid,
+          password: temporaryPassword,
+          returnSecureToken: false,
+        }),
+      }
+    );
+
+    const data: any = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      console.error('admin-reset-access Identity Toolkit', response.status, data);
+      return json(
+        request,
+        env,
+        { error: 'Não foi possível redefinir a senha no Firebase Auth' },
+        502
+      );
+    }
+
+    await patchUserResetMetadata(env, accessToken, userId, caller.userId);
+
+    console.log('admin-reset-access', {
+      targetUserId: userId,
+      resetBy: caller.userId,
+    });
+
+    return json(request, env, {
+      ok: true,
+      userId,
+      temporaryPassword,
+    });
+  } catch (error) {
+    console.error('admin-reset-access', error);
+    return json(
+      request,
+      env,
+      { error: error instanceof Error ? error.message : String(error) },
+      500
+    );
+  }
+}
+
+
+/* FORCED PASSWORD CHANGE */
+async function getCurrentUserDocument(
+  env: Env,
+  accessToken: string,
+  userId: string
+): Promise<Record<string, any> | null> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/users/${encodeURIComponent(userId)}`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Firestore current user HTTP ${response.status}: ${await response.text()}`);
+  }
+
+  const document: any = await response.json();
+  return firestoreRestFieldsToJs(document?.fields || {});
+}
+
+async function passwordResetStatus(
+  request: Request,
+  env: Env,
+  caller: AuthenticatedCaller
+): Promise<Response> {
+  try {
+    const accessToken = await getGoogleAccessToken(env);
+    const user = await getCurrentUserDocument(env, accessToken, caller.userId);
+
+    if (!user) {
+      return json(request, env, { error: 'Usuário não encontrado' }, 404);
+    }
+
+    return json(request, env, {
+      mustChangePassword: user.must_change_password === true,
+    });
+  } catch (error) {
+    console.error('password-reset-status', error);
+    return json(
+      request,
+      env,
+      { error: error instanceof Error ? error.message : String(error) },
+      500
+    );
+  }
+}
+
+async function completePasswordReset(
+  request: Request,
+  env: Env,
+  caller: AuthenticatedCaller
+): Promise<Response> {
+  if (!env.FIREBASE_PROJECT_ID) {
+    return json(request, env, { error: 'FIREBASE_PROJECT_ID não configurado' }, 500);
+  }
+
+  try {
+    const accessToken = await getGoogleAccessToken(env);
+    const nowIso = new Date().toISOString();
+
+    const url =
+      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+      `/databases/(default)/documents/users/${encodeURIComponent(caller.userId)}` +
+      '?updateMask.fieldPaths=must_change_password' +
+      '&updateMask.fieldPaths=password_changed_at' +
+      '&updateMask.fieldPaths=updated_at';
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fields: {
+          must_change_password: { booleanValue: false },
+          password_changed_at: { timestampValue: nowIso },
+          updated_at: { timestampValue: nowIso },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Firestore password reset complete HTTP ${response.status}: ${await response.text()}`
+      );
+    }
+
+    console.log('password-reset-complete', { userId: caller.userId });
+
+    return json(request, env, { ok: true });
+  } catch (error) {
+    console.error('password-reset-complete', error);
+    return json(
+      request,
+      env,
+      { error: error instanceof Error ? error.message : String(error) },
+      500
+    );
+  }
+}
+
+/* PUSH NOTIFICATIONS / FCM */
+type PushSubscriptionRecord = {
+  id: string;
+  userId: string;
+  token: string;
+  active: boolean;
+};
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function safeDocumentPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+}
+
+async function registerPushSubscription(
+  request: Request,
+  env: Env,
+  caller: AuthenticatedCaller
+): Promise<Response> {
+  if (!env.FIREBASE_PROJECT_ID) {
+    return json(request, env, { error: 'FIREBASE_PROJECT_ID não configurado' }, 500);
+  }
+
+  const body: any = await request.json().catch(() => ({}));
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  const platform = typeof body.platform === 'string' ? body.platform.trim().slice(0, 40) : 'web';
+  const userAgent =
+    typeof body.userAgent === 'string' ? body.userAgent.trim().slice(0, 500) : '';
+
+  if (!token || token.length < 20 || token.length > 4096) {
+    return json(request, env, { error: 'Token FCM inválido' }, 400);
+  }
+
+  try {
+    const accessToken = await getGoogleAccessToken(env);
+    const tokenHash = await sha256Hex(token);
+    const documentId = `push_${safeDocumentPart(caller.userId)}_${tokenHash.slice(0, 40)}`;
+    const nowIso = new Date().toISOString();
+
+    const url =
+      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+      `/databases/(default)/documents/push_subscriptions/${encodeURIComponent(documentId)}`;
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fields: {
+          user_id: firestoreString(caller.userId),
+          token: firestoreString(token),
+          platform: firestoreString(platform || 'web'),
+          user_agent: firestoreString(userAgent),
+          active: { booleanValue: true },
+          created_at: { timestampValue: nowIso },
+          updated_at: { timestampValue: nowIso },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Firestore push register HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    return json(request, env, {
+      ok: true,
+      subscriptionId: documentId,
+      userId: caller.userId,
+    });
+  } catch (error) {
+    console.error('push-register', error);
+    return json(
+      request,
+      env,
+      { error: error instanceof Error ? error.message : String(error) },
+      500
+    );
+  }
+}
+
+async function listPushSubscriptionsForUser(
+  env: Env,
+  accessToken: string,
+  userId: string
+): Promise<PushSubscriptionRecord[]> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    '/databases/(default)/documents:runQuery';
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'push_subscriptions' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'user_id' },
+            op: 'EQUAL',
+            value: { stringValue: userId },
+          },
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Firestore push query HTTP ${response.status}: ${await response.text()}`);
+  }
+
+  const rows = (await response.json().catch(() => [])) as any[];
+  const subscriptions: PushSubscriptionRecord[] = [];
+
+  for (const row of rows) {
+    const document = row?.document;
+    if (!document?.name) continue;
+
+    const fields = firestoreRestFieldsToJs(document.fields || {});
+    const token = String(fields.token || '').trim();
+    const active = fields.active !== false;
+
+    if (!token || !active) continue;
+
+    subscriptions.push({
+      id: String(document.name).split('/').pop() || '',
+      userId: String(fields.user_id || ''),
+      token,
+      active,
+    });
+  }
+
+  return subscriptions;
+}
+
+async function deactivatePushSubscription(
+  env: Env,
+  accessToken: string,
+  subscriptionId: string
+): Promise<void> {
+  if (!env.FIREBASE_PROJECT_ID || !subscriptionId) return;
+
+  const nowIso = new Date().toISOString();
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/push_subscriptions/${encodeURIComponent(subscriptionId)}` +
+    '?updateMask.fieldPaths=active&updateMask.fieldPaths=updated_at';
+
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fields: {
+        active: { booleanValue: false },
+        updated_at: { timestampValue: nowIso },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    console.warn(
+      `push deactivate ${subscriptionId} HTTP ${response.status}`,
+      await response.text()
+    );
+  }
+}
+
+async function sendFcmMessage(
+  env: Env,
+  accessToken: string,
+  token: string,
+  payload: { title: string; body: string; url: string; tag: string }
+): Promise<{ ok: boolean; invalidToken: boolean; status: number; detail: string }> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const response = await fetch(
+    `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: {
+          token,
+          data: {
+            title: payload.title,
+            body: payload.body,
+            url: payload.url,
+            tag: payload.tag,
+          },
+          webpush: {
+            headers: {
+              Urgency: 'high',
+              TTL: '86400',
+            },
+          },
+        },
+      }),
+    }
+  );
+
+  const detail = await response.text();
+  const invalidToken =
+    response.status === 404 ||
+    detail.includes('UNREGISTERED') ||
+    detail.includes('registration-token-not-registered');
+
+  return {
+    ok: response.ok,
+    invalidToken,
+    status: response.status,
+    detail,
+  };
+}
+
+async function sendPushToUserEndpoint(
+  request: Request,
+  env: Env,
+  caller: AuthenticatedCaller
+): Promise<Response> {
+  const body: any = await request.json().catch(() => ({}));
+
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+  const title = typeof body.title === 'string' ? body.title.trim().slice(0, 120) : '';
+  const messageBody =
+    typeof body.body === 'string' ? body.body.trim().slice(0, 500) : '';
+  const requestedUrl = typeof body.url === 'string' ? body.url.trim() : '/';
+  const url = requestedUrl.startsWith('/') ? requestedUrl.slice(0, 500) : '/';
+  const tag =
+    typeof body.tag === 'string' && body.tag.trim()
+      ? body.tag.trim().slice(0, 120)
+      : `japanflow-${Date.now()}`;
+
+  if (!userId || !title || !messageBody) {
+    return json(request, env, { error: 'userId, title e body são obrigatórios' }, 400);
+  }
+
+  try {
+    const accessToken = await getGoogleAccessToken(env);
+    const subscriptions = await listPushSubscriptionsForUser(env, accessToken, userId);
+
+    if (!subscriptions.length) {
+      return json(request, env, {
+        ok: true,
+        userId,
+        found: 0,
+        sent: 0,
+        failed: 0,
+        deactivated: 0,
+      });
+    }
+
+    let sent = 0;
+    let failed = 0;
+    let deactivated = 0;
+
+    for (const subscription of subscriptions) {
+      const result = await sendFcmMessage(env, accessToken, subscription.token, {
+        title,
+        body: messageBody,
+        url,
+        tag,
+      });
+
+      if (result.ok) {
+        sent += 1;
+        continue;
+      }
+
+      failed += 1;
+
+      if (result.invalidToken) {
+        await deactivatePushSubscription(env, accessToken, subscription.id);
+        deactivated += 1;
+      }
+
+      console.warn('push-send FCM', {
+        targetUserId: userId,
+        callerUserId: caller.userId,
+        subscriptionId: subscription.id,
+        status: result.status,
+        invalidToken: result.invalidToken,
+        detail: result.detail.slice(0, 500),
+      });
+    }
+
+    console.log('push-send summary', {
+      targetUserId: userId,
+      callerUserId: caller.userId,
+      found: subscriptions.length,
+      sent,
+      failed,
+      deactivated,
+    });
+
+    return json(request, env, {
+      ok: failed === 0,
+      userId,
+      found: subscriptions.length,
+      sent,
+      failed,
+      deactivated,
+    });
+  } catch (error) {
+    console.error('push-send', error);
+    return json(
+      request,
+      env,
+      { error: error instanceof Error ? error.message : String(error) },
+      500
+    );
+  }
+}
+
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -1775,6 +2818,12 @@ export default {
           'storage-audit-report-admin',
           'backfill-webp-admin',
           'admin-users-create',
+          'admin-users-reset-access',
+          'account-password-reset-status',
+          'account-password-reset-complete',
+          'admin-jobs-scheduled-tasks-run',
+          'push-register',
+          'push-send',
         ],
       });
     }
@@ -1799,6 +2848,44 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/admin/users/create') {
       return adminCreateUser(request, env, caller);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/users/reset-access') {
+      return adminResetUserAccess(request, env, caller);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/jobs/scheduled-tasks/run') {
+      const denied = requireAdmin(request, env, caller);
+      if (denied) return denied;
+
+      try {
+        const summary = await processScheduledTasks(env);
+        return json(request, env, { ok: true, summary });
+      } catch (error) {
+        console.error('manual scheduled-tasks run', error);
+        return json(
+          request,
+          env,
+          { error: error instanceof Error ? error.message : String(error) },
+          500
+        );
+      }
+    }
+
+    if (request.method === 'POST' && url.pathname === '/account/password-reset-status') {
+      return passwordResetStatus(request, env, caller);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/account/password-reset-complete') {
+      return completePasswordReset(request, env, caller);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/push/register') {
+      return registerPushSubscription(request, env, caller);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/push/send') {
+      return sendPushToUserEndpoint(request, env, caller);
     }
 
     if (request.method === 'GET' && url.pathname === '/storage/list') {
@@ -1844,5 +2931,17 @@ export default {
       default:
         return json(request, env, { error: 'Rota não encontrada' }, 404);
     }
+  },
+
+  async scheduled(
+    _controller: { scheduledTime: number; cron: string },
+    env: Env,
+    ctx: { waitUntil(promise: Promise<unknown>): void }
+  ): Promise<void> {
+    ctx.waitUntil(
+      processScheduledTasks(env).catch((error) => {
+        console.error('scheduled handler', error);
+      })
+    );
   },
 };
