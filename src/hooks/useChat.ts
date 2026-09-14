@@ -40,56 +40,45 @@ export const useChat = () => {
   const { currentUser } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  const sendMessage = useCallback(
-    async (msg: SendMessageInput) => {
-      if (!currentUser?.id) return;
+  const sendMessage = useCallback(async (msg: SendMessageInput) => {
+    if (!currentUser?.id) return;
 
-      const newMessage: MessageData = {
-        content: msg.content,
-        senderId: currentUser.id,
-        receiverId: msg.receiverId,
-        timestamp: Timestamp.now(),
+    const newMessage: MessageData = {
+      content: msg.content,
+      senderId: currentUser.id,
+      receiverId: msg.receiverId,
+      timestamp: Timestamp.now(),
+      read: false,
+
+      // Firestore não aceita undefined.
+      attachmentUrl: msg.attachmentUrl ?? null,
+      attachmentType: msg.attachmentType ?? null,
+      attachmentName: msg.attachmentName ?? null,
+
+      edited: false,
+      deleted: false,
+    };
+
+    try {
+      await addDoc(collection(db, 'messages'), newMessage);
+
+      await addDoc(collection(db, 'notifications'), {
+        user_id: msg.receiverId,
+        message: 'Nova mensagem recebida',
+        type: 'chat_message',
         read: false,
-
-        // Firestore não aceita undefined.
-        attachmentUrl: msg.attachmentUrl ?? null,
-        attachmentType: msg.attachmentType ?? null,
-        attachmentName: msg.attachmentName ?? null,
-
-        edited: false,
-        deleted: false,
-      };
+        created_at: Timestamp.now(),
+      });
 
       try {
-        await addDoc(collection(db, 'messages'), newMessage);
-
-        await addDoc(collection(db, 'notifications'), {
-          user_id: msg.receiverId,
-          message: 'Nova mensagem recebida',
-          type: 'chat_message',
-          read: false,
-          created_at: Timestamp.now(),
-        });
-
-        try {
-          await sendPushToUser(
-            msg.receiverId,
-            'Nova mensagem',
-            msg.content,
-            '/chat'
-          );
-        } catch (pushError) {
-          console.warn(
-            'Mensagem enviada, mas o push falhou:',
-            pushError
-          );
-        }
-      } catch (error) {
-        console.error('Error sending message:', error);
+        await sendPushToUser(msg.receiverId, 'Nova mensagem', msg.content, '/chat');
+      } catch (pushError) {
+        console.warn('Mensagem enviada, mas o push falhou:', pushError);
       }
-    },
-    []
-  );
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  }, []);
 
   const editMessage = useCallback(async (messageId: string, newContent: string) => {
     try {

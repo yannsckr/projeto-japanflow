@@ -14,8 +14,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { KeyRound, Loader2 } from 'lucide-react';
 
-const apiBaseUrl = () =>
-  String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+const apiBaseUrl = () => String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
 async function authenticatedPost(path: string, body: unknown = {}) {
   const firebaseUser = auth.currentUser;
@@ -147,8 +146,8 @@ const ForcePasswordChangeDialog = () => {
           </div>
           <DialogTitle className="text-center">Crie sua nova senha</DialogTitle>
           <DialogDescription className="text-center">
-            Você entrou com uma senha temporária. Antes de continuar no JapanFlow,
-            defina uma senha definitiva.
+            Você entrou com uma senha temporária. Antes de continuar no JapanFlow, defina uma senha
+            definitiva.
           </DialogDescription>
         </DialogHeader>
 

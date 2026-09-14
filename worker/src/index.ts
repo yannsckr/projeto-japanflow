@@ -1382,7 +1382,6 @@ async function freightCalc(request: Request, env: Env) {
   }
 }
 
-
 /* SCHEDULED TASKS / CRON */
 type ScheduledTaskRecord = {
   id: string;
@@ -1585,13 +1584,13 @@ function isoDateInSaoPaulo(value: string | null | undefined): string | null {
   return saoPauloClock(date).date;
 }
 
-function isScheduleDueToday(schedule: ScheduledTaskRecord, clock: ReturnType<typeof saoPauloClock>) {
+function isScheduleDueToday(
+  schedule: ScheduledTaskRecord,
+  clock: ReturnType<typeof saoPauloClock>
+) {
   if (!schedule.active) return false;
 
-  if (
-    schedule.recurrence === 'specific_days' &&
-    !schedule.days_of_week.includes(clock.dayOfWeek)
-  ) {
+  if (schedule.recurrence === 'specific_days' && !schedule.days_of_week.includes(clock.dayOfWeek)) {
     return false;
   }
 
@@ -1621,21 +1620,24 @@ async function listScheduledTasks(env: Env, accessToken: string): Promise<Schedu
     });
 
     if (!response.ok) {
-      throw new Error(`Firestore scheduled_tasks HTTP ${response.status}: ${await response.text()}`);
+      throw new Error(
+        `Firestore scheduled_tasks HTTP ${response.status}: ${await response.text()}`
+      );
     }
 
     const data: any = await response.json().catch(() => ({}));
     for (const document of data.documents || []) {
-      const id = String(document.name || '').split('/').pop() || '';
+      const id =
+        String(document.name || '')
+          .split('/')
+          .pop() || '';
       const row = firestoreRestFieldsToJs(document.fields || {});
 
       result.push({
         id,
         title: String(row.title || ''),
         description: String(row.description || ''),
-        priority: ['high', 'medium', 'low'].includes(row.priority)
-          ? row.priority
-          : 'medium',
+        priority: ['high', 'medium', 'low'].includes(row.priority) ? row.priority : 'medium',
         assignee_id: row.assignee_id ? String(row.assignee_id) : null,
         sector: row.sector ? String(row.sector) : null,
         assign_mode: row.assign_mode === 'sector' ? 'sector' : 'employee',
@@ -1742,7 +1744,9 @@ async function createScheduledTaskOccurrence(
     description: firestoreString(schedule.description),
     status: firestoreString('todo'),
     priority: firestoreString(schedule.priority),
-    assignee_id: firestoreString(schedule.assign_mode === 'employee' ? schedule.assignee_id || '' : ''),
+    assignee_id: firestoreString(
+      schedule.assign_mode === 'employee' ? schedule.assignee_id || '' : ''
+    ),
     created_by: firestoreString(schedule.created_by),
     deadline: firestoreString(localDate),
     sector: firestoreNullableString(schedule.assign_mode === 'sector' ? schedule.sector : null),
@@ -1810,12 +1814,7 @@ async function processScheduledTasks(env: Env): Promise<ScheduledTasksRunSummary
     summary.due += 1;
 
     try {
-      const result = await createScheduledTaskOccurrence(
-        env,
-        accessToken,
-        schedule,
-        clock.date
-      );
+      const result = await createScheduledTaskOccurrence(env, accessToken, schedule, clock.date);
 
       if (result === 'created') summary.created += 1;
       else summary.alreadyCreated += 1;
@@ -1833,7 +1832,6 @@ async function processScheduledTasks(env: Env): Promise<ScheduledTasksRunSummary
 
   return summary;
 }
-
 
 /* R2 STORAGE */
 type StorageObjectInfo = {
@@ -2199,8 +2197,6 @@ async function backfillWebpR2(request: Request, env: Env): Promise<Response> {
   return json(request, env, { results });
 }
 
-
-
 /* ADMIN ACCESS RESET */
 function randomTemporaryPassword(length = 14): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
@@ -2350,7 +2346,6 @@ async function adminResetUserAccess(
   }
 }
 
-
 /* FORCED PASSWORD CHANGE */
 async function getCurrentUserDocument(
   env: Env,
@@ -2487,8 +2482,7 @@ async function registerPushSubscription(
   const body: any = await request.json().catch(() => ({}));
   const token = typeof body.token === 'string' ? body.token.trim() : '';
   const platform = typeof body.platform === 'string' ? body.platform.trim().slice(0, 40) : 'web';
-  const userAgent =
-    typeof body.userAgent === 'string' ? body.userAgent.trim().slice(0, 500) : '';
+  const userAgent = typeof body.userAgent === 'string' ? body.userAgent.trim().slice(0, 500) : '';
 
   if (!token || token.length < 20 || token.length > 4096) {
     return json(request, env, { error: 'Token FCM inválido' }, 400);
@@ -2696,8 +2690,7 @@ async function sendPushToUserEndpoint(
 
   const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
   const title = typeof body.title === 'string' ? body.title.trim().slice(0, 120) : '';
-  const messageBody =
-    typeof body.body === 'string' ? body.body.trim().slice(0, 500) : '';
+  const messageBody = typeof body.body === 'string' ? body.body.trim().slice(0, 500) : '';
   const requestedUrl = typeof body.url === 'string' ? body.url.trim() : '/';
   const url = requestedUrl.startsWith('/') ? requestedUrl.slice(0, 500) : '/';
   const tag =
@@ -2785,7 +2778,6 @@ async function sendPushToUserEndpoint(
     );
   }
 }
-
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

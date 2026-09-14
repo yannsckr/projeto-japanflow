@@ -1,11 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Bell } from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 const formatNotificationDate = (timestamp: string | undefined | null) => {
@@ -37,24 +33,15 @@ const NotificationBell = () => {
     ? notifications
         .filter((notification) => notification.userId === currentUser.id)
         .sort((a, b) => {
-          const aTime = a.timestamp
-            ? new Date(a.timestamp).getTime()
-            : 0;
+          const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
 
-          const bTime = b.timestamp
-            ? new Date(b.timestamp).getTime()
-            : 0;
+          const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
 
-          return (
-            (Number.isNaN(bTime) ? 0 : bTime) -
-            (Number.isNaN(aTime) ? 0 : aTime)
-          );
+          return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
         })
     : [];
 
-  const unreadCount = userNotifs.filter(
-    (notification) => !notification.read
-  ).length;
+  const unreadCount = userNotifs.filter((notification) => !notification.read).length;
 
   useEffect(() => {
     if (unreadCount > prevCount.current) {
@@ -86,12 +73,7 @@ const NotificationBell = () => {
           aria-label="Notificações"
         >
           <Bell
-            className={cn(
-              'w-5 h-5',
-              unreadCount > 0
-                ? 'text-primary'
-                : 'text-muted-foreground'
-            )}
+            className={cn('w-5 h-5', unreadCount > 0 ? 'text-primary' : 'text-muted-foreground')}
           />
 
           {unreadCount > 0 && (
@@ -109,36 +91,25 @@ const NotificationBell = () => {
 
         <div className="max-h-64 overflow-auto">
           {userNotifs.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground text-center">
-              Nenhuma notificação
-            </p>
+            <p className="p-4 text-sm text-muted-foreground text-center">Nenhuma notificação</p>
           ) : (
             userNotifs.map((notification) => {
-              const formattedDate = formatNotificationDate(
-                notification.timestamp
-              );
+              const formattedDate = formatNotificationDate(notification.timestamp);
 
               return (
                 <button
                   type="button"
                   key={notification.id}
-                  onClick={() =>
-                    markNotificationRead(notification.id)
-                  }
+                  onClick={() => markNotificationRead(notification.id)}
                   className={cn(
                     'w-full text-left p-3 border-b border-border last:border-0 hover:bg-secondary/50 transition-colors',
-                    !notification.read &&
-                      'bg-primary/5 border-l-2 border-l-primary'
+                    !notification.read && 'bg-primary/5 border-l-2 border-l-primary'
                   )}
                 >
-                  <p className="text-sm">
-                    {notification.message}
-                  </p>
+                  <p className="text-sm">{notification.message}</p>
 
                   {formattedDate && (
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      {formattedDate}
-                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">{formattedDate}</p>
                   )}
                 </button>
               );

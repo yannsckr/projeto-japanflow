@@ -6,21 +6,21 @@
   "vars": {
     "GEMINI_MODEL": "gemini-3.7-flash",
     "ALLOWED_ORIGIN": "http://localhost:8080,http://127.0.0.1:8080,http://localhost:8081,http://127.0.0.1:8081,http://localhost:5173,http://127.0.0.1:5173,https://japanflow-9b196.web.app,https://japanflow-9b196.firebaseapp.com",
-    "FIREBASE_PROJECT_ID": "japanflow-9b196"
+    "FIREBASE_PROJECT_ID": "japanflow-9b196",
   },
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *"],
   },
   "r2_buckets": [
     {
       "binding": "ATTACHMENTS",
-      "bucket_name": "japanbucket"
-    }
+      "bucket_name": "japanbucket",
+    },
   ],
   "observability": {
     "logs": {
       "enabled": true,
-      "invocation_logs": true
-    }
-  }
+      "invocation_logs": true,
+    },
+  },
 }

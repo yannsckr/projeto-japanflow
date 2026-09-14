@@ -55,11 +55,7 @@ export function useUnreadMessages(currentUserId: string | null) {
           }
         });
 
-        if (
-          initializedRef.current &&
-          unreadCount > previousCountRef.current &&
-          audioRef.current
-        ) {
+        if (initializedRef.current && unreadCount > previousCountRef.current && audioRef.current) {
           audioRef.current.currentTime = 0;
           audioRef.current.play().catch(() => {});
         }

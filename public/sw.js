@@ -10,27 +10,13 @@ self.addEventListener('push', function (event) {
   const notification = payload.notification || {};
   const data = payload.data || {};
 
-  const title =
-    notification.title ||
-    data.title ||
-    payload.title ||
-    'JapanFlow';
+  const title = notification.title || data.title || payload.title || 'JapanFlow';
 
-  const body =
-    notification.body ||
-    data.body ||
-    payload.body ||
-    'Nova notificação';
+  const body = notification.body || data.body || payload.body || 'Nova notificação';
 
-  const url =
-    data.url ||
-    payload.url ||
-    '/';
+  const url = data.url || payload.url || '/';
 
-  const tag =
-    data.tag ||
-    payload.tag ||
-    'japanflow-' + Date.now();
+  const tag = data.tag || payload.tag || 'japanflow-' + Date.now();
 
   event.waitUntil(
     self.registration.showNotification(title, {
@@ -46,9 +32,7 @@ self.addEventListener('push', function (event) {
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
 
-  const targetUrl =
-    (event.notification.data && event.notification.data.url) ||
-    '/';
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {

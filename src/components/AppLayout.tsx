@@ -116,29 +116,18 @@ const AppLayout = () => {
               {isMobile && (
                 <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                   <SheetTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-white"
-                    >
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-white">
                       <Menu className="h-5 w-5" />
                     </Button>
                   </SheetTrigger>
 
-                  <SheetContent
-                    side="left"
-                    className="p-0 w-72 border-r-0 h-full flex flex-col"
-                  >
+                  <SheetContent side="left" className="p-0 w-72 border-r-0 h-full flex flex-col">
                     <AppSidebar onNavigate={() => setSidebarOpen(false)} />
                   </SheetContent>
                 </Sheet>
               )}
 
-              <img
-                src={logoImg}
-                alt="JapanFlow"
-                className="h-8 md:h-10 object-contain"
-              />
+              <img src={logoImg} alt="JapanFlow" className="h-8 md:h-10 object-contain" />
             </div>
 
             <InventoryHeaderBanner />
@@ -146,17 +135,8 @@ const AppLayout = () => {
             <div className="flex items-center gap-1 md:gap-2">
               <PauseButton updatePresence={updatePresenceStatus} />
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleTheme}
-                className="h-8 w-8"
-              >
-                {theme === 'dark' ? (
-                  <Sun className="h-4 w-4" />
-                ) : (
-                  <Moon className="h-4 w-4" />
-                )}
+              <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-8 w-8">
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
 
               <NotificationBell />
