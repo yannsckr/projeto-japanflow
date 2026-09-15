@@ -36,3 +36,10 @@ dist/
 # Chave API Gemini
 worker/.dev.vars
 .dev.vars
+
+# Migration private data / temporary credentials
+migration-private/
+migration-export/
+firestore-inventory/
+japanflow-supabase-export.zip
+japanflow-firestore-inventory.zip
