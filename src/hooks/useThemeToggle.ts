@@ -1,28 +1,62 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 
-type Theme = 'dark' | 'light';
+export type Theme = 'dark' | 'light' | 'hybrid';
+
+const THEME_STORAGE_KEY = 'japanflow-theme';
+const THEMES: Theme[] = ['dark', 'light', 'hybrid'];
+
+function isTheme(value: string | null): value is Theme {
+  return value === 'dark' || value === 'light' || value === 'hybrid';
+}
+
+function getInitialTheme(): Theme {
+  if (typeof window === 'undefined') return 'dark';
+
+  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  return isTheme(savedTheme) ? savedTheme : 'dark';
+}
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+
+  root.classList.remove(...THEMES);
+  root.classList.add(theme);
+  root.dataset.theme = theme;
+
+  root.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+}
 
 export function useThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('japanflow-theme') as Theme) || 'dark';
-    }
-    return 'dark';
-  });
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'light') {
-      root.classList.add('light');
-    } else {
-      root.classList.remove('light');
-    }
-    localStorage.setItem('japanflow-theme', theme);
+  useLayoutEffect(() => {
+    applyTheme(theme);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
-  const toggleTheme = useCallback(() => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  const setTheme = useCallback((nextTheme: Theme) => {
+    setThemeState(nextTheme);
   }, []);
 
-  return { theme, toggleTheme };
+  // Mantido por compatibilidade com o AppLayout atual.
+  // Por enquanto alterna Light <-> Dark.
+  // O modo Hybrid será exposto pelo novo ThemeSwitcher no Bloco 6.2.
+  const toggleTheme = useCallback(() => {
+    setThemeState((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'));
+  }, []);
+
+  const cycleTheme = useCallback(() => {
+    setThemeState((currentTheme) => {
+      const currentIndex = THEMES.indexOf(currentTheme);
+      const nextIndex = (currentIndex + 1) % THEMES.length;
+      return THEMES[nextIndex];
+    });
+  }, []);
+
+  return {
+    theme,
+    setTheme,
+    toggleTheme,
+    cycleTheme,
+  };
 }
