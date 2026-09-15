@@ -1,5 +1,14 @@
-import { useApp } from '@/contexts/AppContext';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Menu } from 'lucide-react';
+
+import { useApp } from '@/contexts/AppContext';
+import { usePresence } from '@/hooks/usePresence';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useTabTitleNotifications } from '@/hooks/useTabTitleNotifications';
+import { useUnreadMessages } from '@/hooks/useUnreadMessages';
+import { useIsMobile } from '@/hooks/use-mobile';
+
 import AppSidebar from './AppSidebar';
 import NotificationBell from './NotificationBell';
 import PauseButton from './PauseButton';
@@ -9,40 +18,58 @@ import AdminPopupAlert from './AdminPopupAlert';
 import NewTaskPopup from './NewTaskPopup';
 import InventoryHeaderBanner from './InventoryHeaderBanner';
 import ForcePasswordChangeDialog from '@/components/ForcePasswordChangeDialog';
-
-import { useThemeToggle } from '@/hooks/useThemeToggle';
-import { usePresence } from '@/hooks/usePresence';
-import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { useTabTitleNotifications } from '@/hooks/useTabTitleNotifications';
-import { useUnreadMessages } from '@/hooks/useUnreadMessages';
-
-import { Sun, Moon, Menu, LogOut } from 'lucide-react';
+import ThemeSwitcher from '@/components/ThemeSwitcher';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
-import { useIsMobile } from '@/hooks/use-mobile';
-
-import logoImg from '@/assets/logo_japanflow.png';
-
-import { useEffect, useState } from 'react';
-
 import { getClientPublicIp, isIpAllowed } from '@/lib/networkGuard';
 import { userCanAccessExternally } from '@/lib/externalAccess';
+
+const SIDEBAR_STORAGE_KEY = 'japanflow-sidebar-collapsed';
+
+const pageTitles: Record<string, string> = {
+  '/admin': 'Meu Quadro',
+  '/admin/monitor': 'Monitoria',
+  '/board': 'Meu Quadro',
+  '/chat': 'Chat',
+  '/corporate': 'Corporativo',
+  '/departmental': 'Departamental',
+  '/financial': 'Financeiro',
+  '/corridas': 'Corridas',
+  '/time-reports': 'Relatórios',
+  '/tracking': 'Acompanhamento',
+  '/awards': 'Premiações',
+  '/pedido-compras': 'Pedido de Compras',
+  '/encomendas-balcao': 'Encomendas Balcão',
+  '/inventario': 'Inventário',
+  '/profile': 'Perfil',
+  '/admin/backfill-images': 'Backfill de Imagens',
+  '/documentos': 'Documentos',
+  '/politicas-internas': 'Políticas Internas',
+  '/historico-conversas': 'Histórico de Conversas',
+};
+
+function getPageTitle(pathname: string) {
+  if (pathname.startsWith('/admin/employee/')) return 'Quadro da Equipe';
+  return pageTitles[pathname] ?? 'JapanFlow';
+}
 
 const AppLayout = () => {
   const { currentUser, authLoading, logout, notifications } = useApp();
 
   const navigate = useNavigate();
   const location = useLocation();
-
-  const { theme, toggleTheme } = useThemeToggle();
-
   const isMobile = useIsMobile();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+  });
 
   const isChatRoute = location.pathname === '/chat';
+  const pageTitle = useMemo(() => getPageTitle(location.pathname), [location.pathname]);
 
   const { updatePresenceStatus } = usePresence(currentUser?.id || null);
 
@@ -51,23 +78,27 @@ const AppLayout = () => {
   const { totalUnread: unreadMessages } = useUnreadMessages(currentUser?.id || null);
 
   const unreadNotifs = currentUser
-    ? notifications.filter((n) => n.userId === currentUser.id && !n.read).length
+    ? notifications.filter(
+        (notification) => notification.userId === currentUser.id && !notification.read
+      ).length
     : 0;
 
   useTabTitleNotifications(unreadNotifs + unreadMessages);
 
   useEffect(() => {
-    if (!currentUser) return;
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
+  useEffect(() => {
+    if (!currentUser) return;
     if (currentUser.role === 'admin') return;
 
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       const ip = await getClientPublicIp();
 
       if (cancelled) return;
-
       if (isIpAllowed(ip)) return;
 
       const allowed = await userCanAccessExternally(currentUser.id);
@@ -87,8 +118,11 @@ const AppLayout = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center text-sm text-muted-foreground">
-        Verificando sessão...
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-5 py-4 shadow-card">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+          <span className="text-sm text-muted-foreground">Verificando sessão...</span>
+        </div>
       </div>
     );
   }
@@ -99,72 +133,81 @@ const AppLayout = () => {
 
   return (
     <>
-      {/* Popups globais */}
       <ReminderPopup />
       <BulletinAlertPopup />
       <AdminPopupAlert />
       <NewTaskPopup />
       <ForcePasswordChangeDialog />
 
-      {/* Layout principal */}
-      <div className="flex min-h-screen bg-background">
-        {!isMobile && <AppSidebar />}
+      <div className="flex min-h-screen overflow-hidden bg-background">
+        {!isMobile && (
+          <AppSidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
+        )}
 
-        <div className="flex-1 flex flex-col h-screen max-h-screen min-w-0">
-          <header className="h-14 border-b border-border bg-black flex items-center justify-between px-4 md:px-6 shrink-0">
-            <div className="flex items-center gap-2">
+        <div className="flex h-screen max-h-screen min-w-0 flex-1 flex-col">
+          <header className="relative z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border/70 bg-background/80 px-3 backdrop-blur-xl md:px-5">
+            <div className="flex min-w-0 items-center gap-3">
               {isMobile && (
                 <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                   <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-white">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 rounded-xl"
+                      aria-label="Abrir menu"
+                    >
                       <Menu className="h-5 w-5" />
                     </Button>
                   </SheetTrigger>
 
-                  <SheetContent side="left" className="p-0 w-72 border-r-0 h-full flex flex-col">
-                    <AppSidebar onNavigate={() => setSidebarOpen(false)} />
+                  <SheetContent
+                    side="left"
+                    className="w-[280px] border-r-0 bg-transparent p-0 shadow-none"
+                  >
+                    <AppSidebar mobile collapsed={false} onNavigate={() => setSidebarOpen(false)} />
                   </SheetContent>
                 </Sheet>
               )}
 
-              <img src={logoImg} alt="JapanFlow" className="h-8 md:h-10 object-contain" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold leading-none text-foreground md:text-base">
+                  {pageTitle}
+                </p>
+                <p className="mt-1 hidden truncate text-[11px] text-muted-foreground sm:block">
+                  JapanFlow · Japan Imports
+                </p>
+              </div>
             </div>
 
-            <InventoryHeaderBanner />
+            <div className="mx-auto hidden min-w-0 flex-1 justify-center px-4 lg:flex">
+              <div className="max-w-xl overflow-hidden">
+                <InventoryHeaderBanner />
+              </div>
+            </div>
 
-            <div className="flex items-center gap-1 md:gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
               <PauseButton updatePresence={updatePresenceStatus} />
-
-              <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-8 w-8">
-                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
-
+              <ThemeSwitcher />
               <NotificationBell />
-
-              {!isMobile && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  onClick={async () => {
-                    await logout();
-                    navigate('/login');
-                  }}
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              )}
             </div>
           </header>
 
           <main
             className={
               isChatRoute
-                ? 'flex-1 min-h-0 p-2 md:p-3 overflow-hidden flex flex-col max-h-[calc(100dvh-3.5rem)]'
-                : 'flex-1 min-h-0 p-3 md:p-6 overflow-auto'
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 md:p-3'
+                : 'min-h-0 flex-1 overflow-auto p-3 md:p-5 lg:p-6'
             }
           >
-            <Outlet />
+            <div
+              className={
+                isChatRoute
+                  ? 'flex min-h-0 flex-1 flex-col'
+                  : 'mx-auto min-h-full w-full max-w-[1680px] animate-fade-up'
+              }
+            >
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>
