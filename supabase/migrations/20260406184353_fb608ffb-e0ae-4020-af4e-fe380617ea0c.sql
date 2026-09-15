@@ -1,1 +1,0 @@
-ALTER TABLE public.tasks ADD COLUMN image_urls jsonb NOT NULL DEFAULT '[]'::jsonb;

@@ -1,1 +1,0 @@
-ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS previous_assignee_id uuid;

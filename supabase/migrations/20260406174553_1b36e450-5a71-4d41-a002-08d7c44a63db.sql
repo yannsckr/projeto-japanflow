@@ -1,1 +1,0 @@
-ALTER TABLE public.tasks ADD COLUMN response TEXT DEFAULT NULL;

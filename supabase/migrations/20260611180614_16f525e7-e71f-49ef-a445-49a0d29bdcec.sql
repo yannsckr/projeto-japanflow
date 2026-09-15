@@ -1,1 +1,0 @@
-ALTER TABLE public.counter_orders ADD COLUMN client_id TEXT NULL;

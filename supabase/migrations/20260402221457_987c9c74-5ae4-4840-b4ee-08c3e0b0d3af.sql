@@ -1,1 +1,0 @@
-ALTER TABLE public.calendar_events ADD COLUMN target_mode text NOT NULL DEFAULT 'specific';
