@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+
 import { useApp } from '@/contexts/AppContext';
 import { useTaskPermissions } from '@/hooks/useTaskPermissions';
 import KanbanBoard from '@/components/KanbanBoard';
@@ -21,53 +22,74 @@ const EmployeeBoardPage = () => {
 
   if (!viewUserId) return null;
 
-  const viewUser = users.find((u) => u.id === viewUserId);
+  const viewUser = users.find((user) => user.id === viewUserId);
   const tasks = getTasksForUser(viewUserId);
 
   const hasPermissions =
     currentUser && !permissionsLoading
-      ? permissions.some((p) => p.granterId === currentUser.id)
+      ? permissions.some((permission) => permission.granterId === currentUser.id)
       : false;
+
   const showCreateTask = isAdmin || hasPermissions;
+  const boardTitle = isAdmin ? `Quadro de ${viewUser?.name ?? 'colaborador'}` : 'Meu Quadro';
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold">
-              {isAdmin ? `Quadro de ${viewUser?.name}` : 'Meu Quadro'}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {tasks.length} tarefa{tasks.length !== 1 ? 's' : ''}
+    <div className="space-y-5 md:space-y-6">
+      <section className="jf-surface overflow-hidden p-4 md:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+              {isAdmin ? 'Equipe' : 'Meu espaço'}
+            </p>
+
+            <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+              {boardTitle}
+            </h1>
+
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {tasks.length} tarefa{tasks.length !== 1 ? 's' : ''} vinculada
+              {tasks.length !== 1 ? 's' : ''} a este quadro.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex flex-wrap items-center gap-2">
             <DailyCompletedCounter userId={viewUserId} compact />
             <TaskHistoryDialog userId={viewUserId} />
+
             {isAdmin && <CreateTaskDialog preselectedAssignee={viewUserId} />}
+
             {!isAdmin && showCreateTask && <CreateTaskDialog />}
           </div>
         </div>
+      </section>
 
-        <div className="mb-4">
-          <WorkScheduleBanner userId={viewUserId} />
-        </div>
+      <section>
+        <WorkScheduleBanner userId={viewUserId} />
+      </section>
 
-        <div className="mb-6">
+      <section className="grid gap-4 xl:grid-cols-2">
+        <div className="min-w-0">
           <PickupsPanel />
         </div>
 
-        <div className="mb-6">
+        <div className="min-w-0">
           <CounterOrdersPanel />
         </div>
+      </section>
 
-        {!isAdmin && <SectorTasksList userId={viewUserId} />}
+      {!isAdmin && (
+        <section className="min-w-0">
+          <SectorTasksList userId={viewUserId} />
+        </section>
+      )}
 
+      <section className="min-w-0">
         <KanbanBoard tasks={tasks} />
-      </div>
+      </section>
 
-      <EmployeeCalendar userId={viewUserId} />
+      <section className="min-w-0">
+        <EmployeeCalendar userId={viewUserId} />
+      </section>
     </div>
   );
 };

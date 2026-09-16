@@ -189,22 +189,24 @@ const EmployeeCalendar = ({ userId }: EmployeeCalendarProps) => {
   };
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <CalendarDays className="w-4 h-4" />
+    <div className="jf-surface p-4 md:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <CalendarDays className="h-4 w-4" />
+          </span>
           Calendário
         </h3>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4">
+      <div className="grid gap-4 lg:grid-cols-[auto_1fr]">
         <div className="flex-shrink-0">
           <Calendar
             mode="single"
             selected={selectedDate}
             onSelect={setSelectedDate}
             locale={ptBR}
-            className="p-3 pointer-events-auto rounded-lg border border-border"
+            className="pointer-events-auto rounded-2xl border border-border/70 bg-muted/10 p-3"
             modifiers={{
               reminder: reminderDates,
               eventAll: allDates,
@@ -221,7 +223,7 @@ const EmployeeCalendar = ({ userId }: EmployeeCalendarProps) => {
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium">
               {selectedDate
                 ? format(selectedDate, "dd 'de' MMMM", { locale: ptBR })
@@ -248,14 +250,14 @@ const EmployeeCalendar = ({ userId }: EmployeeCalendarProps) => {
               Nenhum evento nesta data
             </p>
           ) : (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
               {eventsForDate.map((event) => {
                 const colors = getEventColor(event);
                 return (
                   <div
                     key={event.id}
                     className={cn(
-                      'border rounded-lg p-3 text-sm text-gray-900 dark:text-gray-950',
+                      'rounded-xl border p-3 text-sm text-gray-900 dark:text-gray-950',
                       colors.border,
                       colors.bg
                     )}
@@ -323,7 +325,7 @@ const EmployeeCalendar = ({ userId }: EmployeeCalendarProps) => {
       </div>
 
       {/* Legenda de cores */}
-      <div className="mt-4 pt-3 border-t border-border flex flex-wrap gap-4 text-xs text-muted-foreground">
+      <div className="mt-4 flex flex-wrap gap-4 border-t border-border/70 pt-3 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-yellow-400" />
           <span>Lembrete</span>
@@ -349,7 +351,7 @@ const EmployeeCalendar = ({ userId }: EmployeeCalendarProps) => {
           else setShowAddDialog(true);
         }}
       >
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>{editingEvent ? 'Editar Evento' : 'Novo Evento'}</DialogTitle>
           </DialogHeader>

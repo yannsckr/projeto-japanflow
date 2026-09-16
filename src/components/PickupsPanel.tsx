@@ -198,10 +198,12 @@ const PickupsPanel = () => {
       : `🚛 ${pickup.carrier_name || 'Transportadora'}`;
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-base font-semibold flex items-center gap-2">
-          <Package className="w-5 h-5 text-primary" />
+    <div className="jf-surface space-y-3 overflow-hidden p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Package className="h-4 w-4" />
+          </span>
           Retiradas
           {pending.length > 0 && (
             <Badge variant="secondary" className="ml-1">
@@ -218,7 +220,7 @@ const PickupsPanel = () => {
             </Button>
           </DialogTrigger>
 
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl rounded-2xl">
             <DialogHeader>
               <DialogTitle>Histórico de Retiradas</DialogTitle>
             </DialogHeader>
@@ -233,7 +235,7 @@ const PickupsPanel = () => {
                   {completed.map((pickup) => (
                     <div
                       key={pickup.id}
-                      className="border border-border rounded p-3 text-sm space-y-1"
+                      className="space-y-1 rounded-xl border border-border/70 bg-muted/15 p-3 text-sm"
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="font-medium">{pickup.order_title}</span>
@@ -279,15 +281,15 @@ const PickupsPanel = () => {
       {pending.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nenhuma retirada pendente.</p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {pending.map((pickup) => (
             <div
               key={pickup.id}
-              className="border border-border rounded p-1.5 flex flex-col gap-1 min-h-0"
+              className="jf-interactive flex min-h-0 flex-col gap-2 rounded-xl border border-border/70 bg-muted/10 p-2.5 hover:bg-muted/25"
             >
               <button
                 onClick={() => setDetail(pickup)}
-                className="text-left flex-1 min-w-0 hover:bg-muted/40 rounded transition px-1 py-0.5"
+                className="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-muted/30"
               >
                 <div className="text-xs font-medium truncate">{pickup.order_title}</div>
 
@@ -299,7 +301,7 @@ const PickupsPanel = () => {
               <Button
                 size="sm"
                 onClick={() => handleComplete(pickup.id)}
-                className="h-6 text-[11px] px-2"
+                className="h-8 rounded-lg px-2 text-[11px]"
               >
                 <CheckCircle2 className="w-3 h-3 mr-1" />
                 Concluir
@@ -315,7 +317,7 @@ const PickupsPanel = () => {
           if (!open) setDetail(null);
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               {detail?.order_title}

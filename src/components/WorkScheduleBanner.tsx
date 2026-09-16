@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -24,8 +25,8 @@ interface Props {
   userId: string;
 }
 
-const formatRange = (d: { entry?: string; exit?: string }) => {
-  if (d?.entry && d?.exit) return `${d.entry} – ${d.exit}`;
+const formatRange = (day: { entry?: string; exit?: string }) => {
+  if (day?.entry && day?.exit) return `${day.entry} – ${day.exit}`;
   return 'Folga';
 };
 
@@ -36,34 +37,44 @@ const WorkScheduleBanner = ({ userId }: Props) => {
 
   const currentWeekStart = mondayOf(new Date());
   const currentSchedule = useMemo(
-    () => schedules.find((s) => s.week_start === currentWeekStart),
+    () => schedules.find((schedule) => schedule.week_start === currentWeekStart),
     [schedules, currentWeekStart]
   );
-  const today = todayDayKey();
 
+  const today = todayDayKey();
   const days: WeekDays = currentSchedule?.days || emptyWeek();
   const todayInfo = days[today];
 
-  const viewSchedule = schedules.find((s) => s.week_start === viewWeek);
+  const viewSchedule = schedules.find((schedule) => schedule.week_start === viewWeek);
   const viewDays: WeekDays = viewSchedule?.days || emptyWeek();
 
   return (
-    <div className="border border-primary/30 bg-primary/5 rounded-lg px-3 py-2 flex flex-wrap items-center gap-3 justify-between">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold">Hoje:</span>
-          <span className="text-sm font-bold">{formatRange(todayInfo)}</span>
+    <div className="jf-surface flex flex-col gap-3 p-3.5 md:flex-row md:items-center md:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Calendar className="h-[18px] w-[18px]" />
         </div>
-        <div className="hidden md:flex items-center gap-1 text-xs text-muted-foreground">
-          {DAY_KEYS.map((d) => (
+
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Escala de hoje
+          </p>
+          <p className="mt-0.5 truncate text-sm font-semibold text-foreground">
+            {formatRange(todayInfo)}
+          </p>
+        </div>
+
+        <div className="hidden min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pl-2 lg:flex">
+          {DAY_KEYS.map((day) => (
             <span
-              key={d}
-              className={`px-2 py-0.5 rounded border ${
-                d === today ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'
+              key={day}
+              className={`whitespace-nowrap rounded-lg border px-2 py-1 text-[10px] ${
+                day === today
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-border/70 bg-muted/20 text-muted-foreground'
               }`}
             >
-              <b>{DAY_SHORT[d]}</b> {formatRange(days[d])}
+              <b>{DAY_SHORT[day]}</b> {formatRange(days[day])}
             </span>
           ))}
         </div>
@@ -71,47 +82,67 @@ const WorkScheduleBanner = ({ userId }: Props) => {
 
       <Dialog
         open={open}
-        onOpenChange={(o) => {
-          setOpen(o);
-          if (o) setViewWeek(currentWeekStart);
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (nextOpen) setViewWeek(currentWeekStart);
         }}
       >
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
-            Escalas
+          <Button variant="outline" size="sm" className="h-9 rounded-xl">
+            Ver escalas
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-xl">
+
+        <DialogContent className="max-w-xl rounded-2xl">
           <DialogHeader>
             <DialogTitle>Minhas Escalas</DialogTitle>
           </DialogHeader>
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <Button variant="outline" size="sm" onClick={() => setViewWeek((w) => addWeeks(w, -1))}>
+
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={() => setViewWeek((week) => addWeeks(week, -1))}
+            >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="font-medium text-sm">
+
+            <div className="text-center text-sm font-medium">
               Semana de {formatWeekRange(viewWeek)}
               {viewWeek === currentWeekStart && ' (atual)'}
             </div>
-            <Button variant="outline" size="sm" onClick={() => setViewWeek((w) => addWeeks(w, 1))}>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={() => setViewWeek((week) => addWeeks(week, 1))}
+            >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <div className="space-y-1">
-            {DAY_KEYS.map((d) => (
-              <div key={d} className="flex justify-between text-sm border-b py-2">
-                <span className="font-medium">{DAY_SHORT[d]}</span>
+
+          <div className="overflow-hidden rounded-xl border border-border/70">
+            {DAY_KEYS.map((day) => (
+              <div
+                key={day}
+                className="flex justify-between border-b border-border/60 px-3 py-2.5 text-sm last:border-b-0"
+              >
+                <span className="font-medium">{DAY_SHORT[day]}</span>
                 <span className={viewSchedule ? '' : 'text-muted-foreground'}>
-                  {formatRange(viewDays[d])}
+                  {formatRange(viewDays[day])}
                 </span>
               </div>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground text-center mt-2">
+
+          <p className="mt-3 text-center text-xs text-muted-foreground">
             Intervalo fixo de almoço: 1 hora.
           </p>
+
           {!viewSchedule && (
-            <p className="text-xs text-muted-foreground text-center">
+            <p className="text-center text-xs text-muted-foreground">
               Nenhuma escala cadastrada para esta semana.
             </p>
           )}

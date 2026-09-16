@@ -1,29 +1,29 @@
+import { HandMetal } from 'lucide-react';
+import { toast } from 'sonner';
+
 import { useApp } from '@/contexts/AppContext';
 import { SECTOR_LABELS, Sector } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { HandMetal } from 'lucide-react';
-import { toast } from 'sonner';
 
 interface SectorTasksListProps {
   userId: string;
 }
 
 const PRIORITY_STYLES = {
-  high: 'bg-destructive/10 text-destructive',
-  medium: 'bg-warning/10 text-warning',
-  low: 'bg-muted text-muted-foreground',
+  high: 'bg-destructive/10 text-destructive border-destructive/20',
+  medium: 'bg-warning/10 text-warning border-warning/20',
+  low: 'bg-muted text-muted-foreground border-border',
 };
 
 const SectorTasksList = ({ userId }: SectorTasksListProps) => {
   const { users, tasks, claimSectorTask } = useApp();
-  const user = users.find((u) => u.id === userId);
+  const user = users.find((item) => item.id === userId);
 
   if (!user || !user.sectors || user.sectors.length === 0) return null;
 
-  // Get unclaimed tasks for the user's sectors
   const sectorTasks = tasks.filter(
-    (t) => t.sector && user.sectors.includes(t.sector as Sector) && !t.assigneeId
+    (task) => task.sector && user.sectors.includes(task.sector as Sector) && !task.assigneeId
   );
 
   if (sectorTasks.length === 0) return null;
@@ -34,26 +34,42 @@ const SectorTasksList = ({ userId }: SectorTasksListProps) => {
   };
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-lg font-semibold flex items-center gap-2">
-        <HandMetal className="w-5 h-5 text-primary" />
-        Tarefas do Setor
-      </h3>
-      <div className="grid gap-2">
+    <section className="jf-surface overflow-hidden p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <HandMetal className="h-4 w-4" />
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Tarefas do setor</h3>
+            <p className="text-[11px] text-muted-foreground">
+              {sectorTasks.length} disponíve{sectorTasks.length === 1 ? 'l' : 'is'} para resgate
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
         {sectorTasks.map((task) => (
           <div
             key={task.id}
-            className="bg-card border border-border rounded-lg p-3 flex items-start justify-between gap-3 flex-wrap"
+            className="jf-interactive flex flex-col gap-3 rounded-xl border border-border/70 bg-muted/15 p-3 hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-sm font-medium truncate">{task.title}</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
+
                 {task.sector && (
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="rounded-lg text-[10px]">
                     {SECTOR_LABELS[task.sector as Sector]}
                   </Badge>
                 )}
-                <Badge className={`text-[10px] ${PRIORITY_STYLES[task.priority]}`}>
+
+                <Badge
+                  variant="outline"
+                  className={`rounded-lg text-[10px] ${PRIORITY_STYLES[task.priority]}`}
+                >
                   {task.priority === 'high'
                     ? 'Alta'
                     : task.priority === 'medium'
@@ -61,17 +77,23 @@ const SectorTasksList = ({ userId }: SectorTasksListProps) => {
                       : 'Baixa'}
                 </Badge>
               </div>
+
               {task.description && (
-                <p className="text-xs text-muted-foreground mt-1 truncate">{task.description}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">{task.description}</p>
               )}
             </div>
-            <Button size="sm" onClick={() => handleClaim(task.id)} className="shrink-0">
+
+            <Button
+              size="sm"
+              onClick={() => handleClaim(task.id)}
+              className="h-9 shrink-0 rounded-xl"
+            >
               Resgatar
             </Button>
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 };
 

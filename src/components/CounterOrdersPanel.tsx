@@ -281,10 +281,12 @@ const CounterOrdersPanel = () => {
   };
 
   return (
-    <div className="bg-card border border-border rounded-lg p-3 space-y-2">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <ShoppingBag className="w-4 h-4 text-primary" />
+    <div className="jf-surface space-y-3 overflow-hidden p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <ShoppingBag className="h-4 w-4" />
+          </span>
           Encomendas Balcão
           {visible.length > 0 && (
             <Badge variant="secondary" className="ml-1">
@@ -295,13 +297,13 @@ const CounterOrdersPanel = () => {
 
         <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" variant="outline" className="h-7 text-xs">
+            <Button size="sm" variant="outline" className="h-9 rounded-xl text-xs">
               <History className="w-3 h-3 mr-1" />
               Histórico de Encomendas
             </Button>
           </DialogTrigger>
 
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-3xl rounded-2xl">
             <DialogHeader>
               <DialogTitle>Histórico de Encomendas</DialogTitle>
             </DialogHeader>
@@ -317,7 +319,7 @@ const CounterOrdersPanel = () => {
                     <button
                       key={o.id}
                       onClick={() => setDetail(o)}
-                      className="w-full text-left border border-border rounded p-2 hover:bg-muted/40 transition"
+                      className="jf-interactive w-full rounded-xl border border-border/70 bg-muted/10 p-3 text-left hover:bg-muted/30"
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="font-medium text-sm">{o.item_name}</span>
@@ -345,7 +347,7 @@ const CounterOrdersPanel = () => {
       {visible.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nenhuma encomenda em aberto.</p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((o) => {
             const due = computeDeadline(o.ordered_at, o.deadline);
 
@@ -357,7 +359,7 @@ const CounterOrdersPanel = () => {
               <button
                 key={o.id}
                 onClick={() => setDetail(o)}
-                className="border border-border rounded p-2 text-left hover:bg-muted/40 transition flex flex-col gap-0.5 min-h-0"
+                className="jf-interactive flex min-h-0 flex-col gap-1 rounded-xl border border-border/70 bg-muted/10 p-3 text-left hover:bg-muted/30"
               >
                 <span className="text-xs font-medium truncate">{o.item_name}</span>
 
@@ -377,7 +379,7 @@ const CounterOrdersPanel = () => {
       )}
 
       <Dialog open={!!detail} onOpenChange={(v) => !v && setDetail(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               {detail?.item_name}
