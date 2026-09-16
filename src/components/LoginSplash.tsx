@@ -49,7 +49,11 @@ export default function LoginSplash({
       <div className="relative flex min-h-screen items-center justify-center px-6">
         <div className="flex w-full max-w-lg flex-col items-center text-center">
           <div className="mb-8 animate-scale-in rounded-[28px] border border-white/8 bg-white/[0.025] px-8 py-6 shadow-[0_28px_80px_rgba(0,0,0,.28)] backdrop-blur-sm">
-            <img src={logoImg} alt="JapanFlow" className="h-16 w-auto max-w-[260px] object-contain" />
+            <img
+              src={logoImg}
+              alt="JapanFlow"
+              className="h-16 w-auto max-w-[260px] object-contain"
+            />
           </div>
 
           <div className="animate-fade-up">

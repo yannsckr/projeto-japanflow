@@ -105,12 +105,9 @@ const AppSidebar = ({
   const defaultCorridas = isAdmin || isMotoboy || isFinanceiro || isPatricia;
   const defaultTracking = true;
 
-  const canSeeFinancial =
-    isAdmin || isTabEnabled(currentUser.id, 'financial', defaultFinancial);
-  const canSeeCorridas =
-    isAdmin || isTabEnabled(currentUser.id, 'corridas', defaultCorridas);
-  const canSeeTracking =
-    isAdmin || isTabEnabled(currentUser.id, 'tracking', defaultTracking);
+  const canSeeFinancial = isAdmin || isTabEnabled(currentUser.id, 'financial', defaultFinancial);
+  const canSeeCorridas = isAdmin || isTabEnabled(currentUser.id, 'corridas', defaultCorridas);
+  const canSeeTracking = isAdmin || isTabEnabled(currentUser.id, 'tracking', defaultTracking);
 
   if (canSeeFinancial) {
     baseItems.push({ icon: Wallet, label: 'Financeiro', path: '/financial' });
@@ -214,9 +211,7 @@ const AppSidebar = ({
         <span
           className={cn(
             'flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground',
-            collapsed
-              ? 'absolute right-1.5 top-1.5 h-[16px] min-w-[16px]'
-              : 'ml-auto h-[18px]'
+            collapsed ? 'absolute right-1.5 top-1.5 h-[16px] min-w-[16px]' : 'ml-auto h-[18px]'
           )}
         >
           {totalUnread > 99 ? '99+' : totalUnread}
@@ -225,11 +220,7 @@ const AppSidebar = ({
     </button>
   );
 
-  const renderPerson = (
-    person: (typeof users)[number],
-    clickable: boolean,
-    subtitle?: string
-  ) => {
+  const renderPerson = (person: (typeof users)[number], clickable: boolean, subtitle?: string) => {
     const status = getStatus(person.id);
 
     const content = (
