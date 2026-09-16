@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -335,36 +336,49 @@ const PedidoComprasPage = () => {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold">Pedido de Compras</h1>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => setSupplierManagerOpen(true)}>
-            Fornecedores
-          </Button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/pdf,image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleFile(f);
-            }}
-          />
-          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={parsing}>
-            {parsing ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <FileUp className="w-4 h-4 mr-2" />
-            )}
-            Importar PDF/Imagem
-          </Button>
+    <div className="space-y-6">
+      <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              Compras e fornecedores
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl">
+              Pedido de Compras
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Monte pedidos, importe documentos e mantenha fornecedores e histórico em um único
+              fluxo.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setSupplierManagerOpen(true)}>
+              Fornecedores
+            </Button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/pdf,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+            />
+            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={parsing}>
+              {parsing ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <FileUp className="w-4 h-4 mr-2" />
+              )}
+              Importar PDF/Imagem
+            </Button>
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* Supplier card */}
-      <div className="rounded-lg border bg-card p-4 space-y-4">
+      <div className="space-y-4 rounded-2xl border border-border/70 bg-card p-4 shadow-card md:p-5">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h2 className="font-semibold">Fornecedor</h2>
           <Select value={supplierId} onValueChange={setSupplierId}>
@@ -433,13 +447,13 @@ const PedidoComprasPage = () => {
       </div>
 
       {/* Escopo */}
-      <div className="rounded-lg border bg-card p-4">
+      <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-card">
         <Label>Escopo</Label>
         <Input value={escopo} onChange={(e) => setEscopo(e.target.value)} />
       </div>
 
       {/* Items */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
+      <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4 shadow-card md:p-5">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Itens ({items.length}/20)</h2>
           <Button size="sm" onClick={addItem} disabled={items.length >= 20}>
@@ -449,7 +463,10 @@ const PedidoComprasPage = () => {
         </div>
         <div className="space-y-3">
           {items.map((it, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-end border rounded-md p-3">
+            <div
+              key={i}
+              className="grid grid-cols-12 items-end gap-2 rounded-xl border border-border/60 bg-background/20 p-3"
+            >
               <div className="col-span-12 md:col-span-3">
                 <Label>Nome do Item</Label>
                 <Input value={it.nome} onChange={(e) => updateItem(i, 'nome', e.target.value)} />
@@ -517,7 +534,7 @@ const PedidoComprasPage = () => {
       </div>
 
       {/* History */}
-      <div className="rounded-lg border bg-card p-4">
+      <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-card">
         <h2 className="font-semibold mb-3">Pedidos anteriores</h2>
         <div className="space-y-2 max-h-80 overflow-y-auto">
           {orders.length === 0 && (
@@ -527,7 +544,7 @@ const PedidoComprasPage = () => {
             <button
               key={o.id}
               onClick={() => setPreviewOrder(o)}
-              className="w-full text-left flex justify-between items-center px-3 py-2 rounded hover:bg-accent text-sm"
+              className="jf-interactive flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-muted/45"
             >
               <span>
                 Pedido #{o.order_number} —{' '}
@@ -544,9 +561,12 @@ const PedidoComprasPage = () => {
 
       {/* Preview Dialog */}
       <Dialog open={!!previewOrder} onOpenChange={(o) => !o && setPreviewOrder(null)}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto rounded-2xl p-0">
           <DialogHeader className="p-4 print:hidden border-b flex-row items-center justify-between">
-            <DialogTitle>Pré-visualização — Pedido #{previewOrder?.order_number}</DialogTitle>
+            <div>
+              <DialogTitle>Pré-visualização — Pedido #{previewOrder?.order_number}</DialogTitle>
+              <DialogDescription>Revise o pedido antes de imprimir.</DialogDescription>
+            </div>
             <Button onClick={() => window.print()} size="sm">
               <Printer className="w-4 h-4 mr-2" />
               Imprimir
@@ -558,13 +578,16 @@ const PedidoComprasPage = () => {
 
       {/* Supplier manager */}
       <Dialog open={supplierManagerOpen} onOpenChange={setSupplierManagerOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto rounded-2xl">
           <DialogHeader>
             <DialogTitle>Fornecedores cadastrados</DialogTitle>
+            <DialogDescription>
+              Gerencie os fornecedores disponíveis para novos pedidos.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {suppliers.map((s) => (
-              <div key={s.id} className="border rounded-md p-3">
+              <div key={s.id} className="rounded-xl border border-border/60 bg-background/20 p-3">
                 {editingSupplier?.id === s.id ? (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">

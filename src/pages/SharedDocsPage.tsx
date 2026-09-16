@@ -19,13 +19,23 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
-import { FileText, Upload, Download, Trash2, Users, Search, Paperclip } from 'lucide-react';
+import {
+  FileText,
+  Upload,
+  Download,
+  Trash2,
+  Users,
+  Search,
+  Paperclip,
+  FolderOpen,
+} from 'lucide-react';
 
 interface SharedDoc {
   id: string;
@@ -212,111 +222,120 @@ const SharedDocsPage = () => {
   if (!currentUser) return null;
 
   return (
-    <div className="flex flex-col h-full min-h-0 p-4 md:p-6 gap-4 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileText className="w-6 h-6" /> Documentos Compartilhados
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Envie arquivos e escolha quem pode acessá-los.
-          </p>
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-hidden">
+      <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              Arquivos
+            </p>
+            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight">
+              <FolderOpen className="h-5 w-5 text-muted-foreground" />
+              Documentos Compartilhados
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Envie arquivos e controle quem pode acessá-los.
+            </p>
+          </div>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Upload className="w-4 h-4 mr-2" /> Enviar documento
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-2xl">
+              <DialogHeader>
+                <DialogTitle>Compartilhar documento</DialogTitle>
+                <DialogDescription>
+                  Escolha o arquivo, defina um título e selecione quem poderá acessá-lo.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>Arquivo</Label>
+                  <Input
+                    ref={fileRef}
+                    type="file"
+                    accept={ACCEPT}
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                  {file && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {file.name} ({formatSize(file.size)})
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <Label>Título</Label>
+                  <Input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Ex.: Contrato Fornecedor X"
+                  />
+                </div>
+                <div>
+                  <Label>Descrição (opcional)</Label>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Users className="w-4 h-4" /> Compartilhar com
+                  </Label>
+                  <label className="flex items-center gap-2 text-sm p-2 rounded bg-secondary/50">
+                    <Checkbox checked={shareAll} onCheckedChange={(v) => setShareAll(!!v)} />
+                    <span className="font-semibold">Todos os usuários</span>
+                  </label>
+                  {!shareAll && (
+                    <div className="border rounded-md max-h-56 overflow-y-auto p-2 space-y-1">
+                      {users
+                        .filter((u) => u.id !== currentUser.id)
+                        .map((u) => (
+                          <label
+                            key={u.id}
+                            className="flex items-center gap-2 text-sm p-1.5 rounded hover:bg-secondary/50 cursor-pointer"
+                          >
+                            <Checkbox
+                              checked={sharedWith.includes(u.id)}
+                              onCheckedChange={() => toggleRecipient(u.id)}
+                            />
+                            <span>{u.name}</span>
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              {u.role === 'admin' ? 'Admin' : u.function || ''}
+                            </span>
+                          </label>
+                        ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleUpload} disabled={uploading}>
+                    {uploading ? 'Enviando...' : 'Compartilhar'}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Upload className="w-4 h-4 mr-2" /> Enviar documento
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Compartilhar documento</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Arquivo</Label>
-                <Input
-                  ref={fileRef}
-                  type="file"
-                  accept={ACCEPT}
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                />
-                {file && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {file.name} ({formatSize(file.size)})
-                  </p>
-                )}
-              </div>
-              <div>
-                <Label>Título</Label>
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Ex.: Contrato Fornecedor X"
-                />
-              </div>
-              <div>
-                <Label>Descrição (opcional)</Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Users className="w-4 h-4" /> Compartilhar com
-                </Label>
-                <label className="flex items-center gap-2 text-sm p-2 rounded bg-secondary/50">
-                  <Checkbox checked={shareAll} onCheckedChange={(v) => setShareAll(!!v)} />
-                  <span className="font-semibold">Todos os usuários</span>
-                </label>
-                {!shareAll && (
-                  <div className="border rounded-md max-h-56 overflow-y-auto p-2 space-y-1">
-                    {users
-                      .filter((u) => u.id !== currentUser.id)
-                      .map((u) => (
-                        <label
-                          key={u.id}
-                          className="flex items-center gap-2 text-sm p-1.5 rounded hover:bg-secondary/50 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={sharedWith.includes(u.id)}
-                            onCheckedChange={() => toggleRecipient(u.id)}
-                          />
-                          <span>{u.name}</span>
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {u.role === 'admin' ? 'Admin' : u.function || ''}
-                          </span>
-                        </label>
-                      ))}
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleUpload} disabled={uploading}>
-                  {uploading ? 'Enviando...' : 'Compartilhar'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+      </section>
 
       <div className="relative">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
-          className="pl-9"
+          className="h-10 rounded-xl pl-9"
           placeholder="Buscar por título, nome de arquivo, autor..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {loading && <p className="text-sm text-muted-foreground">Carregando...</p>}
         {!loading && visibleDocs.length === 0 && (
           <div className="text-center py-16 text-muted-foreground">
@@ -327,10 +346,10 @@ const SharedDocsPage = () => {
         {visibleDocs.map((doc) => (
           <div
             key={doc.id}
-            className="border border-border rounded-lg p-3 bg-card flex flex-col md:flex-row gap-3 md:items-center hover:border-primary/50 transition-colors"
+            className="jf-interactive flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm hover:border-primary/25 md:flex-row md:items-center"
           >
-            <div className="w-10 h-10 rounded-md bg-secondary flex items-center justify-center shrink-0">
-              <FileText className="w-5 h-5 text-primary" />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+              <FileText className="h-5 w-5 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-semibold truncate">{doc.title}</p>

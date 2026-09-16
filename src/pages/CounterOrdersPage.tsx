@@ -28,6 +28,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -87,11 +88,11 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  pending: 'bg-yellow-500/20 text-yellow-200 border-yellow-500/40',
-  ordered: 'bg-blue-500/20 text-blue-200 border-blue-500/40',
-  received: 'bg-green-500/20 text-green-200 border-green-500/40',
-  completed: 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40',
-  canceled: 'bg-red-500/20 text-red-200 border-red-500/40',
+  pending: 'bg-warning/10 text-warning border-warning/20',
+  ordered: 'bg-info/10 text-info border-info/20',
+  received: 'bg-success/10 text-success border-success/20',
+  completed: 'bg-success/10 text-success border-success/20',
+  canceled: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
 const fmtDT = (iso: string) => new Date(iso).toLocaleString('pt-BR');
@@ -231,76 +232,101 @@ export default function CounterOrdersPage() {
   const archivedOrders = orders.filter((o) => o.status === 'canceled' || o.status === 'completed');
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <ShoppingBag className="w-6 h-6" />
-          <h1 className="text-2xl font-bold">Encomendas Balcão</h1>
-        </div>
-        <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm">
-              <History className="w-4 h-4 mr-1" /> Histórico de Encomendas
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>Histórico de Encomendas</DialogTitle>
-            </DialogHeader>
-            <ScrollArea className="max-h-[65vh] pr-3">
-              {archivedOrders.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">
-                  Nenhuma encomenda no histórico ainda.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {archivedOrders.map((o) => (
-                    <div key={o.id} className="border border-border rounded p-3 text-sm space-y-1">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="font-medium">{o.item_name}</span>
-                        <Badge variant="outline" className={STATUS_COLOR[o.status] || ''}>
-                          {STATUS_LABEL[o.status] || o.status}
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Solicitante: {o.created_by_name || '-'} • Qtd: {o.quantity}
-                        {o.code ? ` • Cód: ${o.code}` : ''}
-                        {o.brand ? ` • ${o.brand}` : ''}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Solicitado em {fmtDT(o.created_at)}
-                      </div>
-                      {Array.isArray(o.status_history) && o.status_history.length > 0 && (
-                        <div className="text-xs mt-2 space-y-0.5">
-                          <div className="font-medium">Mudanças de status:</div>
-                          {o.status_history.map((h, i) => (
-                            <div key={i} className="text-muted-foreground">
-                              • {STATUS_LABEL[h.status] || h.status} em {fmtDT(h.at)}
-                              {h.by_name ? ` por ${h.by_name}` : ''}
-                            </div>
-                          ))}
+    <div className="space-y-6">
+      <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              Operação de balcão
+            </p>
+            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight md:text-3xl">
+              <ShoppingBag className="h-5 w-5 text-primary" />
+              Encomendas Balcão
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Acompanhe encomendas abertas, prazos, fornecedores e histórico de status.
+            </p>
+          </div>
+          <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <History className="w-4 h-4 mr-1" /> Histórico de Encomendas
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl rounded-2xl">
+              <DialogHeader>
+                <DialogTitle>Histórico de Encomendas</DialogTitle>
+                <DialogDescription>
+                  Consulte encomendas concluídas ou canceladas e suas mudanças de status.
+                </DialogDescription>
+              </DialogHeader>
+              <ScrollArea className="max-h-[65vh] pr-3">
+                {archivedOrders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4">
+                    Nenhuma encomenda no histórico ainda.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {archivedOrders.map((o) => (
+                      <div
+                        key={o.id}
+                        className="border border-border rounded p-3 text-sm space-y-1"
+                      >
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="font-medium">{o.item_name}</span>
+                          <Badge variant="outline" className={STATUS_COLOR[o.status] || ''}>
+                            {STATUS_LABEL[o.status] || o.status}
+                          </Badge>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </DialogContent>
-        </Dialog>
-      </header>
+                        <div className="text-xs text-muted-foreground">
+                          Solicitante: {o.created_by_name || '-'} • Qtd: {o.quantity}
+                          {o.code ? ` • Cód: ${o.code}` : ''}
+                          {o.brand ? ` • ${o.brand}` : ''}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Solicitado em {fmtDT(o.created_at)}
+                        </div>
+                        {Array.isArray(o.status_history) && o.status_history.length > 0 && (
+                          <div className="text-xs mt-2 space-y-0.5">
+                            <div className="font-medium">Mudanças de status:</div>
+                            {o.status_history.map((h, i) => (
+                              <div key={i} className="text-muted-foreground">
+                                • {STATUS_LABEL[h.status] || h.status} em {fmtDT(h.at)}
+                                {h.by_name ? ` por ${h.by_name}` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </section>
 
       {/* LISTAGEM (em cima para fácil visualização dos compradores) */}
-      <section>
-        <h2 className="text-lg font-semibold mb-3">Encomendas em aberto ({openOrders.length})</h2>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+              Fila operacional
+            </p>
+            <h2 className="mt-1 text-lg font-semibold">
+              Encomendas em aberto ({openOrders.length})
+            </h2>
+          </div>
+        </div>
         {openOrders.length === 0 ? (
-          <Card className="p-6 text-sm text-muted-foreground text-center">
+          <Card className="rounded-2xl border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground shadow-card">
             Nenhuma encomenda em aberto.
           </Card>
         ) : (
           <div className="grid gap-3">
             {openOrders.map((o) => (
-              <Card key={o.id} className="p-4">
+              <Card key={o.id} className="rounded-2xl border-border/70 p-4 shadow-card">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-[240px]">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -356,7 +382,7 @@ export default function CounterOrdersPage() {
                         const arr = arrivalLabel(o.ordered_at, o.deadline);
                         if (!arr && !o.deadline) return null;
                         return (
-                          <div className="col-span-2 md:col-span-4 flex items-center gap-1 text-emerald-300">
+                          <div className="col-span-2 md:col-span-4 flex items-center gap-1 text-success">
                             <Clock className="w-3 h-3" />
                             <span className="text-muted-foreground">Previsão de chegada:</span>{' '}
                             {arr ? arr : 'aguardando pedido'}
@@ -384,7 +410,7 @@ export default function CounterOrdersPage() {
                         href={o.link}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline mt-2"
+                        className="inline-flex items-center gap-1 text-xs text-info hover:underline mt-2"
                       >
                         <ExternalLink className="w-3 h-3" /> Link
                       </a>
@@ -432,8 +458,13 @@ export default function CounterOrdersPage() {
       </section>
 
       {/* FORMULÁRIO */}
-      <Card className="p-4 md:p-6">
-        <h2 className="text-lg font-semibold mb-4">Nova Encomenda</h2>
+      <Card className="rounded-2xl border-border/70 p-4 shadow-card md:p-6">
+        <div className="mb-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+            Novo registro
+          </p>
+          <h2 className="mt-1 text-lg font-semibold">Nova Encomenda</h2>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="md:col-span-2">
             <Label>Nome do Item *</Label>

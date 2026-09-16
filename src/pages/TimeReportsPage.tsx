@@ -237,23 +237,33 @@ const TimeReportsPage = () => {
   if (!currentUser || currentUser.role !== 'admin') return null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-bold">Relatório de Presença</h1>
-        <Select value={dateFilter} onValueChange={setDateFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Hoje</SelectItem>
-            <SelectItem value="7days">Últimos 7 dias</SelectItem>
-            <SelectItem value="30days">Últimos 30 dias</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+    <div className="space-y-5">
+      <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              Pessoas
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Relatório de Presença</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Acompanhe presença, pausas e tempo online da equipe.
+            </p>
+          </div>
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Hoje</SelectItem>
+              <SelectItem value="7days">Últimos 7 dias</SelectItem>
+              <SelectItem value="30days">Últimos 30 dias</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </section>
 
       {/* Real-time Status Grid */}
-      <Card>
+      <Card className="rounded-2xl border-border/70 shadow-card">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Circle className="w-4 h-4 text-green-500 fill-green-500" />
@@ -278,7 +288,7 @@ const TimeReportsPage = () => {
               return (
                 <div
                   key={user.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+                  className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/20 p-3"
                 >
                   <div
                     className={`w-3 h-3 rounded-full shrink-0 ${
@@ -333,7 +343,7 @@ const TimeReportsPage = () => {
           if (stats.pauses.length === 0 && onlineTime === 0 && dateFilter === 'today') return null;
 
           return (
-            <Card key={user.id}>
+            <Card key={user.id} className="rounded-2xl border-border/70 shadow-card">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center justify-between">
                   <span>

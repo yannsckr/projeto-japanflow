@@ -104,6 +104,10 @@ const AppLayout = () => {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (!currentUser) return;
     if (currentUser.role === 'admin') return;
 
@@ -133,9 +137,13 @@ const AppLayout = () => {
 
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div
+        className="flex min-h-[100dvh] items-center justify-center bg-background px-4"
+        role="status"
+        aria-live="polite"
+      >
         <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-5 py-4 shadow-card">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+          <span className="h-2 w-2 animate-pulse rounded-full bg-primary" aria-hidden="true" />
           <span className="text-sm text-muted-foreground">Verificando sessão...</span>
         </div>
       </div>
@@ -158,22 +166,22 @@ const AppLayout = () => {
       <NewTaskPopup />
       <ForcePasswordChangeDialog />
 
-      <div className="flex min-h-screen overflow-hidden bg-background">
+      <div className="flex min-h-[100dvh] overflow-hidden bg-background">
         {!isMobile && (
           <AppSidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
         )}
 
-        <div className="flex h-screen max-h-screen min-w-0 flex-1 flex-col">
-          <header className="relative z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border/70 bg-background/80 px-3 backdrop-blur-xl md:px-5">
-            <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-[100dvh] max-h-[100dvh] min-w-0 flex-1 flex-col">
+          <header className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border/70 bg-background/85 px-2.5 backdrop-blur-xl sm:gap-3 sm:px-3 md:px-5">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               {isMobile && (
                 <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                   <SheetTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-9 w-9 rounded-xl"
-                      aria-label="Abrir menu"
+                      className="h-10 w-10 shrink-0 rounded-xl"
+                      aria-label="Abrir menu principal"
                     >
                       <Menu className="h-5 w-5" />
                     </Button>
@@ -181,7 +189,8 @@ const AppLayout = () => {
 
                   <SheetContent
                     side="left"
-                    className="w-[280px] border-r-0 bg-transparent p-0 shadow-none"
+                    className="w-[min(88vw,320px)] border-r-0 bg-transparent p-0 shadow-none"
+                    aria-label="Menu principal"
                   >
                     <AppSidebar mobile collapsed={false} onNavigate={() => setSidebarOpen(false)} />
                   </SheetContent>
@@ -204,7 +213,7 @@ const AppLayout = () => {
               </div>
             </div>
 
-            <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
+            <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 md:gap-1.5">
               <PauseButton updatePresence={updatePresenceStatus} />
               <ThemeSwitcher />
               <NotificationBell />
@@ -212,17 +221,18 @@ const AppLayout = () => {
           </header>
 
           <main
+            id="main-content"
             className={
               isChatRoute
-                ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 md:p-3'
-                : 'min-h-0 flex-1 overflow-auto p-3 md:p-5 lg:p-6'
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-1.5 sm:p-2 md:p-3'
+                : 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 md:p-5 lg:p-6'
             }
           >
             <div
               className={
                 isChatRoute
                   ? 'flex min-h-0 flex-1 flex-col'
-                  : 'mx-auto min-h-full w-full max-w-[1680px] animate-fade-up'
+                  : 'mx-auto min-h-full w-full min-w-0 max-w-[1680px] animate-fade-up'
               }
             >
               <Outlet />

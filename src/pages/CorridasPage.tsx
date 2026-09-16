@@ -139,14 +139,31 @@ const CorridasPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <Bike className="w-5 h-5" /> Relatório de Corridas
-        </h2>
-      </div>
+      <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              Operação de entregas
+            </p>
+            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight md:text-3xl">
+              <Bike className="h-5 w-5 text-primary" />
+              Relatório de Corridas
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Acompanhe corridas, valores e desempenho semanal dos motoboys.
+            </p>
+          </div>
+          <div className="rounded-xl border border-border/60 bg-background/20 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Total filtrado
+            </p>
+            <p className="mt-1 text-xl font-semibold text-primary">{formatCurrency(grandTotal)}</p>
+          </div>
+        </div>
+      </section>
 
       {/* Week navigation */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-card">
         <Button
           variant="outline"
           size="icon"
@@ -174,7 +191,7 @@ const CorridasPage = () => {
       </div>
 
       {/* Search and filters */}
-      <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-card p-3 shadow-card sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -216,18 +233,6 @@ const CorridasPage = () => {
           </Select>
         )}
       </div>
-
-      {/* Grand total */}
-      <Card>
-        <CardContent className="py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-primary" />
-            <span className="text-sm font-semibold">Total da Semana</span>
-          </div>
-          <span className="text-lg font-bold text-primary">{formatCurrency(grandTotal)}</span>
-        </CardContent>
-      </Card>
-
       {/* Per-motoboy reports */}
       {activeMotoboys.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">
@@ -237,8 +242,11 @@ const CorridasPage = () => {
         activeMotoboys.map((motoboyId) => {
           const total = getTotalForMotoboy(motoboyId);
           return (
-            <Card key={motoboyId}>
-              <CardHeader className="pb-2">
+            <Card
+              key={motoboyId}
+              className="overflow-hidden rounded-2xl border-border/70 shadow-card"
+            >
+              <CardHeader className="border-b border-border/70 pb-3">
                 <CardTitle className="text-base flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     <Bike className="w-4 h-4" />
@@ -263,8 +271,8 @@ const CorridasPage = () => {
                       <div
                         key={dateStr}
                         className={cn(
-                          'border border-border rounded-lg p-1.5 min-h-[60px] text-xs',
-                          dayAssignments.length > 0 ? 'bg-primary/5' : 'bg-secondary/20'
+                          'min-h-[72px] rounded-xl border border-border/60 p-2 text-xs',
+                          dayAssignments.length > 0 ? 'bg-primary/[0.04]' : 'bg-background/20'
                         )}
                       >
                         <p className="text-[10px] text-muted-foreground mb-1">

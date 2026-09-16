@@ -153,13 +153,13 @@ const ChatPage = () => {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-border/70 bg-card shadow-card md:flex-row">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-card md:flex-row">
       <div
         className={cn(
           'min-h-0 flex-col overflow-hidden border-border/70 bg-card',
           selectedUser || selectedGroup
-            ? 'hidden md:flex md:w-[300px] md:border-r'
-            : 'flex w-full md:w-[300px] md:border-r'
+            ? 'hidden md:flex md:w-[300px] md:min-w-[280px] md:border-r lg:w-[320px]'
+            : 'flex w-full md:w-[300px] md:min-w-[280px] md:border-r lg:w-[320px]'
         )}
       >
         <div className="border-b border-border/70 px-4 py-4">
@@ -181,6 +181,8 @@ const ChatPage = () => {
 
         <div className="flex shrink-0 gap-1 border-b border-border/70 p-2">
           <button
+            type="button"
+            aria-pressed={tab === 'private'}
             onClick={() => setTab('private')}
             className={cn(
               'jf-interactive flex-1 rounded-xl px-3 py-2 text-sm font-medium',
@@ -199,6 +201,8 @@ const ChatPage = () => {
             </span>
           </button>
           <button
+            type="button"
+            aria-pressed={tab === 'groups'}
             onClick={() => setTab('groups')}
             className={cn(
               'jf-interactive flex-1 rounded-xl px-3 py-2 text-sm font-medium',
@@ -224,6 +228,8 @@ const ChatPage = () => {
               return (
                 <button
                   key={user.id}
+                  type="button"
+                  aria-label={`Abrir conversa com ${user.name}`}
                   onClick={() => selectPrivate(user)}
                   className={cn(
                     'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
@@ -303,6 +309,7 @@ const ChatPage = () => {
             <>
               {isAdmin && (
                 <button
+                  type="button"
                   onClick={() => setShowCreateGroup(true)}
                   className="jf-interactive mb-1 flex w-full items-center gap-3 rounded-xl border border-dashed border-primary/25 bg-primary/[0.04] px-3 py-2.5 text-primary hover:bg-primary/[0.07]"
                 >
@@ -315,6 +322,8 @@ const ChatPage = () => {
               {accessibleSectorGroups.map((group) => (
                 <button
                   key={group.id}
+                  type="button"
+                  aria-label={`Abrir grupo ${group.name}`}
                   onClick={() => selectGroup(group.id, group.name)}
                   className={cn(
                     'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
@@ -359,6 +368,8 @@ const ChatPage = () => {
                   )}
                 >
                   <button
+                    type="button"
+                    aria-label={`Abrir grupo ${group.name}`}
                     onClick={() => selectGroup(group.id, group.name)}
                     className="flex min-w-0 flex-1 items-center gap-3"
                   >
@@ -395,7 +406,9 @@ const ChatPage = () => {
                           toast.success('Grupo excluído');
                         }
                       }}
-                      className="jf-interactive flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-destructive/10"
+                      className="jf-interactive flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-destructive/10"
+                      type="button"
+                      aria-label={`Excluir grupo ${group.name}`}
                     >
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </button>
@@ -415,6 +428,8 @@ const ChatPage = () => {
       >
         {(selectedUser || selectedGroup) && (
           <button
+            type="button"
+            aria-label="Voltar para a lista de conversas"
             onClick={() => {
               setSelectedUser(null);
               setSelectedGroup(null);
@@ -443,7 +458,7 @@ const ChatPage = () => {
 
       {/* Create Group Dialog */}
       <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
-        <DialogContent className="max-w-md rounded-2xl">
+        <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto rounded-2xl">
           <DialogHeader>
             <DialogTitle>Criar Novo Grupo</DialogTitle>
             <DialogDescription>

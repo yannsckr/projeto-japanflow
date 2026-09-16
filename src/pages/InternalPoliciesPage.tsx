@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -190,80 +191,89 @@ const InternalPoliciesPage = () => {
   if (!currentUser) return null;
 
   return (
-    <div className="flex flex-col h-full min-h-0 p-4 md:p-6 gap-4 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ScrollText className="w-6 h-6" /> Políticas Internas
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Documentos oficiais da empresa disponíveis para leitura de todos os usuários.
-          </p>
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-hidden">
+      <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              Governança
+            </p>
+            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight">
+              <ScrollText className="h-5 w-5 text-muted-foreground" />
+              Políticas Internas
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Documentos oficiais da empresa disponíveis para consulta da equipe.
+            </p>
+          </div>
+          {isAdmin && (
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Upload className="w-4 h-4 mr-2" /> Adicionar documento
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-2xl">
+                <DialogHeader>
+                  <DialogTitle>Novo documento de política interna</DialogTitle>
+                  <DialogDescription>
+                    Publique um documento oficial e notifique todos os usuários.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Arquivo (Imagem ou PDF)</Label>
+                    <Input
+                      ref={fileRef}
+                      type="file"
+                      accept={ACCEPT}
+                      onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    />
+                    {file && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {file.name} ({formatSize(file.size)})
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Título</Label>
+                    <Input
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Ex.: Política de Uso de Uniformes"
+                    />
+                  </div>
+                  <div>
+                    <Label>Descrição (opcional)</Label>
+                    <Textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={2}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Ao publicar, um pop-up será enviado a todos os usuários informando o novo
+                    documento.
+                  </p>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleUpload} disabled={uploading}>
+                      {uploading ? 'Enviando...' : 'Publicar'}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
-        {isAdmin && (
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Upload className="w-4 h-4 mr-2" /> Adicionar documento
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Novo documento de política interna</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Arquivo (Imagem ou PDF)</Label>
-                  <Input
-                    ref={fileRef}
-                    type="file"
-                    accept={ACCEPT}
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  />
-                  {file && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {file.name} ({formatSize(file.size)})
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <Label>Título</Label>
-                  <Input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Ex.: Política de Uso de Uniformes"
-                  />
-                </div>
-                <div>
-                  <Label>Descrição (opcional)</Label>
-                  <Textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={2}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Ao publicar, um pop-up será enviado a todos os usuários informando o novo
-                  documento.
-                </p>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleUpload} disabled={uploading}>
-                    {uploading ? 'Enviando...' : 'Publicar'}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
+      </section>
 
       <div className="relative">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
-          className="pl-9"
+          className="h-10 rounded-xl pl-9"
           placeholder="Buscar por título ou descrição..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -283,9 +293,9 @@ const InternalPoliciesPage = () => {
           return (
             <div
               key={doc.id}
-              className="border border-border rounded-lg p-3 bg-card flex flex-col md:flex-row gap-3 md:items-center hover:border-primary/50 transition-colors"
+              className="jf-interactive flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm hover:border-primary/25 md:flex-row md:items-center"
             >
-              <div className="w-10 h-10 rounded-md bg-secondary flex items-center justify-center shrink-0">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
                 {isImage ? (
                   <ImageIcon className="w-5 h-5 text-primary" />
                 ) : (

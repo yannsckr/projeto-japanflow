@@ -203,40 +203,45 @@ const TaskTrackingPage = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold">Acompanhamento de Tarefas</h2>
-        <p className="text-sm text-muted-foreground">
-          Acompanhe o andamento das tarefas que você atribuiu
+      <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+          Visibilidade operacional
         </p>
-      </div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl">
+          Acompanhamento de Tarefas
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+          Acompanhe o andamento das tarefas atribuídas, responsáveis e etapas relacionadas.
+        </p>
+      </section>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card className="border-border">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <Card className="rounded-2xl border-border/70 shadow-card">
           <CardContent className="p-3 text-center">
             <p className="text-2xl font-bold">{stats.total}</p>
             <p className="text-xs text-muted-foreground">Total</p>
           </CardContent>
         </Card>
-        <Card className="border-border">
+        <Card className="rounded-2xl border-border/70 shadow-card">
           <CardContent className="p-3 text-center">
             <p className="text-2xl font-bold text-primary">{stats.todo}</p>
             <p className="text-xs text-muted-foreground">A Fazer</p>
           </CardContent>
         </Card>
-        <Card className="border-border">
+        <Card className="rounded-2xl border-border/70 shadow-card">
           <CardContent className="p-3 text-center">
             <p className="text-2xl font-bold text-warning">{stats.inProgress}</p>
             <p className="text-xs text-muted-foreground">Em Andamento</p>
           </CardContent>
         </Card>
-        <Card className="border-border">
+        <Card className="rounded-2xl border-border/70 shadow-card">
           <CardContent className="p-3 text-center">
             <p className="text-2xl font-bold text-muted-foreground">{stats.paused}</p>
             <p className="text-xs text-muted-foreground">Em Pausa</p>
           </CardContent>
         </Card>
-        <Card className="border-border">
+        <Card className="rounded-2xl border-border/70 shadow-card">
           <CardContent className="p-3 text-center">
             <p className="text-2xl font-bold text-success">{stats.done}</p>
             <p className="text-xs text-muted-foreground">Concluídas</p>
@@ -245,7 +250,7 @@ const TaskTrackingPage = () => {
       </div>
 
       {/* Progress bar */}
-      <div className="space-y-1">
+      <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-card">
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Progresso geral</span>
           <span className="font-medium">{stats.progress}%</span>
@@ -254,7 +259,7 @@ const TaskTrackingPage = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-card sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -270,7 +275,7 @@ const TaskTrackingPage = () => {
               key={f}
               onClick={() => setFilter(f)}
               className={cn(
-                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                'jf-interactive rounded-xl px-3 py-1.5 text-sm font-medium',
                 filter === f
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-accent'

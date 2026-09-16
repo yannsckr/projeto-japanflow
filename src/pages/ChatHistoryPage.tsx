@@ -5,7 +5,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Archive, Download, RefreshCw, Search, MessageSquare } from 'lucide-react';
+import { Archive, Download, RefreshCw, Search, MessageSquare, ShieldCheck } from 'lucide-react';
 import JSZip from 'jszip';
 import { getSignedUrl } from '@/lib/signedUrl';
 
@@ -288,28 +288,38 @@ const ChatHistoryPage = () => {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Archive className="h-5 w-5" />
-          <h1 className="text-xl font-bold">Histórico de Conversas</h1>
+    <div className="space-y-5">
+      <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              Auditoria
+            </p>
+            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight">
+              <Archive className="h-5 w-5 text-muted-foreground" />
+              Histórico de Conversas
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Consulte e exporte conversas registradas no sistema.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+            <Button size="sm" onClick={exportAll} disabled={loading || filtered.length === 0}>
+              <Download className="h-4 w-4 mr-1" />
+              Baixar todas ({filtered.length})
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-          <Button size="sm" onClick={exportAll} disabled={loading || filtered.length === 0}>
-            <Download className="h-4 w-4 mr-1" />
-            Baixar todas ({filtered.length})
-          </Button>
-        </div>
-      </div>
+      </section>
 
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          className="pl-9"
+          className="h-10 rounded-xl pl-9"
           placeholder="Buscar por usuário..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -327,7 +337,7 @@ const ChatHistoryPage = () => {
             return (
               <div
                 key={c.key}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3"
+                className="jf-interactive flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm hover:border-primary/25"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 font-medium">
@@ -351,10 +361,13 @@ const ChatHistoryPage = () => {
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        Observação: mensagens apagadas definitivamente pelos usuários não podem ser recuperadas do
-        servidor; quando existirem no cache local deste navegador, elas são incluídas na exportação.
-      </p>
+      <div className="flex items-start gap-2 rounded-xl border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+        <p>
+          Mensagens apagadas definitivamente pelos usuários não podem ser recuperadas do servidor;
+          quando existirem no cache local deste navegador, elas são incluídas na exportação.
+        </p>
+      </div>
     </div>
   );
 };

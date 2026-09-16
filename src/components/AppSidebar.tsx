@@ -195,13 +195,14 @@ const AppSidebar = ({
       title={collapsed ? item.label : undefined}
       onClick={() => handleNav(item.path)}
       className={cn(
-        'jf-interactive relative flex h-11 w-full items-center rounded-xl text-sm font-medium',
+        'jf-interactive relative flex min-h-11 w-full items-center rounded-xl text-sm font-medium',
         collapsed ? 'justify-center px-0' : 'gap-3 px-3',
         isActive(item.path)
           ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-[0_8px_22px_hsl(var(--brand-red)/0.18)]'
           : 'text-sidebar-foreground/72 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
       )}
       aria-current={isActive(item.path) ? 'page' : undefined}
+      aria-label={collapsed ? item.label : undefined}
     >
       <item.icon className="h-[18px] w-[18px] shrink-0" />
 
@@ -291,7 +292,7 @@ const AppSidebar = ({
     <aside
       className={cn(
         'sidebar-gradient flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-sidebar-border text-sidebar-foreground transition-[width] duration-220 ease-premium',
-        mobile ? 'w-[280px]' : collapsed ? 'w-[76px]' : 'w-[248px]'
+        mobile ? 'w-[min(88vw,320px)]' : collapsed ? 'w-[76px]' : 'w-[248px]'
       )}
     >
       <div
@@ -306,6 +307,7 @@ const AppSidebar = ({
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-xs font-black tracking-tight text-primary-foreground shadow-[0_8px_24px_hsl(var(--brand-red)/0.18)]"
             onClick={() => onCollapsedChange?.(false)}
             title="Expandir menu"
+            aria-label="Expandir menu"
           >
             JF
           </button>
@@ -339,7 +341,7 @@ const AppSidebar = ({
         )}
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3">
+      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3 [scrollbar-gutter:stable]">
         {!collapsed && (
           <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/35">
             Principal
@@ -446,11 +448,12 @@ const AppSidebar = ({
             onClick={() => handleNav('/profile')}
             title={collapsed ? currentUser.name : undefined}
             className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground"
+            aria-label={`Abrir perfil de ${currentUser.name}`}
           >
             {currentUser.avatar ? (
               <img
                 src={currentUser.avatar}
-                alt=""
+                alt={`Foto de perfil de ${currentUser.name}`}
                 className="h-full w-full object-cover"
                 referrerPolicy="no-referrer"
               />

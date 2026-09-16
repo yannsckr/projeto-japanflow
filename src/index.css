@@ -14,54 +14,54 @@
   :root[data-theme='dark'] {
     color-scheme: dark;
 
-    --brand-red: 2 100% 44%;
-    --brand-red-hover: 2 90% 52%;
-    --brand-red-deep: 1 91% 34%;
+    --brand-red: 2 81% 46%;
+    --brand-red-hover: 2 76% 51%;
+    --brand-red-deep: 1 83% 36%;
 
-    --background: 213 39% 5%;
-    --foreground: 210 25% 97%;
+    --background: 228 11% 12%;
+    --foreground: 0 0% 96%;
 
-    --surface: 214 35% 8%;
-    --surface-secondary: 213 33% 11%;
-    --surface-elevated: 214 28% 14%;
+    --surface: 228 10% 15%;
+    --surface-secondary: 228 9% 17%;
+    --surface-elevated: 228 8% 19%;
 
-    --card: 214 35% 8%;
-    --card-foreground: 210 25% 97%;
+    --card: 228 10% 15%;
+    --card-foreground: 0 0% 96%;
 
-    --popover: 214 28% 12%;
-    --popover-foreground: 210 25% 97%;
+    --popover: 228 9% 17%;
+    --popover-foreground: 0 0% 96%;
 
     --primary: var(--brand-red);
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 213 33% 11%;
-    --secondary-foreground: 210 25% 97%;
+    --secondary: 228 8% 18%;
+    --secondary-foreground: 0 0% 92%;
 
-    --muted: 214 22% 15%;
-    --muted-foreground: 213 12% 65%;
+    --muted: 228 7% 20%;
+    --muted-foreground: 225 8% 68%;
 
-    --accent: 2 44% 16%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 228 8% 21%;
+    --accent-foreground: 0 0% 96%;
 
     --destructive: var(--brand-red);
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 18% 19%;
-    --input: 214 18% 21%;
+    --border: 228 7% 23%;
+    --input: 228 7% 24%;
     --ring: var(--brand-red);
 
-    --sidebar-bg: 216 41% 4%;
-    --sidebar-fg: 213 12% 72%;
+    --sidebar-bg: 228 11% 10%;
+    --sidebar-fg: 225 8% 72%;
     --sidebar-active: var(--brand-red);
-    --sidebar-hover: 214 28% 12%;
-    --sidebar-border: 214 24% 13%;
+    --sidebar-hover: 228 8% 17%;
+    --sidebar-border: 228 7% 19%;
 
     --sidebar-background: var(--sidebar-bg);
     --sidebar-foreground: var(--sidebar-fg);
     --sidebar-primary: var(--brand-red);
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 214 28% 12%;
-    --sidebar-accent-foreground: 210 25% 97%;
+    --sidebar-accent: 228 8% 17%;
+    --sidebar-accent-foreground: 0 0% 96%;
     --sidebar-ring: var(--brand-red);
 
     --success: 152 77% 39%;
@@ -79,10 +79,10 @@
     --priority-medium-bg: var(--priority-medium);
     --priority-low-bg: var(--priority-low);
 
-    --glass-bg: rgba(16, 24, 34, 0.62);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.24);
-    --shadow-floating: 0 18px 50px rgba(0, 0, 0, 0.3);
+    --glass-bg: rgba(31, 33, 38, 0.76);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.2);
+    --shadow-floating: 0 18px 50px rgba(0, 0, 0, 0.26);
 
     --radius-xs: 0.5rem;
     --radius-sm: 0.75rem;
@@ -160,7 +160,7 @@
     color-scheme: dark;
 
     --background: 213 31% 10%;
-    --foreground: 210 25% 97%;
+    --foreground: 0 0% 96%;
 
     --surface: 210 22% 96%;
     --surface-secondary: 214 30% 12%;
@@ -176,7 +176,7 @@
     --primary-foreground: 0 0% 100%;
 
     --secondary: 214 30% 12%;
-    --secondary-foreground: 210 25% 97%;
+    --secondary-foreground: 0 0% 92%;
 
     --muted: 214 22% 18%;
     --muted-foreground: 213 12% 68%;
@@ -191,18 +191,18 @@
     --input: 214 15% 30%;
     --ring: var(--brand-red);
 
-    --sidebar-bg: 216 41% 4%;
-    --sidebar-fg: 213 12% 72%;
+    --sidebar-bg: 228 11% 10%;
+    --sidebar-fg: 225 8% 72%;
     --sidebar-active: var(--brand-red);
-    --sidebar-hover: 214 28% 12%;
-    --sidebar-border: 214 24% 13%;
+    --sidebar-hover: 228 8% 17%;
+    --sidebar-border: 228 7% 19%;
 
     --sidebar-background: var(--sidebar-bg);
     --sidebar-foreground: var(--sidebar-fg);
     --sidebar-primary: var(--brand-red);
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 214 28% 12%;
-    --sidebar-accent-foreground: 210 25% 97%;
+    --sidebar-accent: 228 8% 17%;
+    --sidebar-accent-foreground: 0 0% 96%;
     --sidebar-ring: var(--brand-red);
 
     --glass-bg: rgba(13, 19, 27, 0.68);
@@ -212,17 +212,24 @@
   }
 
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
 
   html {
     min-height: 100%;
+    overflow-x: hidden;
     background: hsl(var(--background));
     scroll-behavior: smooth;
   }
 
   body {
-    @apply min-h-screen bg-background text-foreground antialiased;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     font-family:
       'Inter',
       system-ui,
@@ -233,8 +240,20 @@
     text-rendering: optimizeLegibility;
   }
 
+  :root.dark body,
+  :root[data-theme='dark'] body {
+    background-color: hsl(var(--background));
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.01) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-attachment: fixed;
+  }
+
   #root {
     min-height: 100vh;
+    min-height: 100dvh;
+    min-width: 0;
   }
 
   ::selection {
@@ -319,17 +338,20 @@
 
 @layer utilities {
   .priority-high {
-    @apply border-l-4;
+    border-left-width: 4px;
+    border-left-style: solid;
     border-left-color: hsl(var(--priority-high));
   }
 
   .priority-medium {
-    @apply border-l-4;
+    border-left-width: 4px;
+    border-left-style: solid;
     border-left-color: hsl(var(--priority-medium));
   }
 
   .priority-low {
-    @apply border-l-4;
+    border-left-width: 4px;
+    border-left-style: solid;
     border-left-color: hsl(var(--priority-low));
   }
 
@@ -365,7 +387,7 @@
       180deg,
       hsl(var(--sidebar-bg)) 0%,
       hsl(var(--sidebar-bg) / 0.97) 72%,
-      hsl(216 41% 3%) 100%
+      hsl(var(--sidebar-bg) / 0.94) 100%
     );
   }
 
@@ -375,6 +397,31 @@
       linear-gradient(hsl(var(--foreground) / 0.018) 1px, transparent 1px),
       linear-gradient(90deg, hsl(var(--foreground) / 0.018) 1px, transparent 1px);
     background-size: 24px 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  [role='dialog'] {
+    max-width: calc(100vw - 1rem);
+  }
+
+  .jf-diagonal-accent::after {
+    width: 58%;
+    right: -28%;
+    opacity: 0.72;
+  }
+}
+
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 }
 
