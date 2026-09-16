@@ -7,11 +7,8 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  orderBy,
-  query,
   Timestamp,
   updateDoc,
-  where,
 } from 'firebase/firestore';
 import { sendPushToUser } from './usePushNotifications';
 
@@ -57,18 +54,20 @@ export function useGroupChat(groupId: string | null) {
       return;
     }
 
-    const messagesQuery = query(
-      collection(db, 'group_messages'),
-      where('group_id', '==', groupId),
-      orderBy('created_at', 'asc')
-    );
-
+    // Listener sem where + orderBy combinados: evita depender de índice composto
+    // e mantém a conversa do grupo atualizada imediatamente.
     const unsubscribe = onSnapshot(
-      messagesQuery,
-      (snapshot) =>
-        setMessages(
-          snapshot.docs.map((messageDoc) => mapMessage(messageDoc.id, messageDoc.data()))
-        ),
+      collection(db, 'group_messages'),
+      (snapshot) => {
+        const next = snapshot.docs
+          .map((messageDoc) => mapMessage(messageDoc.id, messageDoc.data()))
+          .filter((message) => message.group_id === groupId)
+          .sort(
+            (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+          );
+
+        setMessages(next);
+      },
       (error) => console.error('Erro ao carregar mensagens do grupo:', error)
     );
 
@@ -91,9 +90,9 @@ export function useGroupChat(groupId: string | null) {
         group_id: groupId,
         sender_username: senderUsername,
         content: msg.content,
-        attachment_url: msg.attachmentUrl || null,
-        attachment_type: msg.attachmentType || null,
-        attachment_name: msg.attachmentName || null,
+        attachment_url: msg.attachmentUrl ?? null,
+        attachment_type: msg.attachmentType ?? null,
+        attachment_name: msg.attachmentName ?? null,
         edited: false,
         deleted: false,
         created_at: Timestamp.now(),
@@ -109,7 +108,8 @@ export function useGroupChat(groupId: string | null) {
           : [];
         if (participants.length === 0) return;
 
-        const usersSnapshot = await getDocs(collection(db, 'users'));
+        // A migração atual usa app_users.
+        const usersSnapshot = await getDocs(collection(db, 'app_users'));
         const matchingUsers = usersSnapshot.docs
           .map((userDoc) => ({ id: userDoc.id, ...userDoc.data() }))
           .filter(
@@ -118,10 +118,11 @@ export function useGroupChat(groupId: string | null) {
 
         for (const user of matchingUsers as any[]) {
           if (user.username === senderUsername || user.active === false) continue;
-          sendPushToUser(
+          void sendPushToUser(
             user.id,
             'Nova mensagem de grupo',
-            `${senderUsername}: ${msg.content.substring(0, 100)}`
+            `${senderUsername}: ${msg.content.substring(0, 100)}`,
+            '/chat'
           );
         }
       } catch (error) {

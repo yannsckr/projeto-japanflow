@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { User } from '@/types';
+import { User, ChatMessage } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import {
   Send,
   Paperclip,
@@ -20,7 +20,9 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useChat } from '@/hooks/useChat';
-import { ChatMessage } from '@/types';
+import { usePrivateTyping, usePrivateTypingUsers } from '@/hooks/useTypingPresence';
+import { uploadImage } from '@/lib/uploadImage';
+import { ChatAvatar, SafeChatImage, TypingBubble } from '@/components/ChatMedia';
 
 interface ChatPanelProps {
   otherUser: User;
@@ -36,16 +38,19 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
+  const { isOtherTyping, pingTyping, stopTyping } = usePrivateTyping(currentUser?.id, otherUser.id);
+  const privateTypingUserIds = usePrivateTypingUsers(currentUser?.id);
+  const isTyping = isOtherTyping || privateTypingUserIds.includes(otherUser.id);
+
   useEffect(() => {
     if (!currentUser?.id || !otherUser.id) return;
-
-    const unsubscribe = getMessagesForChat(currentUser.id, otherUser.id);
-
-    return () => unsubscribe();
+    return getMessagesForChat(currentUser.id, otherUser.id);
   }, [currentUser?.id, otherUser.id, getMessagesForChat]);
 
   useEffect(() => {
@@ -55,14 +60,20 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
     });
-  }, [messages.length]);
+  }, [messages.length, isTyping]);
 
   if (!currentUser) return null;
 
   const handleSend = () => {
     if (!text.trim()) return;
-    sendMessage({ receiverId: otherUser.id, content: text.trim() });
+
+    void sendMessage({
+      receiverId: otherUser.id,
+      content: text.trim(),
+    });
+
     setText('');
+    stopTyping();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -70,29 +81,66 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
       e.preventDefault();
       handleSend();
     }
-    // Shift+Enter will naturally create a new line in textarea
+  };
+
+  const sendImage = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Imagem muito grande (máx 10MB)');
+      return;
+    }
+
+    setUploadingImage(true);
+
+    try {
+      const { publicUrl } = await uploadImage(file, {
+        pathPrefix: 'chat/private',
+        sourceTable: 'messages',
+        sourceField: 'attachmentUrl',
+        uploadedBy: currentUser.id,
+      });
+
+      await sendMessage({
+        receiverId: otherUser.id,
+        content: '📷 Imagem',
+        attachmentUrl: publicUrl,
+        attachmentType: 'image',
+        attachmentName: file.name || 'imagem',
+      });
+    } catch (error) {
+      console.error('Erro ao enviar imagem no chat:', error);
+      toast.error('Não foi possível enviar a imagem');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'file') => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Arquivo muito grande (máx 10MB)');
+
+    if (type === 'image') {
+      void sendImage(file);
+      return;
+    }
+
+    // Mantém compatibilidade com anexos antigos. Imagens novas já vão para o R2.
+    if (file.size > 700 * 1024) {
+      toast.error('Arquivo muito grande para o chat (máx. 700 KB por enquanto)');
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => {
-      sendMessage({
+      void sendMessage({
         receiverId: otherUser.id,
-        content: type === 'image' ? '📷 Imagem' : `📎 ${file.name}`,
+        content: `📎 ${file.name}`,
         attachmentUrl: reader.result as string,
-        attachmentType: type,
+        attachmentType: 'file',
         attachmentName: file.name,
       });
     };
     reader.readAsDataURL(file);
-    e.target.value = '';
   };
 
   const toggleRecording = async () => {
@@ -101,16 +149,26 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
       setRecording(false);
       return;
     }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks: BlobPart[] = [];
+
       recorder.ondataavailable = (e) => chunks.push(e.data);
+
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
+
+        if (blob.size > 700 * 1024) {
+          toast.error('Áudio muito longo para o chat. Grave um áudio menor.');
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
         const reader = new FileReader();
         reader.onload = () => {
-          sendMessage({
+          void sendMessage({
             receiverId: otherUser.id,
             content: '🎤 Áudio',
             attachmentUrl: reader.result as string,
@@ -121,6 +179,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
         reader.readAsDataURL(blob);
         stream.getTracks().forEach((t) => t.stop());
       };
+
       recorder.start();
       setMediaRecorder(recorder);
       setRecording(true);
@@ -132,92 +191,70 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
+
     for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (!file) return;
-        if (file.size > 10 * 1024 * 1024) {
-          toast.error('Imagem muito grande (máx 10MB)');
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => {
-          sendMessage({
-            receiverId: otherUser.id,
-            content: '📷 Imagem',
-            attachmentUrl: reader.result as string,
-            attachmentType: 'image',
-            attachmentName: file.name || 'imagem.png',
-          });
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
+      if (!item.type.startsWith('image/')) continue;
+
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) void sendImage(file);
+      return;
     }
   };
 
   const handleEditSave = (msgId: string) => {
     if (!editText.trim()) return;
-    editMessage(msgId, editText.trim());
+    void editMessage(msgId, editText.trim());
     setEditingMsgId(null);
     setEditText('');
   };
 
-  const isMessageRead = (msg: ChatMessage) => {
-    if (msg.senderId !== currentUser.id) return false;
-
-    return msg.read;
-  };
-
   const renderMessage = (msg: ChatMessage) => {
     const isMe = msg.senderId === currentUser.id;
-
     const senderUser = users.find((u) => u.id === msg.senderId);
-
-    const read = isMe && isMessageRead(msg);
+    const read = isMe && msg.read;
 
     return (
-      <div key={msg.id} className={cn('flex group', isMe ? 'justify-end' : 'justify-start')}>
+      <div key={msg.id} className={cn('group flex', isMe ? 'justify-end' : 'justify-start')}>
         <div
           className={cn(
-            'max-w-[70%] px-3.5 py-2.5 rounded-2xl text-sm relative break-words',
+            'relative max-w-[82%] break-words rounded-2xl px-3.5 py-2.5 text-sm sm:max-w-[70%]',
             isMe
-              ? 'bg-primary text-primary-foreground rounded-br-md'
-              : 'bg-secondary text-secondary-foreground rounded-bl-md',
+              ? 'rounded-br-md bg-primary text-primary-foreground'
+              : 'rounded-bl-md bg-secondary text-secondary-foreground',
             msg.deleted && 'opacity-60'
           )}
         >
           {!isMe && (
-            <p className="text-[10px] font-semibold mb-0.5 opacity-70">
+            <p className="mb-0.5 text-[10px] font-semibold opacity-70">
               {senderUser?.name || 'Usuário'}
             </p>
           )}
 
           {editingMsgId === msg.id ? (
-            <div className="flex gap-1 items-center">
+            <div className="flex items-center gap-1">
               <Input
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleEditSave(msg.id)}
-                className="h-7 text-xs bg-background text-foreground"
+                className="h-8 bg-background text-xs text-foreground"
                 autoFocus
               />
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-6 w-6"
+                className="h-7 w-7"
                 onClick={() => handleEditSave(msg.id)}
               >
-                <Check className="w-3 h-3" />
+                <Check className="h-3 w-3" />
               </Button>
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-6 w-6"
+                className="h-7 w-7"
                 onClick={() => setEditingMsgId(null)}
               >
-                <X className="w-3 h-3" />
+                <X className="h-3 w-3" />
               </Button>
             </div>
           ) : (
@@ -225,32 +262,36 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
               {msg.attachmentUrl && !msg.deleted && (
                 <div className="mb-2">
                   {msg.attachmentType === 'image' && (
-                    <img
+                    <SafeChatImage
                       src={msg.attachmentUrl}
-                      alt="attachment"
-                      className="max-w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-80 transition-opacity"
-                      onClick={() => setEnlargedImage(msg.attachmentUrl)}
+                      alt="Imagem enviada no chat"
+                      className="max-h-56 max-w-full cursor-pointer rounded-xl object-cover transition-opacity hover:opacity-90"
+                      onClick={() => setEnlargedImage(msg.attachmentUrl || null)}
                     />
                   )}
+
                   {msg.attachmentType === 'audio' && (
                     <audio controls src={msg.attachmentUrl} className="max-w-full" />
                   )}
+
                   {msg.attachmentType === 'file' && (
                     <a
                       href={msg.attachmentUrl}
                       download={msg.attachmentName}
-                      className="flex items-center gap-2 underline text-xs break-all"
+                      className="flex items-center gap-2 break-all text-xs underline"
                     >
-                      <FileText className="w-4 h-4 shrink-0" />
+                      <FileText className="h-4 w-4 shrink-0" />
                       <span className="min-w-0">{msg.attachmentName}</span>
                     </a>
                   )}
                 </div>
               )}
-              <p className={cn(msg.deleted ? 'italic' : '', 'break-words whitespace-pre-wrap')}>
+
+              <p className={cn('whitespace-pre-wrap break-words', msg.deleted && 'italic')}>
                 {msg.content}
               </p>
-              <div className="flex items-center gap-1 mt-1">
+
+              <div className="mt-1 flex items-center gap-1">
                 <span className={cn('text-[10px]', isMe ? 'opacity-60' : 'text-muted-foreground')}>
                   {new Date(msg.timestamp).toLocaleDateString('pt-BR', {
                     day: '2-digit',
@@ -261,12 +302,14 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
                     minute: '2-digit',
                   })}
                 </span>
+
                 {msg.edited && !msg.deleted && (
                   <span className="text-[9px] opacity-50">(editada)</span>
                 )}
+
                 {isMe && !msg.deleted && (
                   <CheckCheck
-                    className={cn('w-3.5 h-3.5 ml-0.5', read ? 'text-blue-400' : 'opacity-40')}
+                    className={cn('ml-0.5 h-3.5 w-3.5', read ? 'text-blue-400' : 'opacity-40')}
                   />
                 )}
               </div>
@@ -274,15 +317,16 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
           )}
 
           {isMe && !msg.deleted && editingMsgId !== msg.id && (
-            <div className="absolute -top-3 right-0 hidden group-hover:flex gap-0.5 bg-card border border-border rounded-md shadow-sm">
+            <div className="absolute -top-3 right-0 hidden gap-0.5 rounded-md border border-border bg-card shadow-sm group-hover:flex">
               <button
                 onClick={() => {
                   setEditingMsgId(msg.id);
                   setEditText(msg.content);
                 }}
-                className="p-1 hover:bg-secondary rounded-md"
+                className="rounded-md p-1 hover:bg-secondary"
+                aria-label="Editar mensagem"
               >
-                <Pencil className="w-3 h-3 text-muted-foreground" />
+                <Pencil className="h-3 w-3 text-muted-foreground" />
               </button>
             </div>
           )}
@@ -292,33 +336,36 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full max-h-full min-h-0 overflow-hidden">
-      <div className="flex items-center gap-3 p-4 border-b border-border shrink-0">
-        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
-          {otherUser.name
-            .split(' ')
-            .map((n) => n[0])
-            .join('')}
-        </div>
+    <div className="flex h-full min-h-0 max-h-full flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border/70 bg-card p-4">
+        <ChatAvatar src={otherUser.avatar} name={otherUser.name} className="h-10 w-10 rounded-xl" />
         <div className="min-w-0">
-          <p className="text-sm font-semibold truncate">{otherUser.name}</p>
-          <p className="text-[11px] text-muted-foreground truncate">@{otherUser.username}</p>
+          <p className="truncate text-sm font-semibold">{otherUser.name}</p>
+          {isTyping ? (
+            <p className="truncate text-[11px] font-bold italic text-primary animate-pulse [animation-duration:1.8s]">
+              Digitando...
+            </p>
+          ) : (
+            <p className="truncate text-[11px] text-muted-foreground">@{otherUser.username}</p>
+          )}
         </div>
       </div>
 
       <div
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-3"
+        className="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto p-4"
       >
         {messages.length === 0 && (
-          <p className="text-center text-sm text-muted-foreground py-8">
+          <p className="py-8 text-center text-sm text-muted-foreground">
             Nenhuma mensagem ainda. Comece a conversa!
           </p>
         )}
+
         {messages.map(renderMessage)}
+        {isTyping && <TypingBubble label={otherUser.name} />}
       </div>
 
-      <div className="p-3 md:p-4 border-t border-border flex gap-2 items-end shrink-0 bg-card">
+      <div className="flex shrink-0 items-end gap-2 border-t border-border/70 bg-card p-3 md:p-4">
         <input
           ref={imageInputRef}
           type="file"
@@ -332,52 +379,67 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
           className="hidden"
           onChange={(e) => handleFileSelect(e, 'file')}
         />
+
         <Button
           size="icon"
           variant="ghost"
-          className="shrink-0 h-9 w-9"
+          className="h-9 w-9 shrink-0"
+          disabled={uploadingImage}
           onClick={() => imageInputRef.current?.click()}
         >
-          <Image className="w-4 h-4" />
+          <Image className="h-4 w-4" />
         </Button>
+
         <Button
           size="icon"
           variant="ghost"
-          className="shrink-0 h-9 w-9"
+          className="h-9 w-9 shrink-0"
           onClick={() => fileInputRef.current?.click()}
         >
-          <Paperclip className="w-4 h-4" />
+          <Paperclip className="h-4 w-4" />
         </Button>
+
         <Button
           size="icon"
           variant={recording ? 'destructive' : 'ghost'}
-          className="shrink-0 h-9 w-9"
+          className="h-9 w-9 shrink-0"
           onClick={toggleRecording}
         >
-          {recording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </Button>
+
         <Textarea
-          placeholder="Digite uma mensagem..."
+          placeholder={uploadingImage ? 'Enviando imagem…' : 'Digite uma mensagem...'}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (e.target.value.trim()) pingTyping();
+            else stopTyping();
+          }}
+          onBlur={stopTyping}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          className="text-sm min-w-0 min-h-[36px] max-h-32 resize-none py-2"
+          className="max-h-32 min-h-[40px] min-w-0 resize-none py-2 text-sm"
           rows={1}
         />
+
         <Button onClick={handleSend} disabled={!text.trim()} size="icon" className="shrink-0">
-          <Send className="w-4 h-4" />
+          <Send className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* Lightbox de imagem ampliada */}
       <Dialog open={!!enlargedImage} onOpenChange={() => setEnlargedImage(null)}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh] p-2">
+        <DialogContent className="max-h-[90vh] max-w-[90vw] p-2">
+          <DialogTitle className="sr-only">Imagem ampliada do chat</DialogTitle>
+          <DialogDescription className="sr-only">
+            Visualização ampliada da imagem enviada na conversa.
+          </DialogDescription>
+
           {enlargedImage && (
-            <img
+            <SafeChatImage
               src={enlargedImage}
               alt="Imagem ampliada"
-              className="w-full h-full max-h-[85vh] object-contain rounded-lg"
+              className="h-full max-h-[85vh] w-full rounded-xl object-contain"
             />
           )}
         </DialogContent>

@@ -23,7 +23,6 @@ export function useChatPreviews(currentUsername: string | null) {
     usernameToId: new Map<string, string>(),
   });
   const [messagesSnapshot, setMessagesSnapshot] = useState<any[]>([]);
-  const [readStatuses, setReadStatuses] = useState<any[]>([]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -49,28 +48,17 @@ export function useChatPreviews(currentUsername: string | null) {
   }, []);
 
   useEffect(() => {
-    const unsubscribeMessages = onSnapshot(
+    return onSnapshot(
       collection(db, 'messages'),
       (snapshot) =>
         setMessagesSnapshot(
-          snapshot.docs.map((messageDoc) => ({ id: messageDoc.id, ...messageDoc.data() }))
+          snapshot.docs.map((messageDoc) => ({
+            id: messageDoc.id,
+            ...messageDoc.data(),
+          }))
         ),
       (error) => console.error('Erro ao carregar mensagens para previews:', error)
     );
-
-    const unsubscribeReadStatus = onSnapshot(
-      collection(db, 'chat_read_status'),
-      (snapshot) =>
-        setReadStatuses(
-          snapshot.docs.map((statusDoc) => ({ id: statusDoc.id, ...statusDoc.data() }))
-        ),
-      (error) => console.error('Erro ao carregar status de leitura:', error)
-    );
-
-    return () => {
-      unsubscribeMessages();
-      unsubscribeReadStatus();
-    };
   }, []);
 
   const rebuildPreviews = useCallback(() => {
@@ -79,93 +67,69 @@ export function useChatPreviews(currentUsername: string | null) {
       return;
     }
 
-    const currentUserId = usersMap.usernameToId.get(currentUsername) || null;
-    const readMap = new Map<string, string>();
-
-    for (const row of readStatuses) {
-      if (row.username !== currentUsername) continue;
-      const partnerUsername =
-        row.partner_username ||
-        (row.partnerId ? usersMap.idToUsername.get(row.partnerId) : undefined);
-      if (!partnerUsername) continue;
-      readMap.set(partnerUsername, toIso(row.last_read_at || row.lastReadAt));
+    const currentUserId = usersMap.usernameToId.get(currentUsername);
+    if (!currentUserId) {
+      setPreviews([]);
+      return;
     }
 
-    const relevantMessages = messagesSnapshot
+    const rows = messagesSnapshot
       .map((message) => {
-        const senderUsername =
-          message.sender_username ||
-          (message.senderId ? usersMap.idToUsername.get(message.senderId) : undefined);
-        const receiverUsername =
-          message.receiver_username ||
-          (message.receiverId ? usersMap.idToUsername.get(message.receiverId) : undefined);
-        const senderId = message.senderId || null;
-        const receiverId = message.receiverId || null;
-        const createdAt = toIso(message.created_at || message.timestamp || message.createdAt);
+        const senderId = String(message.senderId || '');
+        const receiverId = String(message.receiverId || '');
+        const createdAt = toIso(message.timestamp || message.created_at || message.createdAt);
 
         return {
           ...message,
-          senderUsername,
-          receiverUsername,
           senderId,
           receiverId,
           createdAt,
-          content: String(message.content || ''),
           deleted: message.deleted === true,
+          read: message.read === true,
+          content: String(message.content || ''),
         };
       })
-      .filter((message) => {
-        const byUsername =
-          message.senderUsername === currentUsername ||
-          message.receiverUsername === currentUsername;
-        const byId =
-          !!currentUserId &&
-          (message.senderId === currentUserId || message.receiverId === currentUserId);
-        return byUsername || byId;
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      .filter(
+        (message) => message.senderId === currentUserId || message.receiverId === currentUserId
+      )
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
     const chatMap = new Map<string, { lastMsg: any; unread: number }>();
 
-    for (const message of relevantMessages) {
-      const partnerUsername =
-        message.senderUsername === currentUsername
-          ? message.receiverUsername
-          : message.senderUsername;
+    for (const message of rows) {
+      const partnerId = message.senderId === currentUserId ? message.receiverId : message.senderId;
+      const partnerUsername = usersMap.idToUsername.get(partnerId);
       if (!partnerUsername) continue;
 
-      if (!chatMap.has(partnerUsername))
+      if (!chatMap.has(partnerUsername)) {
         chatMap.set(partnerUsername, { lastMsg: message, unread: 0 });
+      }
 
-      const isFromPartner = message.senderUsername !== currentUsername;
-      if (isFromPartner && !message.deleted) {
-        const lastRead = readMap.get(partnerUsername);
-        if (!lastRead || new Date(message.createdAt) > new Date(lastRead)) {
-          chatMap.get(partnerUsername)!.unread += 1;
-        }
+      if (message.receiverId === currentUserId && !message.read && !message.deleted) {
+        chatMap.get(partnerUsername)!.unread += 1;
       }
     }
 
-    const result: ChatPreview[] = [];
-    chatMap.forEach((value, partnerUsername) => {
-      result.push({
-        partnerUsername,
-        lastMessageAt: value.lastMsg.createdAt,
-        lastMessageContent: value.lastMsg.deleted ? 'Mensagem apagada' : value.lastMsg.content,
-        unreadCount: value.unread,
-      });
-    });
+    const result = Array.from(chatMap.entries()).map(([partnerUsername, value]): ChatPreview => ({
+      partnerUsername,
+      lastMessageAt: value.lastMsg.createdAt,
+      lastMessageContent: value.lastMsg.deleted ? 'Mensagem apagada' : value.lastMsg.content,
+      unreadCount: value.unread,
+    }));
+
     result.sort(
-      (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+      (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
     );
+
     setPreviews(result);
-  }, [currentUsername, messagesSnapshot, readStatuses, usersMap]);
+  }, [currentUsername, messagesSnapshot, usersMap]);
 
   useEffect(() => rebuildPreviews(), [rebuildPreviews]);
 
   const markAsRead = useCallback(
     async (partnerUsername: string) => {
       if (!currentUsername) return;
+
       const statusId = `${currentUsername}__${partnerUsername}`;
       await setDoc(
         doc(db, 'chat_read_status', statusId),

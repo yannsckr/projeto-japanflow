@@ -9,10 +9,19 @@ import { useChatPreviews } from '@/hooks/useChatPreviews';
 import { useCustomGroups } from '@/hooks/useCustomGroups';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { ChatAvatar } from '@/components/ChatMedia';
+import { usePrivateTypingUsers } from '@/hooks/useTypingPresence';
+import { useGroupUnread } from '@/hooks/useGroupUnread';
 
 const SECTOR_CHATS = [
   {
@@ -35,9 +44,35 @@ const ChatPage = () => {
   const [tab, setTab] = useState<'private' | 'groups'>('private');
   const { previews, markAsRead } = useChatPreviews(currentUser?.username || null);
   const { groups: customGroups, createGroup, deleteGroup } = useCustomGroups();
+  const privateTypingUserIds = usePrivateTypingUsers(currentUser?.id);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
+
+  const isAdmin = currentUser?.role === 'admin';
+  const currentSectors = currentUser?.sectors || [];
+
+  const accessibleSectorGroups = SECTOR_CHATS.filter(
+    (group) => Boolean(isAdmin) || currentSectors.some((sector) => group.sectors.includes(sector))
+  );
+
+  const accessibleCustomGroups = customGroups.filter(
+    (group) =>
+      Boolean(currentUser) && (group.participants.includes(currentUser.id) || Boolean(isAdmin))
+  );
+
+  const accessibleGroupIds = [
+    ...accessibleSectorGroups.map((group) => group.id),
+    ...accessibleCustomGroups.map((group) => group.id),
+  ];
+
+  const {
+    unreadByGroup,
+    totalUnread: groupUnreadTotal,
+    markGroupAsRead,
+  } = useGroupUnread(currentUser?.id, currentUser?.username, accessibleGroupIds);
+
+  const privateUnreadTotal = previews.reduce((total, preview) => total + preview.unreadCount, 0);
 
   // Preload happens globally in AppLayout right after login (background, progressive).
   // Aqui apenas garantimos que se o usuário entrar direto no /chat, o preload rode também.
@@ -46,26 +81,31 @@ const ChatPage = () => {
     }
   }, [currentUser?.username]);
 
+  const selectedPreview = selectedUser
+    ? previews.find((preview) => preview.partnerUsername === selectedUser.username)
+    : undefined;
+
   useEffect(() => {
     if (selectedUser && currentUser) {
-      markAsRead(selectedUser.username);
+      void markAsRead(selectedUser.username);
     }
-  }, [selectedUser, currentUser, markAsRead]);
+  }, [
+    selectedUser,
+    currentUser,
+    markAsRead,
+    selectedPreview?.lastMessageAt,
+    selectedPreview?.unreadCount,
+  ]);
+
+  useEffect(() => {
+    if (selectedGroup && (unreadByGroup[selectedGroup] || 0) > 0) {
+      void markGroupAsRead(selectedGroup);
+    }
+  }, [selectedGroup, unreadByGroup, markGroupAsRead]);
 
   if (!currentUser) return null;
 
-  const isAdmin = currentUser.role === 'admin';
   const chatPartners = users.filter((u) => u.id !== currentUser.id);
-
-  // Sector-based groups the user can access
-  const accessibleSectorGroups = SECTOR_CHATS.filter(
-    (g) => isAdmin || currentUser.sectors.some((s) => g.sectors.includes(s))
-  );
-
-  // Custom groups the user participates in
-  const accessibleCustomGroups = customGroups.filter(
-    (g) => g.participants.includes(currentUser.id) || isAdmin
-  );
 
   const sortedPartners = [...chatPartners].sort((a, b) => {
     const previewA = previews.find((p) => p.partnerUsername === a.username);
@@ -85,6 +125,7 @@ const ChatPage = () => {
     setSelectedGroup(groupId);
     setSelectedGroupName(name);
     setSelectedUser(null);
+    void markGroupAsRead(groupId);
   };
 
   const handleCreateGroup = async () => {
@@ -112,34 +153,71 @@ const ChatPage = () => {
   };
 
   return (
-    <div className="flex h-full max-h-full min-h-0 flex-col gap-0 overflow-hidden rounded-xl border border-border bg-card md:flex-row flex-1">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-border/70 bg-card shadow-card md:flex-row">
       <div
         className={cn(
-          'border-r border-border flex flex-col min-h-0 overflow-hidden',
-          selectedUser || selectedGroup ? 'hidden md:flex md:w-64' : 'w-full md:w-64'
+          'min-h-0 flex-col overflow-hidden border-border/70 bg-card',
+          selectedUser || selectedGroup
+            ? 'hidden md:flex md:w-[300px] md:border-r'
+            : 'flex w-full md:w-[300px] md:border-r'
         )}
       >
-        <div className="flex border-b border-border shrink-0">
+        <div className="border-b border-border/70 px-4 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            Comunicação interna
+          </p>
+          <div className="mt-1 flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Chat</h1>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Conversas privadas e grupos da equipe
+              </p>
+            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <MessageSquare className="h-4 w-4" />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 gap-1 border-b border-border/70 p-2">
           <button
             onClick={() => setTab('private')}
             className={cn(
-              'flex-1 px-4 py-3 text-sm font-semibold transition-colors',
-              tab === 'private' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
+              'jf-interactive flex-1 rounded-xl px-3 py-2 text-sm font-medium',
+              tab === 'private'
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
             )}
           >
-            Conversas
+            <span className="inline-flex items-center justify-center gap-2">
+              Conversas
+              {privateUnreadTotal > 0 && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                  {privateUnreadTotal > 99 ? '99+' : privateUnreadTotal}
+                </span>
+              )}
+            </span>
           </button>
           <button
             onClick={() => setTab('groups')}
             className={cn(
-              'flex-1 px-4 py-3 text-sm font-semibold transition-colors',
-              tab === 'groups' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
+              'jf-interactive flex-1 rounded-xl px-3 py-2 text-sm font-medium',
+              tab === 'groups'
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
             )}
           >
-            Grupos
+            <span className="inline-flex items-center justify-center gap-2">
+              Grupos
+              {groupUnreadTotal > 0 && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                  {groupUnreadTotal > 99 ? '99+' : groupUnreadTotal}
+                </span>
+              )}
+            </span>
           </button>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {tab === 'private' ? (
             sortedPartners.map((user) => {
               const preview = previews.find((p) => p.partnerUsername === user.username);
@@ -148,33 +226,56 @@ const ChatPage = () => {
                   key={user.id}
                   onClick={() => selectPrivate(user)}
                   className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors border-b border-border last:border-0',
-                    selectedUser?.id === user.id && !selectedGroup && 'bg-secondary'
+                    'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
+                    selectedUser?.id === user.id &&
+                      !selectedGroup &&
+                      'bg-primary/[0.07] ring-1 ring-primary/15',
+                    preview?.unreadCount && selectedUser?.id !== user.id && 'bg-primary/[0.035]'
                   )}
                 >
-                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary overflow-hidden shrink-0">
-                    {user.avatar ? (
-                      <img src={user.avatar} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      user.name
-                        .split(' ')
-                        .map((n) => n[0])
-                        .join('')
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-medium truncate">{user.name}</p>
+                  <ChatAvatar src={user.avatar} name={user.name} className="h-10 w-10 rounded-xl" />
+                  <div className="min-w-0 flex-1 text-left">
+                    <p
+                      className={cn(
+                        'truncate text-sm text-foreground',
+                        preview?.unreadCount ? 'font-bold' : 'font-medium'
+                      )}
+                    >
+                      {user.name}
+                    </p>
                     {preview ? (
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {preview.lastMessageContent}
+                      <p
+                        className={cn(
+                          'truncate text-[11px]',
+                          privateTypingUserIds.includes(user.id)
+                            ? 'font-bold italic text-primary animate-pulse [animation-duration:1.8s]'
+                            : preview.unreadCount > 0
+                              ? 'font-semibold text-foreground'
+                              : 'text-muted-foreground'
+                        )}
+                      >
+                        {privateTypingUserIds.includes(user.id)
+                          ? 'Digitando...'
+                          : preview.lastMessageContent}
                       </p>
                     ) : (
-                      <p className="text-[11px] text-muted-foreground capitalize">
-                        {user.role === 'admin' ? 'Administrador' : 'Funcionário'}
+                      <p
+                        className={cn(
+                          'text-[11px] capitalize',
+                          privateTypingUserIds.includes(user.id)
+                            ? 'font-bold italic text-primary animate-pulse [animation-duration:1.8s]'
+                            : 'text-muted-foreground'
+                        )}
+                      >
+                        {privateTypingUserIds.includes(user.id)
+                          ? 'Digitando...'
+                          : user.role === 'admin'
+                            ? 'Administrador'
+                            : 'Funcionário'}
                       </p>
                     )}
                   </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
+                  <div className="flex shrink-0 flex-col items-end gap-1">
                     {preview && (
                       <span className="text-[10px] text-muted-foreground">
                         {new Date(preview.lastMessageAt).toLocaleTimeString('pt-BR', {
@@ -184,12 +285,15 @@ const ChatPage = () => {
                       </span>
                     )}
                     {preview && preview.unreadCount > 0 && (
-                      <Badge
-                        variant="default"
-                        className="min-w-[20px] h-5 text-[10px] flex items-center justify-center px-1.5 animate-pulse"
-                      >
-                        {preview.unreadCount > 99 ? '99+' : preview.unreadCount}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                        <Badge
+                          variant="default"
+                          className="flex h-5 min-w-[20px] items-center justify-center rounded-lg px-1.5 text-[10px]"
+                        >
+                          {preview.unreadCount > 99 ? '99+' : preview.unreadCount}
+                        </Badge>
+                      </div>
                     )}
                   </div>
                 </button>
@@ -200,9 +304,9 @@ const ChatPage = () => {
               {isAdmin && (
                 <button
                   onClick={() => setShowCreateGroup(true)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors border-b border-border text-primary"
+                  className="jf-interactive mb-1 flex w-full items-center gap-3 rounded-xl border border-dashed border-primary/25 bg-primary/[0.04] px-3 py-2.5 text-primary hover:bg-primary/[0.07]"
                 >
-                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
                     <Plus className="w-4 h-4" />
                   </div>
                   <p className="text-sm font-medium">Criar Novo Grupo</p>
@@ -213,43 +317,75 @@ const ChatPage = () => {
                   key={group.id}
                   onClick={() => selectGroup(group.id, group.name)}
                   className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors border-b border-border last:border-0',
-                    selectedGroup === group.id && 'bg-secondary'
+                    'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
+                    selectedGroup === group.id && 'bg-primary/[0.07] ring-1 ring-primary/15',
+                    (unreadByGroup[group.id] || 0) > 0 &&
+                      selectedGroup !== group.id &&
+                      'bg-primary/[0.035]'
                   )}
                 >
-                  <div className="w-9 h-9 rounded-full bg-accent flex items-center justify-center shrink-0">
-                    <Users className="w-4 h-4 text-accent-foreground" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                    <Users className="h-4 w-4" />
                   </div>
-                  <div className="text-left min-w-0">
-                    <p className="text-sm font-medium truncate">{group.name}</p>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p
+                      className={cn(
+                        'truncate text-sm text-foreground',
+                        (unreadByGroup[group.id] || 0) > 0 ? 'font-bold' : 'font-medium'
+                      )}
+                    >
+                      {group.name}
+                    </p>
                     <p className="text-[11px] text-muted-foreground">
                       {group.sectors.length} setores
                     </p>
                   </div>
+                  {(unreadByGroup[group.id] || 0) > 0 && (
+                    <Badge className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px]">
+                      {unreadByGroup[group.id] > 99 ? '99+' : unreadByGroup[group.id]}
+                    </Badge>
+                  )}
                 </button>
               ))}
               {accessibleCustomGroups.map((group) => (
                 <div
                   key={group.id}
                   className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors border-b border-border last:border-0',
-                    selectedGroup === group.id && 'bg-secondary'
+                    'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
+                    selectedGroup === group.id && 'bg-primary/[0.07] ring-1 ring-primary/15',
+                    (unreadByGroup[group.id] || 0) > 0 &&
+                      selectedGroup !== group.id &&
+                      'bg-primary/[0.035]'
                   )}
                 >
                   <button
                     onClick={() => selectGroup(group.id, group.name)}
-                    className="flex items-center gap-3 flex-1 min-w-0"
+                    className="flex min-w-0 flex-1 items-center gap-3"
                   >
-                    <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
                       <Users className="w-4 h-4 text-primary" />
                     </div>
-                    <div className="text-left min-w-0">
-                      <p className="text-sm font-medium truncate">{group.name}</p>
+                    <div className="min-w-0 flex-1 text-left">
+                      <p
+                        className={cn(
+                          'truncate text-sm text-foreground',
+                          (unreadByGroup[group.id] || 0) > 0 ? 'font-bold' : 'font-medium'
+                        )}
+                      >
+                        {group.name}
+                      </p>
                       <p className="text-[11px] text-muted-foreground">
                         {group.participants.length} participantes
                       </p>
                     </div>
                   </button>
+
+                  {(unreadByGroup[group.id] || 0) > 0 && (
+                    <Badge className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px]">
+                      {unreadByGroup[group.id] > 99 ? '99+' : unreadByGroup[group.id]}
+                    </Badge>
+                  )}
+
                   {isAdmin && (
                     <button
                       onClick={() => {
@@ -259,9 +395,9 @@ const ChatPage = () => {
                           toast.success('Grupo excluído');
                         }
                       }}
-                      className="p-1 hover:bg-destructive/10 rounded shrink-0"
+                      className="jf-interactive flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-destructive/10"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </button>
                   )}
                 </div>
@@ -271,9 +407,9 @@ const ChatPage = () => {
         </div>
       </div>
 
-      <div
+      <section
         className={cn(
-          'flex-1 flex flex-col min-h-0 overflow-hidden',
+          'min-h-0 flex-1 flex-col overflow-hidden bg-background/20',
           !selectedUser && !selectedGroup ? 'hidden md:flex' : 'flex'
         )}
       >
@@ -283,38 +419,44 @@ const ChatPage = () => {
               setSelectedUser(null);
               setSelectedGroup(null);
             }}
-            className="md:hidden flex items-center gap-2 px-4 py-3 text-sm text-primary border-b border-border shrink-0 bg-card"
+            className="jf-interactive flex shrink-0 items-center gap-2 border-b border-border/70 bg-card px-4 py-3 text-sm font-medium text-primary md:hidden"
           >
             ← Voltar
           </button>
         )}
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <div className="min-h-0 flex-1 overflow-hidden">
           {selectedGroup ? (
             <GroupChatPanel groupId={selectedGroup} groupName={selectedGroupName} />
           ) : selectedUser ? (
             <ChatPanel otherUser={selectedUser} />
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-              <MessageSquare className="w-12 h-12 mb-3 opacity-30" />
-              <p className="text-sm">Selecione uma conversa</p>
+            <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+              <MessageSquare className="mb-4 h-12 w-12 opacity-20" />
+              <p className="text-sm font-medium text-foreground">Selecione uma conversa</p>
+              <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                Escolha uma pessoa ou grupo ao lado para iniciar ou continuar uma conversa.
+              </p>
             </div>
           )}
         </div>
-      </div>
+      </section>
 
       {/* Create Group Dialog */}
       <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle>Criar Novo Grupo</DialogTitle>
+            <DialogDescription>
+              Defina o nome do grupo e selecione os participantes.
+            </DialogDescription>
           </DialogHeader>
           <Input
             placeholder="Nome do grupo"
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
           />
-          <div className="space-y-1 max-h-60 overflow-auto">
-            <p className="text-xs font-semibold text-muted-foreground mb-2">
+          <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Selecionar participantes:
             </p>
             {users
@@ -322,22 +464,13 @@ const ChatPage = () => {
               .map((user) => (
                 <label
                   key={user.id}
-                  className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                  className="jf-interactive flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-muted/45"
                 >
                   <Checkbox
                     checked={selectedParticipants.includes(user.id)}
                     onCheckedChange={() => toggleParticipant(user.id)}
                   />
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary overflow-hidden">
-                    {user.avatar ? (
-                      <img src={user.avatar} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      user.name
-                        .split(' ')
-                        .map((n) => n[0])
-                        .join('')
-                    )}
-                  </div>
+                  <ChatAvatar src={user.avatar} name={user.name} className="h-8 w-8 rounded-lg" />
                   <div>
                     <p className="text-sm font-medium">{user.name}</p>
                     <p className="text-[10px] text-muted-foreground">
@@ -349,7 +482,7 @@ const ChatPage = () => {
                 </label>
               ))}
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setShowCreateGroup(false)}>
               Cancelar
             </Button>

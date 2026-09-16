@@ -354,41 +354,62 @@ const DepartmentalPage = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold">Módulos Departamentais</h2>
+    <div className="space-y-5 md:space-y-6">
+      <section className="jf-surface overflow-hidden p-4 md:p-5">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+              Operação integrada
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+              Módulos Departamentais
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+              Acesse as rotinas compartilhadas entre os setores conforme suas permissões.
+            </p>
+          </div>
 
-      <Tabs defaultValue={availableTabs[0].id}>
-        <TabsList className="flex flex-wrap h-auto gap-1">
-          {availableTabs.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} className="text-xs">
-              <tab.icon className="w-3 h-3 mr-1" />
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+          <Badge variant="outline" className="w-fit rounded-xl px-3 py-1">
+            {availableTabs.length} módulo{availableTabs.length !== 1 ? 's' : ''} disponível
+            {availableTabs.length !== 1 ? 'is' : ''}
+          </Badge>
+        </div>
+      </section>
+
+      <Tabs defaultValue={availableTabs[0].id} className="min-w-0">
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <TabsList className="h-auto min-w-max justify-start gap-1">
+            {availableTabs.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5 text-xs">
+                <tab.icon className="h-3.5 w-3.5" />
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
         {/* Rastreamento */}
         {canSeeTracking && (
-          <TabsContent value="tracking" className="space-y-3">
+          <TabsContent value="tracking" className="space-y-4">
             {canPostTracking && (
               <Button size="sm" onClick={() => setDialog('tracking')}>
                 <Plus className="w-3 h-3 mr-1" />
                 Novo Rastreamento
               </Button>
             )}
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar por cliente..."
                   value={trackingSearchClient}
                   onChange={(e) => setTrackingSearchClient(e.target.value)}
-                  className="pl-8 h-9 text-sm"
+                  className="h-10 pl-9 text-sm"
                 />
                 {trackingSearchClient && (
                   <button
                     onClick={() => setTrackingSearchClient('')}
-                    className="absolute right-2.5 top-2.5"
+                    className="absolute right-3 top-3"
                   >
                     <X className="h-4 w-4 text-muted-foreground" />
                   </button>
@@ -398,7 +419,7 @@ const DepartmentalPage = () => {
                 type="date"
                 value={trackingSearchDate}
                 onChange={(e) => setTrackingSearchDate(e.target.value)}
-                className="h-9 text-sm w-full sm:w-40"
+                className="h-10 w-full text-sm sm:w-40"
               />
               {trackingSearchDate && (
                 <Button
@@ -412,11 +433,11 @@ const DepartmentalPage = () => {
               )}
             </div>
             {filteredTracking.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
+              <p className="py-10 text-center text-sm text-muted-foreground">
                 Nenhum rastreamento encontrado
               </p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredTracking.map((t) => {
                   const canDeleteTracking =
                     isAdmin ||
@@ -425,7 +446,7 @@ const DepartmentalPage = () => {
                   return (
                     <div
                       key={t.id}
-                      className="bg-card border border-border rounded-lg p-3 relative"
+                      className="jf-interactive relative rounded-2xl border border-border/70 bg-card p-3.5 shadow-sm hover:bg-muted/15"
                     >
                       <p className="text-sm font-mono font-semibold pr-7">{t.trackingCode}</p>
                       {t.clientName && (
@@ -448,7 +469,7 @@ const DepartmentalPage = () => {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="absolute top-1.5 right-1.5 h-6 w-6 text-destructive hover:text-destructive"
+                          className="absolute right-2 top-2 h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive"
                           onClick={() => {
                             if (confirm('Excluir este rastreamento?')) dept.deleteTracking(t.id);
                           }}
@@ -466,7 +487,7 @@ const DepartmentalPage = () => {
 
         {/* Envios Reversos */}
         {canSeeReverse && (
-          <TabsContent value="reverse" className="space-y-3">
+          <TabsContent value="reverse" className="space-y-4">
             {canRequestReverse ? (
               <Button size="sm" onClick={() => setDialog('reverse')}>
                 <Plus className="w-3 h-3 mr-1" />
@@ -474,9 +495,9 @@ const DepartmentalPage = () => {
               </Button>
             ) : null}
             {dept.reverseShipments.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhuma solicitação</p>
+              <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma solicitação</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {dept.reverseShipments.map((rs) => {
                   const saleDateObj = rs.saleDate ? new Date(rs.saleDate + 'T12:00:00') : null;
                   const daysSinceSale = saleDateObj
@@ -492,8 +513,11 @@ const DepartmentalPage = () => {
                     warning = 'Verificar se o prazo de garantia confere (mais de 90 dias).';
 
                   return (
-                    <div key={rs.id} className="bg-card border border-border rounded-lg p-3">
-                      <div className="flex justify-between items-start">
+                    <div
+                      key={rs.id}
+                      className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
                           <p className="text-sm font-semibold">{rs.itemName}</p>
                           <p className="text-xs text-muted-foreground">
@@ -514,7 +538,7 @@ const DepartmentalPage = () => {
                           <img
                             src={rs.productImageUrl}
                             alt="Produto"
-                            className="w-12 h-12 rounded object-cover ml-2 cursor-pointer"
+                            className="ml-2 h-14 w-14 cursor-pointer rounded-xl object-cover"
                             onClick={() => window.open(rs.productImageUrl!, '_blank')}
                           />
                         )}
@@ -527,7 +551,7 @@ const DepartmentalPage = () => {
                           Código: {rs.trackingCode}
                         </p>
                       ) : userSectors.includes('expedicao' as Sector) || isAdmin ? (
-                        <div className="flex gap-2 mt-2">
+                        <div className="mt-2 flex gap-2">
                           <Input
                             size={1}
                             placeholder="Código..."
@@ -535,7 +559,7 @@ const DepartmentalPage = () => {
                             onChange={(e) =>
                               setForm((p: any) => ({ ...p, [`code_${rs.id}`]: e.target.value }))
                             }
-                            className="flex-1 h-8 text-xs"
+                            className="h-9 flex-1 text-xs"
                           />
                           <Button
                             size="sm"
@@ -558,7 +582,7 @@ const DepartmentalPage = () => {
 
         {/* Notinhas */}
         {canSeeReceipts && (
-          <TabsContent value="receipts" className="space-y-3">
+          <TabsContent value="receipts" className="space-y-4">
             {canPostReceipts && (
               <Button size="sm" onClick={() => setDialog('receipt')}>
                 <Plus className="w-3 h-3 mr-1" />
@@ -566,27 +590,30 @@ const DepartmentalPage = () => {
               </Button>
             )}
             {dept.receipts.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhuma notinha</p>
+              <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma notinha</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid gap-3 md:grid-cols-2">
                 {dept.receipts.map((r) => (
-                  <div key={r.id} className="bg-card border border-border rounded-lg p-3">
+                  <div
+                    key={r.id}
+                    className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-sm"
+                  >
                     {r.photoUrl && (
                       <img
                         src={r.photoUrl}
                         alt="Notinha"
-                        className="w-full h-40 object-cover rounded-lg mb-2"
+                        className="mb-3 h-44 w-full rounded-xl object-cover"
                       />
                     )}
                     {r.description && <p className="text-sm">{r.description}</p>}
-                    <div className="flex items-center justify-between mt-2">
+                    <div className="mt-2 flex items-center justify-between gap-3">
                       <p className="text-[10px] text-muted-foreground">
                         {getName(r.createdBy)} • {new Date(r.createdAt).toLocaleDateString('pt-BR')}
                       </p>
                       <Button
                         size="sm"
                         variant={r.likedBy.includes(currentUser.id) ? 'default' : 'outline'}
-                        className="h-7 text-xs"
+                        className="h-8 rounded-lg text-xs"
                         onClick={() => dept.toggleLikeReceipt(r.id, currentUser.id)}
                       >
                         <ThumbsUp className="w-3 h-3 mr-1" />
@@ -602,7 +629,7 @@ const DepartmentalPage = () => {
 
         {/* Orçamentos */}
         {canSeeQuotes && (
-          <TabsContent value="quotes" className="space-y-3">
+          <TabsContent value="quotes" className="space-y-4">
             <Button size="sm" onClick={() => setDialog('quote')}>
               <Plus className="w-3 h-3 mr-1" />
               Solicitar Orçamento
@@ -614,9 +641,9 @@ const DepartmentalPage = () => {
                 (cq) => isAdmin || isCompras || cq.requestedBy === currentUser.id
               );
               return visibleQuotes.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhum orçamento</p>
+                <p className="py-10 text-center text-sm text-muted-foreground">Nenhum orçamento</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {visibleQuotes.map((cq) => {
                     const canClaim =
                       !cq.claimedBy && cq.status !== 'responded' && (isCompras || isAdmin);
@@ -625,8 +652,11 @@ const DepartmentalPage = () => {
                     const claimerName = cq.claimedBy ? getName(cq.claimedBy) : null;
                     const canDelete = isAdmin || isCompras || cq.requestedBy === currentUser.id;
                     return (
-                      <div key={cq.id} className="bg-card border border-border rounded-lg p-3">
-                        <div className="flex items-center justify-between">
+                      <div
+                        key={cq.id}
+                        className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-sm"
+                      >
+                        <div className="flex items-center justify-between gap-3">
                           <p className="text-sm font-semibold">
                             {cq.productName}{' '}
                             <span className="text-xs text-muted-foreground font-normal">
@@ -673,11 +703,11 @@ const DepartmentalPage = () => {
                             {cq.response}
                           </p>
                         )}
-                        <div className="flex gap-2 mt-2">
+                        <div className="mt-2 flex gap-2">
                           {canClaim && (
                             <Button
                               size="sm"
-                              className="h-7 text-xs"
+                              className="h-8 rounded-lg text-xs"
                               onClick={() => {
                                 dept.claimQuote(cq.id, currentUser.id);
                                 toast.success('Orçamento resgatado!');
@@ -695,7 +725,7 @@ const DepartmentalPage = () => {
                                 onChange={(e) =>
                                   setForm((p: any) => ({ ...p, [`resp_${cq.id}`]: e.target.value }))
                                 }
-                                className="flex-1 h-8 text-xs"
+                                className="h-9 flex-1 text-xs"
                               />
                               <Button
                                 size="sm"
@@ -734,7 +764,7 @@ const DepartmentalPage = () => {
 
         {/* Produtos Esgotando */}
         {canSeeLowStock && (
-          <TabsContent value="lowstock" className="space-y-3">
+          <TabsContent value="lowstock" className="space-y-4">
             {(userSectors.includes('expedicao' as Sector) || isAdmin) && (
               <Button size="sm" onClick={() => setDialog('lowstock')}>
                 <Plus className="w-3 h-3 mr-1" />
@@ -742,31 +772,34 @@ const DepartmentalPage = () => {
               </Button>
             )}
             <Tabs defaultValue="active" className="w-full">
-              <TabsList className="mb-2">
+              <TabsList className="mb-3 h-auto">
                 <TabsTrigger value="active">Ativos</TabsTrigger>
                 <TabsTrigger value="history">Histórico</TabsTrigger>
               </TabsList>
               <TabsContent value="active">
                 {dept.lowStockItems.filter((i) => i.status !== 'resolved').length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">
+                  <p className="py-10 text-center text-sm text-muted-foreground">
                     Nenhum produto reportado
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid gap-3 md:grid-cols-2">
                     {dept.lowStockItems
                       .filter((i) => i.status !== 'resolved')
                       .map((item) => (
-                        <div key={item.id} className="bg-card border border-border rounded-lg p-3">
+                        <div
+                          key={item.id}
+                          className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-sm"
+                        >
                           {item.photoUrl && (
                             <img
                               src={item.photoUrl}
                               alt="Produto"
-                              className="w-full h-32 object-cover rounded-lg mb-2 cursor-pointer hover:opacity-80 transition-opacity"
+                              className="mb-3 h-36 w-full cursor-pointer rounded-xl object-cover transition-opacity hover:opacity-85"
                               onClick={() => setEnlargedImage(item.photoUrl)}
                             />
                           )}
                           {item.description && <p className="text-sm">{item.description}</p>}
-                          <div className="flex items-center justify-between mt-2">
+                          <div className="mt-2 flex items-center justify-between gap-3">
                             <p className="text-[10px] text-muted-foreground">
                               {getName(item.reportedBy)}
                             </p>
@@ -775,7 +808,7 @@ const DepartmentalPage = () => {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 text-xs"
+                                  className="h-8 rounded-lg text-xs"
                                   onClick={() => dept.resolveLowStock(item.id)}
                                 >
                                   <CheckCircle2 className="w-3 h-3 mr-1" />
@@ -786,7 +819,7 @@ const DepartmentalPage = () => {
                                 <Button
                                   size="sm"
                                   variant="destructive"
-                                  className="h-7 text-xs"
+                                  className="h-8 rounded-lg text-xs"
                                   onClick={() => dept.deleteLowStock(item.id)}
                                 >
                                   <Trash2 className="w-3 h-3 mr-1" />
@@ -802,28 +835,28 @@ const DepartmentalPage = () => {
               </TabsContent>
               <TabsContent value="history">
                 {dept.lowStockItems.filter((i) => i.status === 'resolved').length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">
+                  <p className="py-10 text-center text-sm text-muted-foreground">
                     Nenhum produto no histórico
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid gap-3 md:grid-cols-2">
                     {dept.lowStockItems
                       .filter((i) => i.status === 'resolved')
                       .map((item) => (
                         <div
                           key={item.id}
-                          className="bg-card border border-border rounded-lg p-3 opacity-60"
+                          className="rounded-2xl border border-border/60 bg-card p-3.5 opacity-65"
                         >
                           {item.photoUrl && (
                             <img
                               src={item.photoUrl}
                               alt="Produto"
-                              className="w-full h-32 object-cover rounded-lg mb-2 cursor-pointer hover:opacity-80 transition-opacity"
+                              className="mb-3 h-36 w-full cursor-pointer rounded-xl object-cover transition-opacity hover:opacity-85"
                               onClick={() => setEnlargedImage(item.photoUrl)}
                             />
                           )}
                           {item.description && <p className="text-sm">{item.description}</p>}
-                          <div className="flex items-center justify-between mt-2">
+                          <div className="mt-2 flex items-center justify-between gap-3">
                             <p className="text-[10px] text-muted-foreground">
                               {getName(item.reportedBy)}
                             </p>
@@ -841,19 +874,19 @@ const DepartmentalPage = () => {
         )}
 
         {/* Suprimentos */}
-        <TabsContent value="supplies" className="space-y-3">
+        <TabsContent value="supplies" className="space-y-4">
           <Button size="sm" onClick={() => setDialog('supply')}>
             <Plus className="w-3 h-3 mr-1" />
             Solicitar Material
           </Button>
           {dept.supplyRequests.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">Nenhuma solicitação</p>
+            <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma solicitação</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {dept.supplyRequests.map((sr) => (
                 <div
                   key={sr.id}
-                  className="bg-card border border-border rounded-lg p-3 flex items-center justify-between"
+                  className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
                     <p className="text-sm font-semibold">
@@ -888,7 +921,7 @@ const DepartmentalPage = () => {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs"
+                        className="h-8 rounded-lg text-xs"
                         onClick={() => dept.updateSupplyStatus(sr.id, 'approved')}
                       >
                         Aprovar
@@ -903,9 +936,9 @@ const DepartmentalPage = () => {
 
         {/* Monitoria Motoboys */}
         {canSeeMotoboy && (
-          <TabsContent value="motoboy" className="space-y-3">
+          <TabsContent value="motoboy" className="space-y-4">
             {canManageMotoboy && (
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => setDialog('motoboy')}>
                   <Plus className="w-3 h-3 mr-1" />
                   Nova Tarefa
@@ -932,7 +965,7 @@ const DepartmentalPage = () => {
                 );
                 if (pendingApproval.length === 0) return null;
                 return (
-                  <div className="border border-amber-300 dark:border-amber-600 rounded-lg p-3 bg-amber-50 dark:bg-amber-950/30 space-y-2">
+                  <div className="space-y-3 rounded-2xl border border-warning/30 bg-warning/5 p-4">
                     <h4 className="text-sm font-semibold flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
                       <Clock className="w-3.5 h-3.5" />
                       Aguardando Aprovação ({pendingApproval.length})
@@ -954,7 +987,7 @@ const DepartmentalPage = () => {
                           className="bg-card border border-border rounded-lg p-3 text-sm space-y-2"
                         >
                           {ma.scheduledFor && (
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-destructive bg-destructive/10 border border-destructive/40 rounded px-2 py-1 animate-pulse">
+                            <div className="flex items-center gap-1.5 rounded-lg border border-destructive/25 bg-destructive/10 px-2 py-1 text-[11px] font-semibold text-destructive">
                               <CalendarClock className="w-3.5 h-3.5" />
                               🔴 CORRIDA AGENDADA — {fmtSchedule(ma.scheduledFor)}
                             </div>
@@ -986,7 +1019,7 @@ const DepartmentalPage = () => {
                                   [`approve_client_${ma.id}`]: e.target.value,
                                 }))
                               }
-                              className="h-8 text-xs"
+                              className="h-9 text-xs"
                             />
                             <Input
                               placeholder="Localização *"
@@ -997,7 +1030,7 @@ const DepartmentalPage = () => {
                                   [`approve_location_${ma.id}`]: e.target.value,
                                 }))
                               }
-                              className="h-8 text-xs"
+                              className="h-9 text-xs"
                             />
                             <Input
                               type="number"
@@ -1012,7 +1045,7 @@ const DepartmentalPage = () => {
                                   [`approve_value_${ma.id}`]: e.target.value,
                                 }))
                               }
-                              className="h-8 text-xs"
+                              className="h-9 text-xs"
                             />
                             <Select
                               value={form[`approve_motoboy_${ma.id}`] || ''}
@@ -1023,7 +1056,7 @@ const DepartmentalPage = () => {
                                 }))
                               }
                             >
-                              <SelectTrigger className="h-8 text-xs">
+                              <SelectTrigger className="h-9 text-xs">
                                 <SelectValue placeholder="Selecionar motoboy *" />
                               </SelectTrigger>
                               <SelectContent>
@@ -1071,7 +1104,7 @@ const DepartmentalPage = () => {
                             <div className="grid grid-cols-2 gap-2">
                               <Input
                                 type="date"
-                                className="h-8 text-xs"
+                                className="h-9 text-xs"
                                 value={form[`approve_sched_date_${ma.id}`] || ''}
                                 onChange={(e) =>
                                   setForm((prev: any) => ({
@@ -1082,7 +1115,7 @@ const DepartmentalPage = () => {
                               />
                               <Input
                                 type="time"
-                                className="h-8 text-xs"
+                                className="h-9 text-xs"
                                 value={form[`approve_sched_time_${ma.id}`] || ''}
                                 onChange={(e) =>
                                   setForm((prev: any) => ({
@@ -1096,7 +1129,7 @@ const DepartmentalPage = () => {
                           <div className="flex items-center gap-1.5 justify-end">
                             <Button
                               size="sm"
-                              className="h-7 text-xs"
+                              className="h-8 rounded-lg text-xs"
                               disabled={
                                 !form[`approve_motoboy_${ma.id}`] ||
                                 !(form[`approve_client_${ma.id}`] ?? ma.clientName ?? '').trim() ||
@@ -1217,20 +1250,17 @@ const DepartmentalPage = () => {
               })()}
 
             {/* Search and filters */}
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar por cliente, local ou descrição..."
                   value={motoboySearch}
                   onChange={(e) => setMotoboySearch(e.target.value)}
-                  className="pl-8 h-9 text-sm"
+                  className="h-10 pl-9 text-sm"
                 />
                 {motoboySearch && (
-                  <button
-                    onClick={() => setMotoboySearch('')}
-                    className="absolute right-2.5 top-2.5"
-                  >
+                  <button onClick={() => setMotoboySearch('')} className="absolute right-3 top-3">
                     <X className="h-4 w-4 text-muted-foreground" />
                   </button>
                 )}
@@ -1239,7 +1269,7 @@ const DepartmentalPage = () => {
                 type="date"
                 value={motoboyFilterDate}
                 onChange={(e) => setMotoboyFilterDate(e.target.value)}
-                className="h-9 text-sm w-full sm:w-40"
+                className="h-10 w-full text-sm sm:w-40"
               />
               {motoboyFilterDate !== new Date().toISOString().split('T')[0] && (
                 <Button
@@ -1253,7 +1283,7 @@ const DepartmentalPage = () => {
               )}
               {!userSectors.includes('motoboys' as Sector) || isAdmin ? (
                 <Select value={motoboyFilterUser} onValueChange={setMotoboyFilterUser}>
-                  <SelectTrigger className="w-full sm:w-48 h-9 text-xs">
+                  <SelectTrigger className="h-10 w-full text-xs sm:w-48">
                     <SelectValue placeholder="Todos os motoboys" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1319,7 +1349,7 @@ const DepartmentalPage = () => {
 
               if (visibleAssignments.length === 0)
                 return (
-                  <p className="text-sm text-muted-foreground text-center py-8">
+                  <p className="py-10 text-center text-sm text-muted-foreground">
                     Nenhuma tarefa encontrada
                   </p>
                 );
@@ -1337,8 +1367,8 @@ const DepartmentalPage = () => {
                       <div
                         key={motoboyId}
                         className={cn(
-                          'space-y-2',
-                          isUnassignedGroup && 'p-2 rounded-lg ring-2 ring-warning/60 bg-warning/5'
+                          'space-y-2.5 rounded-2xl border border-border/60 bg-muted/10 p-3',
+                          isUnassignedGroup && 'border-warning/35 bg-warning/5'
                         )}
                       >
                         <h4 className="text-sm font-semibold flex items-center gap-1.5 border-b border-border pb-1">
@@ -1355,7 +1385,7 @@ const DepartmentalPage = () => {
                             {grouped[motoboyId].length} corrida(s)
                           </span>
                         </h4>
-                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-1.5">
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                           {grouped[motoboyId].map((ma) => {
                             const assignedMs = Date.now() - new Date(ma.createdAt).getTime();
                             const isIdle = ma.status !== 'completed' && assignedMs > 20 * 60000;
@@ -1370,7 +1400,7 @@ const DepartmentalPage = () => {
                               <div
                                 key={ma.id}
                                 className={cn(
-                                  'bg-card border border-border rounded-lg p-2 text-[11px]',
+                                  'jf-interactive rounded-xl border border-border/70 bg-card p-2.5 text-[11px] hover:bg-muted/20',
                                   isIdle && 'ring-1 ring-destructive/50'
                                 )}
                               >
@@ -1613,7 +1643,7 @@ const DepartmentalPage = () => {
 
       {/* Dialogs */}
       <Dialog open={dialog === 'tracking'} onOpenChange={() => resetDialog()}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Novo Rastreamento</DialogTitle>
           </DialogHeader>
@@ -1649,7 +1679,7 @@ const DepartmentalPage = () => {
             placeholder="Descrição (opcional)"
             rows={2}
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={resetDialog}>
               Cancelar
             </Button>
@@ -1663,14 +1693,14 @@ const DepartmentalPage = () => {
           <DialogHeader>
             <DialogTitle>Solicitar Envio Reverso</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
               <label className="text-xs font-medium">Número da NF ou Pedido de Venda *</label>
               <Input
                 value={form.reverseInvoice || ''}
                 onChange={(e) => setForm({ ...form, reverseInvoice: e.target.value })}
                 placeholder="Ex: NF-12345"
-                className="h-9 text-sm"
+                className="h-10 text-sm"
               />
             </div>
             <div>
@@ -1679,7 +1709,7 @@ const DepartmentalPage = () => {
                 value={form.reverseItemName || ''}
                 onChange={(e) => setForm({ ...form, reverseItemName: e.target.value })}
                 placeholder="Nome do produto"
-                className="h-9 text-sm"
+                className="h-10 text-sm"
               />
             </div>
             <div>
@@ -1691,7 +1721,7 @@ const DepartmentalPage = () => {
                 value={form.reverseItemValue || ''}
                 onChange={(e) => setForm({ ...form, reverseItemValue: e.target.value })}
                 placeholder="0.00"
-                className="h-9 text-sm"
+                className="h-10 text-sm"
               />
             </div>
             <div>
@@ -1700,7 +1730,7 @@ const DepartmentalPage = () => {
                 type="date"
                 value={form.reverseSaleDate || ''}
                 onChange={(e) => setForm({ ...form, reverseSaleDate: e.target.value })}
-                className="h-9 text-sm"
+                className="h-10 text-sm"
               />
             </div>
             <div>
@@ -1709,7 +1739,7 @@ const DepartmentalPage = () => {
                 value={form.reverseReason || ''}
                 onValueChange={(v) => setForm({ ...form, reverseReason: v })}
               >
-                <SelectTrigger className="h-9 text-sm">
+                <SelectTrigger className="h-10 text-sm">
                   <SelectValue placeholder="Selecione o motivo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1728,7 +1758,7 @@ const DepartmentalPage = () => {
                   type="file"
                   accept="image/*"
                   onChange={(e) => setForm({ ...form, reverseProductImage: e.target.files?.[0] })}
-                  className="h-9 text-sm"
+                  className="h-10 text-sm"
                 />
                 <div
                   className={`mt-2 border-2 border-dashed rounded-md p-3 text-center cursor-pointer transition-colors ${form.reverseProductImage ? 'border-primary bg-primary/5' : 'border-muted-foreground/30 hover:border-primary/50'}`}
@@ -1785,7 +1815,7 @@ const DepartmentalPage = () => {
               </div>
             )}
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={resetDialog}>
               Cancelar
             </Button>
@@ -1795,7 +1825,7 @@ const DepartmentalPage = () => {
       </Dialog>
 
       <Dialog open={dialog === 'receipt'} onOpenChange={() => resetDialog()}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Enviar Notinha</DialogTitle>
           </DialogHeader>
@@ -1810,7 +1840,7 @@ const DepartmentalPage = () => {
             placeholder="Descrição (opcional)"
             rows={2}
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={resetDialog}>
               Cancelar
             </Button>
@@ -1820,7 +1850,7 @@ const DepartmentalPage = () => {
       </Dialog>
 
       <Dialog open={dialog === 'quote'} onOpenChange={() => resetDialog()}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Solicitar Orçamento</DialogTitle>
           </DialogHeader>
@@ -1846,7 +1876,7 @@ const DepartmentalPage = () => {
               placeholder="Qtd"
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={resetDialog}>
               Cancelar
             </Button>
@@ -1856,7 +1886,7 @@ const DepartmentalPage = () => {
       </Dialog>
 
       <Dialog open={dialog === 'lowstock'} onOpenChange={() => resetDialog()}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Reportar Produto Esgotando</DialogTitle>
           </DialogHeader>
@@ -1871,7 +1901,7 @@ const DepartmentalPage = () => {
             placeholder="Descrição / Observações"
             rows={2}
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={resetDialog}>
               Cancelar
             </Button>
@@ -1881,7 +1911,7 @@ const DepartmentalPage = () => {
       </Dialog>
 
       <Dialog open={dialog === 'supply'} onOpenChange={() => resetDialog()}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Solicitar Material</DialogTitle>
           </DialogHeader>
@@ -1907,7 +1937,7 @@ const DepartmentalPage = () => {
               placeholder="Qtd"
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={resetDialog}>
               Cancelar
             </Button>
@@ -1917,7 +1947,7 @@ const DepartmentalPage = () => {
       </Dialog>
 
       <Dialog open={dialog === 'motoboy'} onOpenChange={() => resetDialog()}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Nova Tarefa para Motoboy</DialogTitle>
           </DialogHeader>
@@ -1999,7 +2029,7 @@ const DepartmentalPage = () => {
               </p>
             </div>
           )}
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={resetDialog} disabled={motoboyLoading}>
               Cancelar
             </Button>
@@ -2010,7 +2040,7 @@ const DepartmentalPage = () => {
         </DialogContent>
       </Dialog>
       <Dialog open={dialog === 'editMotoboy'} onOpenChange={() => resetDialog()}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Editar Corrida</DialogTitle>
           </DialogHeader>
@@ -2075,7 +2105,7 @@ const DepartmentalPage = () => {
               />
             </div>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={resetDialog}>
               Cancelar
             </Button>
@@ -2113,12 +2143,12 @@ const DepartmentalPage = () => {
       </Dialog>
       {/* Lightbox de imagem ampliada */}
       <Dialog open={!!enlargedImage} onOpenChange={() => setEnlargedImage(null)}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh] p-2">
+        <DialogContent className="max-h-[90vh] max-w-[90vw] rounded-2xl p-2">
           {enlargedImage && (
             <img
               src={enlargedImage}
               alt="Imagem ampliada"
-              className="w-full h-full max-h-[85vh] object-contain rounded-lg"
+              className="h-full max-h-[85vh] w-full rounded-xl object-contain"
             />
           )}
         </DialogContent>

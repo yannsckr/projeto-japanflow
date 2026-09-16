@@ -9,8 +9,9 @@ interface MessageData {
   deleted?: boolean;
 }
 
-export function useUnreadMessages(currentUserId: string | null) {
+export function useUnreadMessages(currentUserIdOrUsername: string | null) {
   const [totalUnread, setTotalUnread] = useState(0);
+  const [resolvedUserId, setResolvedUserId] = useState<string | null>(null);
 
   const previousCountRef = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -20,7 +21,6 @@ export function useUnreadMessages(currentUserId: string | null) {
     const audio = new Audio(
       'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdG2Mj5KNiYJ7dG59hoyRkIyGfHRwdX+Gi46OioR9dnFzfIaOk5KOh390bHJ7hoyRkIyGfHRwdX+Gi46OioR9dnFzfIaOk5KOh390bHJ7hoyRkIyGfHRwdX+Gi46OioR9dnFzfIaOk5KOh390bHJ7hoyRkIyGfHRwdX+Gi46OioR9dnFzfIaOk5KOh390bHJ7'
     );
-
     audio.volume = 0.6;
     audioRef.current = audio;
 
@@ -29,8 +29,40 @@ export function useUnreadMessages(currentUserId: string | null) {
     };
   }, []);
 
+  // Compatibilidade: algumas telas antigas passavam username; as novas podem passar id.
   useEffect(() => {
-    if (!currentUserId) {
+    if (!currentUserIdOrUsername) {
+      setResolvedUserId(null);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      collection(db, 'app_users'),
+      (snapshot) => {
+        const direct = snapshot.docs.find((userDoc) => userDoc.id === currentUserIdOrUsername);
+
+        if (direct) {
+          setResolvedUserId(direct.id);
+          return;
+        }
+
+        const byUsername = snapshot.docs.find(
+          (userDoc) => String(userDoc.data().username || '').trim() === currentUserIdOrUsername
+        );
+
+        setResolvedUserId(byUsername?.id || currentUserIdOrUsername);
+      },
+      (error) => {
+        console.warn('Falha ao resolver usuário do contador de chat:', error);
+        setResolvedUserId(currentUserIdOrUsername);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUserIdOrUsername]);
+
+  useEffect(() => {
+    if (!resolvedUserId) {
       setTotalUnread(0);
       previousCountRef.current = 0;
       initializedRef.current = false;
@@ -39,7 +71,7 @@ export function useUnreadMessages(currentUserId: string | null) {
 
     const messagesQuery = query(
       collection(db, 'messages'),
-      where('receiverId', '==', currentUserId)
+      where('receiverId', '==', resolvedUserId)
     );
 
     const unsubscribe = onSnapshot(
@@ -49,10 +81,7 @@ export function useUnreadMessages(currentUserId: string | null) {
 
         snapshot.forEach((messageDoc) => {
           const message = messageDoc.data() as MessageData;
-
-          if (message.read !== true && message.deleted !== true) {
-            unreadCount += 1;
-          }
+          if (message.read !== true && message.deleted !== true) unreadCount += 1;
         });
 
         if (initializedRef.current && unreadCount > previousCountRef.current && audioRef.current) {
@@ -61,10 +90,7 @@ export function useUnreadMessages(currentUserId: string | null) {
         }
 
         initializedRef.current = true;
-
-        // Atualiza SEMPRE o valor anterior.
         previousCountRef.current = unreadCount;
-
         setTotalUnread(unreadCount);
       },
       (error) => {
@@ -77,7 +103,7 @@ export function useUnreadMessages(currentUserId: string | null) {
       initializedRef.current = false;
       previousCountRef.current = 0;
     };
-  }, [currentUserId]);
+  }, [resolvedUserId]);
 
   return { totalUnread };
 }

@@ -9,7 +9,7 @@ interface Env {
   ATTACHMENTS: R2Bucket;
 }
 
-const GEMINI_ATTEMPT_TIMEOUT_MS = 3500;
+const GEMINI_ATTEMPT_TIMEOUT_MS = 15_000;
 const ORIGIN_ADDRESS =
   'Avenida das Rosas, 111, Jardim Motorama, São José dos Campos, SP, 12224-000';
 
@@ -364,40 +364,71 @@ async function callGemini(
   jsonMode = false
 ): Promise<Response> {
   const controller = new AbortController();
+
   const timeoutId = setTimeout(() => controller.abort(), GEMINI_ATTEMPT_TIMEOUT_MS);
 
   const parts: any[] = [{ text: prompt }];
-  if (inlineData) parts.push({ inlineData });
+
+  if (inlineData) {
+    parts.push({ inlineData });
+  }
 
   try {
     return await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+        model
+      )}:generateContent`,
       {
         method: 'POST',
+
         headers: {
           'Content-Type': 'application/json',
           'x-goog-api-key': env.GEMINI_API_KEY,
         },
+
         body: JSON.stringify({
           ...(systemInstruction
-            ? { systemInstruction: { parts: [{ text: systemInstruction }] } }
+            ? {
+                systemInstruction: {
+                  parts: [{ text: systemInstruction }],
+                },
+              }
             : {}),
-          contents: [{ role: 'user', parts }],
+
+          contents: [
+            {
+              role: 'user',
+              parts,
+            },
+          ],
+
           generationConfig: {
             temperature: 0.1,
             ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
           },
         }),
+
         signal: controller.signal,
       }
     );
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return new Response(JSON.stringify({ error: { code: 503, status: 'UNAVAILABLE' } }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 503,
+            status: 'UNAVAILABLE',
+          },
+        }),
+        {
+          status: 503,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
+
     throw error;
   } finally {
     clearTimeout(timeoutId);
@@ -415,22 +446,21 @@ async function geminiText(
     throw new Error('GEMINI_API_KEY não configurada');
   }
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   const models = [
     ...new Set([
-      env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash',
-      'gemini-3.7-flash',
+      'gemini-3.5-flash-lite',
+      env.GEMINI_MODEL?.trim() || 'gemini-3.7-flash',
       'gemini-3.6-flash',
       'gemini-3.5-flash',
-      'gemini-3.5-flash-lite',
     ]),
   ];
 
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  let lastError = '';
+  let last = '';
 
   for (const model of models) {
-    for (let attempt = 1; attempt <= 1; attempt += 1) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       const response = await callGemini(
         env,
         model,
@@ -448,39 +478,26 @@ async function geminiText(
           .join('\n')
           .trim();
 
-        if (!text) {
-          console.warn(`Gemini ${model} respondeu sem texto`);
-          lastError = `Modelo ${model} respondeu sem conteúdo`;
-          break;
-        }
-
         console.log(`Gemini OK: ${model} tentativa ${attempt}`);
 
-        return {
-          text,
-          model,
-        };
+        return { text, model };
       }
 
-      const responseText = await response.text();
-      lastError = responseText;
+      last = await response.text();
 
-      console.error(`Gemini ${model} HTTP ${response.status} tentativa ${attempt}`, responseText);
+      console.error(`Gemini ${model} HTTP ${response.status} tentativa ${attempt}`, last);
 
-      const retryable =
-        response.status === 429 ||
-        response.status === 500 ||
-        response.status === 502 ||
-        response.status === 503 ||
-        response.status === 504;
-
-      if (!retryable) {
+      if (response.status !== 429 && response.status !== 503) {
         break;
+      }
+
+      if (attempt < 2) {
+        await sleep(1200);
       }
     }
   }
 
-  throw new Error(lastError || 'Todos os modelos Gemini estão temporariamente indisponíveis');
+  throw new Error(last || 'Gemini indisponível');
 }
 
 /* CALENDAR + TASK AI */

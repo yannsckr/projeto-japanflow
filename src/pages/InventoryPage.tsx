@@ -337,27 +337,51 @@ ${reportText}`,
   const completed = inventories.filter((i) => i.status === 'completed');
 
   if (!isAdmin && !isEstoque && !isMoises) {
-    return <div className="p-6 text-muted-foreground">Você não tem acesso a esta área.</div>;
+    return (
+      <div className="jf-surface p-6 text-center text-sm text-muted-foreground">
+        Você não tem acesso a esta área.
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-2xl font-bold">Inventário</h1>
-        {canReports && (
-          <Button variant="outline" onClick={() => setReportsOpen(true)}>
-            <FileText className="w-4 h-4 mr-2" />
-            Relatórios
-          </Button>
-        )}
-      </div>
+    <div className="mx-auto max-w-6xl space-y-5 md:space-y-6">
+      <section className="jf-surface overflow-hidden p-4 md:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+              Controle de estoque
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+              Inventário
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+              Registre prateleiras, localizações e itens com apoio de leitura por câmera.
+            </p>
+          </div>
+
+          {canReports && (
+            <Button variant="outline" onClick={() => setReportsOpen(true)}>
+              <FileText className="h-4 w-4" />
+              Relatórios
+            </Button>
+          )}
+        </div>
+      </section>
 
       {!activeInventory && (
         <>
-          <Card className="p-4 space-y-3">
-            <h2 className="font-semibold">Iniciar novo inventário</h2>
-            <div className="flex gap-2 items-end flex-wrap">
-              <div className="flex-1 min-w-[200px]">
+          <Card className="space-y-4 p-4 md:p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Nova contagem
+              </p>
+              <h2 className="mt-1 text-base font-semibold text-foreground">
+                Iniciar novo inventário
+              </h2>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1">
                 <Label>Código da prateleira</Label>
                 <Input
                   placeholder="Ex: F7E"
@@ -366,17 +390,30 @@ ${reportText}`,
                 />
               </div>
               <Button onClick={handleStart} disabled={!shelfCode.trim()}>
-                <Play className="w-4 h-4 mr-2" />
+                <Play className="h-4 w-4" />
                 Iniciar
               </Button>
             </div>
           </Card>
 
           {inProgress.length > 0 && (
-            <Card className="p-4 space-y-2">
-              <h2 className="font-semibold">Em andamento</h2>
+            <Card className="space-y-3 p-4 md:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-warning">
+                    Sessões ativas
+                  </p>
+                  <h2 className="mt-1 text-base font-semibold">Em andamento</h2>
+                </div>
+                <span className="rounded-lg bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">
+                  {inProgress.length}
+                </span>
+              </div>
               {inProgress.map((inv) => (
-                <div key={inv.id} className="flex items-center justify-between border rounded p-2">
+                <div
+                  key={inv.id}
+                  className="jf-interactive flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/10 p-3.5 sm:flex-row sm:items-center sm:justify-between"
+                >
                   <div>
                     <div className="font-medium">Prateleira {inv.shelf_code}</div>
                     <div className="text-xs text-muted-foreground">
@@ -397,19 +434,21 @@ ${reportText}`,
       )}
 
       {activeInventory && (
-        <Card className="p-4 space-y-4">
-          <div className="flex items-center justify-between">
+        <Card className="space-y-5 p-4 md:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-xs text-muted-foreground">Prateleira em inventário</div>
-              <div className="text-xl font-bold">{activeInventory.shelf_code}</div>
+              <div className="mt-1 text-2xl font-semibold tracking-tight">
+                {activeInventory.shelf_code}
+              </div>
             </div>
             <Button variant="ghost" size="sm" onClick={handleCancel}>
-              <X className="w-4 h-4 mr-1" /> Cancelar
+              <X className="h-4 w-4" /> Cancelar
             </Button>
           </div>
 
           {activeInventory.locations.length > 0 && (
-            <div className="space-y-1 text-sm border rounded p-2 bg-muted/30">
+            <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/20 p-3 text-sm">
               <div className="font-medium">Localizações já salvas:</div>
               {activeInventory.locations.map((loc, idx) => (
                 <div key={idx} className="text-xs">
@@ -431,15 +470,18 @@ ${reportText}`,
           <div className="space-y-2">
             <Label>Itens</Label>
             {items.map((it, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+              <div
+                key={idx}
+                className="grid grid-cols-12 items-center gap-2 rounded-xl border border-border/60 bg-muted/10 p-2"
+              >
                 <label
-                  className="col-span-1 flex items-center justify-center h-10 rounded-md border border-input bg-background cursor-pointer hover:bg-accent transition-colors"
+                  className="jf-interactive col-span-2 flex h-11 cursor-pointer items-center justify-center rounded-xl border border-input bg-card hover:bg-muted sm:col-span-1"
                   title="Ler etiqueta com a câmera"
                 >
                   {scanningIdx === idx ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <Camera className="w-4 h-4" />
+                    <Camera className="h-4 w-4" />
                   )}
                   <input
                     type="file"
@@ -455,46 +497,46 @@ ${reportText}`,
                   />
                 </label>
                 <Input
-                  className="col-span-4"
+                  className="col-span-10 sm:col-span-4"
                   placeholder="Código"
                   value={it.code}
                   onChange={(e) => updateItem(idx, 'code', e.target.value)}
                 />
                 <Input
-                  className="col-span-3"
+                  className="col-span-6 sm:col-span-3"
                   placeholder="Tipo do item"
                   value={it.type}
                   onChange={(e) => updateItem(idx, 'type', e.target.value)}
                 />
                 <Input
-                  className="col-span-3"
+                  className="col-span-4 sm:col-span-3"
                   placeholder="Qtd"
                   type="number"
                   value={it.quantity}
                   onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
                 />
                 <Button
-                  className="col-span-1"
+                  className="col-span-2 sm:col-span-1"
                   variant="ghost"
                   size="icon"
                   onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
                   title="Remover"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             ))}
             <Button variant="outline" size="sm" onClick={addItemFields}>
-              <Plus className="w-4 h-4 mr-1" /> Novo item
+              <Plus className="h-4 w-4" /> Novo item
             </Button>
           </div>
 
-          <div className="flex gap-2 flex-wrap pt-2 border-t">
+          <div className="flex flex-col gap-2 border-t border-border/70 pt-4 sm:flex-row sm:flex-wrap">
             <Button variant="outline" onClick={handleAddAnotherLocation}>
               Salvar localização e adicionar outra
             </Button>
             <Button onClick={handleFinalize}>
-              <CheckCircle2 className="w-4 h-4 mr-2" />
+              <CheckCircle2 className="h-4 w-4" />
               Finalizar inventário
             </Button>
           </div>
@@ -502,7 +544,7 @@ ${reportText}`,
       )}
 
       <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto rounded-2xl">
           <DialogHeader>
             <DialogTitle>Relatórios de Inventário</DialogTitle>
           </DialogHeader>
@@ -515,7 +557,7 @@ ${reportText}`,
               return (
                 <Card
                   key={inv.id}
-                  className="p-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                  className="jf-interactive cursor-pointer p-3.5 hover:bg-muted/25"
                   onClick={() => setDetailInv(inv)}
                 >
                   <div className="flex items-center justify-between">
@@ -538,7 +580,7 @@ ${reportText}`,
       </Dialog>
 
       <Dialog open={!!detailInv} onOpenChange={(o) => !o && setDetailInv(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto rounded-2xl">
           <DialogHeader>
             <DialogTitle>{detailInv ? `Prateleira ${detailInv.shelf_code}` : ''}</DialogTitle>
           </DialogHeader>
@@ -551,9 +593,9 @@ ${reportText}`,
                   : '-'}
               </div>
               {detailInv.locations.map((loc, idx) => (
-                <div key={idx} className="border-t pt-2 mt-2">
+                <div key={idx} className="mt-3 border-t border-border/70 pt-3">
                   <div className="font-medium text-sm">Localização: {loc.location_code}</div>
-                  <ul className="text-xs list-disc pl-5">
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
                     {loc.items.map((it, i) => (
                       <li key={i}>
                         Código <strong>{it.code}</strong> — {it.type} — Qtd:{' '}

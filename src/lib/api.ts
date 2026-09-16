@@ -6,7 +6,7 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.
   ''
 );
 
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 45_000;
 const STORAGE_TIMEOUT_MS = 60_000;
 
 interface ApiErrorPayload {
