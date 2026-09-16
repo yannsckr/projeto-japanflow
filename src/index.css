@@ -312,7 +312,11 @@
     right: -14%;
     top: -40%;
     transform: rotate(18deg);
-    background: linear-gradient(180deg, hsl(var(--brand-red) / 0.12), hsl(var(--brand-red) / 0.02));
+    background: linear-gradient(
+      180deg,
+      hsl(var(--brand-red) / 0.12),
+      hsl(var(--brand-red) / 0.02)
+    );
     pointer-events: none;
   }
 }
@@ -386,5 +390,22 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+
+@keyframes japanflow-splash-progress {
+  from {
+    transform: scaleX(0);
+    opacity: 0.45;
+  }
+
+  35% {
+    opacity: 1;
+  }
+
+  to {
+    transform: scaleX(1);
+    opacity: 1;
   }
 }

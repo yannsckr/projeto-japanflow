@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 
@@ -19,12 +19,18 @@ import NewTaskPopup from './NewTaskPopup';
 import InventoryHeaderBanner from './InventoryHeaderBanner';
 import ForcePasswordChangeDialog from '@/components/ForcePasswordChangeDialog';
 import ThemeSwitcher from '@/components/ThemeSwitcher';
+import LoginSplash from '@/components/LoginSplash';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 import { getClientPublicIp, isIpAllowed } from '@/lib/networkGuard';
 import { userCanAccessExternally } from '@/lib/externalAccess';
+import {
+  hasShownLoginSplash,
+  markLoginSplashAsShown,
+  resetLoginSplash,
+} from '@/lib/loginSplash';
 
 const SIDEBAR_STORAGE_KEY = 'japanflow-sidebar-collapsed';
 
@@ -63,6 +69,7 @@ const AppLayout = () => {
   const isMobile = useIsMobile();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showLoginSplash, setShowLoginSplash] = useState(() => !hasShownLoginSplash());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
@@ -78,12 +85,22 @@ const AppLayout = () => {
   const { totalUnread: unreadMessages } = useUnreadMessages(currentUser?.id || null);
 
   const unreadNotifs = currentUser
-    ? notifications.filter(
-        (notification) => notification.userId === currentUser.id && !notification.read
-      ).length
+    ? notifications.filter((notification) => notification.userId === currentUser.id && !notification.read)
+        .length
     : 0;
 
   useTabTitleNotifications(unreadNotifs + unreadMessages);
+
+  const handleSplashComplete = useCallback(() => {
+    markLoginSplashAsShown();
+    setShowLoginSplash(false);
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading && !currentUser) {
+      resetLoginSplash();
+    }
+  }, [authLoading, currentUser]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
@@ -106,6 +123,7 @@ const AppLayout = () => {
       if (cancelled) return;
 
       if (!allowed) {
+        resetLoginSplash();
         await logout();
         navigate('/login');
       }
@@ -131,6 +149,12 @@ const AppLayout = () => {
     return <Navigate to="/login" replace />;
   }
 
+  if (showLoginSplash) {
+    return (
+      <LoginSplash userName={currentUser.name} onComplete={handleSplashComplete} />
+    );
+  }
+
   return (
     <>
       <ReminderPopup />
@@ -141,7 +165,10 @@ const AppLayout = () => {
 
       <div className="flex min-h-screen overflow-hidden bg-background">
         {!isMobile && (
-          <AppSidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
+          <AppSidebar
+            collapsed={sidebarCollapsed}
+            onCollapsedChange={setSidebarCollapsed}
+          />
         )}
 
         <div className="flex h-screen max-h-screen min-w-0 flex-1 flex-col">
@@ -164,7 +191,11 @@ const AppLayout = () => {
                     side="left"
                     className="w-[280px] border-r-0 bg-transparent p-0 shadow-none"
                   >
-                    <AppSidebar mobile collapsed={false} onNavigate={() => setSidebarOpen(false)} />
+                    <AppSidebar
+                      mobile
+                      collapsed={false}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
                   </SheetContent>
                 </Sheet>
               )}
