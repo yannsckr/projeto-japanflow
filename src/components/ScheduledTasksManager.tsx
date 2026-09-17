@@ -18,6 +18,7 @@ import { db } from '@/lib/firebase';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -282,12 +283,20 @@ const ScheduledTasksManager = () => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <CalendarClock className="w-5 h-5" />
-          Tarefas Agendadas
-        </h3>
+    <section className="jf-surface min-w-0 space-y-4 overflow-hidden p-4 md:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+            Automação
+          </p>
+          <h3 className="mt-1 flex items-center gap-2 text-lg font-semibold">
+            <CalendarClock className="w-5 h-5" />
+            Tarefas Agendadas
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Crie tarefas automáticas por horário e recorrência.
+          </p>
+        </div>
 
         <Dialog
           open={open}
@@ -306,11 +315,14 @@ const ScheduledTasksManager = () => {
             </Button>
           </DialogTrigger>
 
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-h-[90dvh] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto rounded-2xl sm:w-full">
             <DialogHeader>
               <DialogTitle>
                 {editingId ? 'Editar Agendamento' : 'Novo Agendamento Automático'}
               </DialogTitle>
+              <DialogDescription>
+                Defina a atribuição, horário e recorrência da tarefa automática.
+              </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 mt-2">
@@ -478,7 +490,7 @@ const ScheduledTasksManager = () => {
           {schedules.map((schedule) => (
             <div
               key={schedule.id}
-              className={`flex items-center justify-between p-3 rounded-lg border ${
+              className={`jf-interactive flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
                 schedule.active ? 'bg-card' : 'bg-muted/50 opacity-60'
               }`}
             >
@@ -497,6 +509,11 @@ const ScheduledTasksManager = () => {
 
                 <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                   <span>→ {getAssigneeName(schedule)}</span>
+                  {schedule.last_created_at && (
+                    <span>
+                      • Última criação: {new Date(schedule.last_created_at).toLocaleString('pt-BR')}
+                    </span>
+                  )}
 
                   <span>•</span>
 
@@ -545,7 +562,7 @@ const ScheduledTasksManager = () => {
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

@@ -26,7 +26,11 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 import { getClientPublicIp, isIpAllowed } from '@/lib/networkGuard';
 import { userCanAccessExternally } from '@/lib/externalAccess';
-import { hasShownLoginSplash, markLoginSplashAsShown, resetLoginSplash } from '@/lib/loginSplash';
+import {
+  hasShownLoginSplash,
+  markLoginSplashAsShown,
+  resetLoginSplash,
+} from '@/lib/loginSplash';
 
 const SIDEBAR_STORAGE_KEY = 'japanflow-sidebar-collapsed';
 
@@ -172,7 +176,7 @@ const AppLayout = () => {
         )}
 
         <div className="flex h-[100dvh] max-h-[100dvh] min-w-0 flex-1 flex-col">
-          <header className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border/70 bg-background/85 px-2.5 backdrop-blur-xl sm:gap-3 sm:px-3 md:px-5">
+          <header className="relative z-30 flex min-h-14 shrink-0 items-center gap-1.5 border-b border-border/70 bg-background/85 px-2 backdrop-blur-xl sm:h-16 sm:gap-3 sm:px-3 md:px-5">
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               {isMobile && (
                 <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -192,7 +196,11 @@ const AppLayout = () => {
                     className="w-[min(88vw,320px)] border-r-0 bg-transparent p-0 shadow-none"
                     aria-label="Menu principal"
                   >
-                    <AppSidebar mobile collapsed={false} onNavigate={() => setSidebarOpen(false)} />
+                    <AppSidebar
+                      mobile
+                      collapsed={false}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
                   </SheetContent>
                 </Sheet>
               )}
@@ -213,7 +221,7 @@ const AppLayout = () => {
               </div>
             </div>
 
-            <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 md:gap-1.5">
+            <div className="ml-auto flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1 md:gap-1.5">
               <PauseButton updatePresence={updatePresenceStatus} />
               <ThemeSwitcher />
               <NotificationBell />
@@ -232,7 +240,7 @@ const AppLayout = () => {
               className={
                 isChatRoute
                   ? 'flex min-h-0 flex-1 flex-col'
-                  : 'mx-auto min-h-full w-full min-w-0 max-w-[1680px] animate-fade-up'
+                  : 'mx-auto min-h-full w-full min-w-0 max-w-6xl animate-fade-up'
               }
             >
               <Outlet />

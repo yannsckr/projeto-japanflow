@@ -199,14 +199,14 @@ const EmployeeCalendar = ({ userId }: EmployeeCalendarProps) => {
         </h3>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[auto_1fr]">
-        <div className="flex-shrink-0">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
+        <div className="flex min-w-0 justify-center lg:block">
           <Calendar
             mode="single"
             selected={selectedDate}
             onSelect={setSelectedDate}
             locale={ptBR}
-            className="pointer-events-auto rounded-2xl border border-border/70 bg-muted/10 p-3"
+            className="pointer-events-auto mx-auto max-w-full rounded-2xl border border-border/70 bg-muted/10 p-2 sm:p-3"
             modifiers={{
               reminder: reminderDates,
               eventAll: allDates,
@@ -223,13 +223,13 @@ const EmployeeCalendar = ({ userId }: EmployeeCalendarProps) => {
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-medium">
               {selectedDate
                 ? format(selectedDate, "dd 'de' MMMM", { locale: ptBR })
                 : 'Selecione uma data'}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:items-center">
               <AICalendarCreator />
               <Button
                 size="sm"

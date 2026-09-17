@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { SECTOR_LABELS } from '@/types';
 import { uploadImage } from '@/lib/uploadImage';
 import { changeOwnPassword } from '@/lib/authService';
+import { ChatAvatar } from '@/components/ChatMedia';
 
 const ProfilePage = () => {
   const { currentUser, updateProfile, updateUser } = useApp();
@@ -41,7 +42,7 @@ const ProfilePage = () => {
     try {
       const { publicUrl } = await uploadImage(file, {
         pathPrefix: `avatars/${currentUser.id}`,
-        sourceTable: 'employees',
+        sourceTable: 'users',
         sourceId: currentUser.id,
         sourceField: 'avatar',
         uploadedBy: currentUser.id,
@@ -49,8 +50,9 @@ const ProfilePage = () => {
       });
       await updateProfile({ avatar: publicUrl });
       toast.success('Foto atualizada!');
-    } catch {
-      toast.error('Erro ao enviar foto');
+    } catch (error) {
+      console.error('Erro ao atualizar foto de perfil:', error);
+      toast.error(error instanceof Error ? `Erro ao enviar foto: ${error.message}` : 'Erro ao enviar foto');
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -105,7 +107,7 @@ const ProfilePage = () => {
       .join('') || '?';
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
+    <div className="mx-auto w-full min-w-0 max-w-4xl space-y-5">
       <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Conta</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Meu Perfil</h1>
@@ -114,21 +116,15 @@ const ProfilePage = () => {
         </p>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-        <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-card">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(260px,0.72fr)_minmax(0,1.28fr)]">
+        <section className="min-w-0 self-start rounded-2xl border border-border/70 bg-card p-4 shadow-card sm:p-5">
           <div className="flex flex-col items-center text-center">
             <div className="relative">
-              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl bg-primary/10 text-2xl font-semibold text-primary">
-                {currentUser.avatar ? (
-                  <img
-                    src={currentUser.avatar}
-                    alt="Foto de perfil"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  initials
-                )}
-              </div>
+              <ChatAvatar
+                  src={currentUser.avatar}
+                  name={currentUser.name}
+                  className="h-24 w-24 rounded-2xl text-2xl"
+                />
 
               <input
                 ref={fileInputRef}

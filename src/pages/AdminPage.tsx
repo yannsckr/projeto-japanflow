@@ -20,7 +20,11 @@ const AdminPage = () => {
   const tasks = getTasksForUser(currentUser.id);
 
   return (
-    <div className="space-y-5 md:space-y-6">
+    <div className="min-w-0 space-y-5 md:space-y-6">
+      <section className="min-w-0">
+        <WorkScheduleBanner userId={currentUser.id} />
+      </section>
+
       <section className="jf-surface overflow-hidden p-4 md:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -38,7 +42,7 @@ const AdminPage = () => {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto lg:flex lg:flex-wrap lg:items-center [&_button]:w-full lg:[&_button]:w-auto">
             <DailyCompletedCounter userId={currentUser.id} compact />
             <TaskHistoryDialog userId={currentUser.id} />
             <CreateTaskDialog />
@@ -46,21 +50,15 @@ const AdminPage = () => {
         </div>
       </section>
 
-      <section className="space-y-4">
-        <WorkScheduleBanner userId={currentUser.id} />
-
-        <div className="grid gap-4 xl:grid-cols-2">
-          <div className="min-w-0">
-            <PickupsPanel />
-          </div>
-
-          <div className="min-w-0">
-            <SectorTasksList userId={currentUser.id} />
-          </div>
-        </div>
+      <section className="min-w-0">
+        <PickupsPanel />
       </section>
 
       <section className="min-w-0">
+        <SectorTasksList userId={currentUser.id} />
+      </section>
+
+      <section className="min-w-0 overflow-hidden">
         <KanbanBoard tasks={tasks} />
       </section>
 

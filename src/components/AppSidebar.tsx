@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -73,6 +74,11 @@ const AppSidebar = ({
   const { getStatus } = useAllPresences();
   const { isTabEnabled } = useTabPermissions();
   const { hasFeature } = useFeaturePermissions();
+
+  const [primaryOpen, setPrimaryOpen] = useState(true);
+  const [operationOpen, setOperationOpen] = useState(true);
+  const [toolsOpen, setToolsOpen] = useState(true);
+  const [teamOpen, setTeamOpen] = useState(false);
 
   if (!currentUser) return null;
 
@@ -195,7 +201,7 @@ const AppSidebar = ({
       title={collapsed ? item.label : undefined}
       onClick={() => handleNav(item.path)}
       className={cn(
-        'jf-interactive relative flex min-h-11 w-full items-center rounded-xl text-sm font-medium',
+        'jf-interactive relative flex min-h-10 w-full items-center rounded-xl text-sm font-medium',
         collapsed ? 'justify-center px-0' : 'gap-3 px-3',
         isActive(item.path)
           ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-[0_8px_22px_hsl(var(--brand-red)/0.18)]'
@@ -291,8 +297,8 @@ const AppSidebar = ({
   return (
     <aside
       className={cn(
-        'sidebar-gradient flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-sidebar-border text-sidebar-foreground transition-[width] duration-220 ease-premium',
-        mobile ? 'w-[min(88vw,320px)]' : collapsed ? 'w-[76px]' : 'w-[248px]'
+        'sidebar-gradient flex h-[100dvh] min-h-[100dvh] max-h-[100dvh] shrink-0 flex-col overflow-hidden border-r border-sidebar-border text-sidebar-foreground transition-[width] duration-220 ease-premium',
+        mobile ? 'w-[min(88vw,320px)]' : collapsed ? 'w-[72px]' : 'w-[232px]'
       )}
     >
       <div
@@ -341,56 +347,93 @@ const AppSidebar = ({
         )}
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3 [scrollbar-gutter:stable]">
+      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2 [scrollbar-gutter:stable]" aria-label="Navegação principal">
         {!collapsed && (
-          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/35">
-            Principal
-          </p>
+          <button
+            type="button"
+            onClick={() => setPrimaryOpen((value) => !value)}
+            className="jf-interactive mb-1 flex h-8 w-full items-center rounded-lg px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/40 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            aria-expanded={primaryOpen}
+          >
+            <span>Principal</span>
+            <ChevronRight
+              className={cn('ml-auto h-3.5 w-3.5 transition-transform', primaryOpen && 'rotate-90')}
+            />
+          </button>
         )}
 
-        <div className="space-y-1">{primaryItems.map(renderNavItem)}</div>
+        {(collapsed || primaryOpen) && (
+          <div className="space-y-0.5">{primaryItems.map(renderNavItem)}</div>
+        )}
 
         {operationItems.length > 0 && (
           <>
             {!collapsed && (
-              <p className="mb-2 mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/35">
-                Operação
-              </p>
+              <button
+                type="button"
+                onClick={() => setOperationOpen((value) => !value)}
+                className="jf-interactive mb-1 mt-3 flex h-8 w-full items-center rounded-lg px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/40 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                aria-expanded={operationOpen}
+              >
+                <span>Operação</span>
+                <ChevronRight
+                  className={cn('ml-auto h-3.5 w-3.5 transition-transform', operationOpen && 'rotate-90')}
+                />
+              </button>
             )}
 
-            {collapsed && <div className="my-3 h-px bg-sidebar-border" />}
+            {collapsed && <div className="my-2 h-px bg-sidebar-border" />}
 
-            <div className="space-y-1">{operationItems.map(renderNavItem)}</div>
+            {(collapsed || operationOpen) && (
+              <div className="space-y-0.5">{operationItems.map(renderNavItem)}</div>
+            )}
           </>
         )}
 
         {!collapsed && (
           <>
-            <div className="my-4 h-px bg-sidebar-border/80" />
+            <div className="my-3 h-px bg-sidebar-border/80" />
 
-            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/35">
-              Ferramentas
-            </p>
+            <button
+              type="button"
+              onClick={() => setToolsOpen((value) => !value)}
+              className="jf-interactive mb-1 flex h-8 w-full items-center rounded-lg px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/40 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              aria-expanded={toolsOpen}
+            >
+              <span>Ferramentas</span>
+              <ChevronRight
+                className={cn('ml-auto h-3.5 w-3.5 transition-transform', toolsOpen && 'rotate-90')}
+              />
+            </button>
 
-            <div className="space-y-1">
-              <PersonalNotesDialog userId={currentUser.id} />
+            {toolsOpen && (
+              <div className="space-y-0.5">
+                <PersonalNotesDialog userId={currentUser.id} />
 
-              {(isAdmin ||
-                currentUser.sectors?.includes('vendas' as Sector) ||
-                currentUser.id === 'emp-1' ||
-                currentUser.id === 'emp-11' ||
-                hasFeature(currentUser.id, 'sales_calculator')) && <SalesCalculatorDialog />}
-            </div>
+                {(isAdmin ||
+                  currentUser.sectors?.includes('vendas' as Sector) ||
+                  currentUser.id === 'emp-1' ||
+                  currentUser.id === 'emp-11' ||
+                  hasFeature(currentUser.id, 'sales_calculator')) && <SalesCalculatorDialog />}
+              </div>
+            )}
 
-            <div className="my-4 h-px bg-sidebar-border/80" />
+            <div className="my-3 h-px bg-sidebar-border/80" />
 
-            <details className="group">
-              <summary className="jf-interactive flex h-10 cursor-pointer list-none items-center gap-3 rounded-xl px-3 text-xs font-medium text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground">
-                <Users className="h-4 w-4 shrink-0" />
-                <span>Equipe</span>
-                <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform duration-220 group-open:rotate-90" />
-              </summary>
+            <button
+              type="button"
+              onClick={() => setTeamOpen((value) => !value)}
+              className="jf-interactive flex h-9 w-full items-center gap-3 rounded-xl px-3 text-xs font-medium text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              aria-expanded={teamOpen}
+            >
+              <Users className="h-4 w-4 shrink-0" />
+              <span>Equipe</span>
+              <ChevronRight
+                className={cn('ml-auto h-3.5 w-3.5 transition-transform', teamOpen && 'rotate-90')}
+              />
+            </button>
 
+            {teamOpen && (
               <div className="mt-2 space-y-1 pl-1">
                 {isAdmin ? (
                   <>
@@ -399,7 +442,6 @@ const AppSidebar = ({
                         Administradores
                       </p>
                     )}
-
                     {admins.map((admin) => renderPerson(admin, true, 'Administrador'))}
 
                     {employees.length > 0 && (
@@ -407,7 +449,6 @@ const AppSidebar = ({
                         Equipe
                       </p>
                     )}
-
                     {employees.map((employee) => renderPerson(employee, true))}
                   </>
                 ) : (
@@ -416,7 +457,7 @@ const AppSidebar = ({
                     .map((user) => renderPerson(user, false))
                 )}
               </div>
-            </details>
+            )}
           </>
         )}
 
@@ -436,7 +477,7 @@ const AppSidebar = ({
         )}
       </nav>
 
-      <div className="shrink-0 border-t border-sidebar-border/80 p-2">
+      <div className="sticky bottom-0 z-10 shrink-0 border-t border-sidebar-border/80 bg-sidebar-background/95 p-2 backdrop-blur-md">
         <div
           className={cn(
             'flex items-center rounded-xl',

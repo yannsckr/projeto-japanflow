@@ -451,3 +451,40 @@
     opacity: 1;
   }
 }
+
+@layer utilities {
+  .jf-responsive-row {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .jf-mobile-full {
+    width: 100%;
+  }
+
+  @media (min-width: 640px) {
+    .jf-mobile-full {
+      width: auto;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  [data-radix-popper-content-wrapper] {
+    max-width: calc(100vw - 0.75rem) !important;
+  }
+
+  button,
+  [role='button'] {
+    max-width: 100%;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 760px) {
+  .sidebar-gradient nav {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+}

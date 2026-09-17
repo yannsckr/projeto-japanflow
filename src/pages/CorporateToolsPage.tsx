@@ -5,7 +5,13 @@ import { useFeaturePermissions } from '@/hooks/useFeaturePermissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
@@ -177,42 +183,50 @@ body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; background: #fff
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">Ferramentas Corporativas</h2>
-      </div>
+    <div className="min-w-0 space-y-5 md:space-y-6">
+      <section className="jf-surface overflow-hidden p-4 md:p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+          Comunicação
+        </p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Ferramentas Corporativas</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          Mural, avisos, enquetes e recursos internos da empresa.
+        </p>
+      </section>
 
-      <Tabs defaultValue="bulletin" className="w-full">
-        <TabsList className={cn('grid w-full', baseAdmin ? 'grid-cols-6' : 'grid-cols-5')}>
-          <TabsTrigger value="bulletin" className="text-xs">
-            <Newspaper className="w-3 h-3 mr-1" />
-            Mural
-          </TabsTrigger>
-          <TabsTrigger value="announcements" className="text-xs">
-            <Megaphone className="w-3 h-3 mr-1" />
-            Avisos
-          </TabsTrigger>
-          <TabsTrigger value="popups" className="text-xs">
-            <Bell className="w-3 h-3 mr-1" />
-            Pop-ups
-          </TabsTrigger>
-          <TabsTrigger value="suggestions" className="text-xs">
-            <Lightbulb className="w-3 h-3 mr-1" />
-            Sugestões
-          </TabsTrigger>
-          <TabsTrigger value="polls" className="text-xs">
-            <BarChart3 className="w-3 h-3 mr-1" />
-            Enquetes
-          </TabsTrigger>
-          {baseAdmin && (
-            <TabsTrigger value="carriers" className="text-xs">
-              <Truck className="w-3 h-3 mr-1" />
-              Transportadoras
+      <Tabs defaultValue="bulletin" className="min-w-0 w-full">
+        <div className="-mx-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+          <TabsList className="inline-flex h-10 w-max min-w-max justify-start gap-1">
+            <TabsTrigger value="bulletin" className="shrink-0 text-xs">
+              <Newspaper className="w-3 h-3 mr-1" />
+              Mural
             </TabsTrigger>
-          )}
-        </TabsList>
+            <TabsTrigger value="announcements" className="shrink-0 text-xs">
+              <Megaphone className="w-3 h-3 mr-1" />
+              Avisos
+            </TabsTrigger>
+            <TabsTrigger value="popups" className="shrink-0 text-xs">
+              <Bell className="w-3 h-3 mr-1" />
+              Pop-ups
+            </TabsTrigger>
+            <TabsTrigger value="suggestions" className="shrink-0 text-xs">
+              <Lightbulb className="w-3 h-3 mr-1" />
+              Sugestões
+            </TabsTrigger>
+            <TabsTrigger value="polls" className="shrink-0 text-xs">
+              <BarChart3 className="w-3 h-3 mr-1" />
+              Enquetes
+            </TabsTrigger>
+            {baseAdmin && (
+              <TabsTrigger value="carriers" className="shrink-0 text-xs">
+                <Truck className="w-3 h-3 mr-1" />
+                Transportadoras
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </div>
 
-        <TabsContent value="popups" className="space-y-4">
+        <TabsContent value="popups" className="min-w-0 space-y-4">
           {isAdmin ? (
             <AdminPopupComposer />
           ) : (
@@ -231,7 +245,11 @@ body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; background: #fff
         {/* Mural */}
         <TabsContent value="bulletin" className="space-y-4">
           {isAdmin && (
-            <Button onClick={() => setShowBulletinDialog(true)} size="sm">
+            <Button
+              onClick={() => setShowBulletinDialog(true)}
+              size="sm"
+              className="w-full sm:w-auto"
+            >
               <Plus className="w-3 h-3 mr-1" />
               Nova Publicação
             </Button>
@@ -336,7 +354,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; background: #fff
                                 <TooltipContent side="bottom" className="max-w-xs">
                                   <div className="space-y-1">
                                     {reactions.map((r) => (
-                                      <p key={r.id} className="text-xs">
+                                      <p key={r.id} className="shrink-0 text-xs">
                                         <span className="font-semibold">{getName(r.userId)}</span>
                                         {isAdmin && (
                                           <span className="text-muted-foreground ml-1">
@@ -524,7 +542,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; background: #fff
         {/* Enquetes */}
         <TabsContent value="polls" className="space-y-4">
           {isAdmin && (
-            <Button onClick={() => setShowPollDialog(true)} size="sm">
+            <Button onClick={() => setShowPollDialog(true)} size="sm" className="w-full sm:w-auto">
               <Plus className="w-3 h-3 mr-1" />
               Nova Enquete
             </Button>

@@ -1867,7 +1867,11 @@ function normalizeStoragePath(input: string): string | null {
     // Mantém o path original se houver escape inválido.
   }
 
-  if (!path || path.includes('')) return null;
+  // Rejeita paths vazios, null bytes e tentativa de path traversal.
+  if (!path || path.includes('\0')) return null;
+  if (path.split('/').some((part) => part === '..')) return null;
+
+  // Todo arquivo do JapanFlow precisa permanecer dentro de attachments/.
   if (!path.startsWith('attachments/')) return null;
 
   return path;

@@ -345,7 +345,7 @@ ${reportText}`,
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 md:space-y-6">
+    <div className="w-full min-w-0 space-y-5 md:space-y-6">
       <section className="jf-surface overflow-hidden p-4 md:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>

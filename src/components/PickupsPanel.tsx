@@ -198,7 +198,7 @@ const PickupsPanel = () => {
       : `🚛 ${pickup.carrier_name || 'Transportadora'}`;
 
   return (
-    <div className="jf-surface space-y-3 overflow-hidden p-4">
+    <div className="jf-surface w-full min-w-0 space-y-2.5 overflow-hidden p-3.5 md:p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -279,7 +279,9 @@ const PickupsPanel = () => {
       </div>
 
       {pending.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Nenhuma retirada pendente.</p>
+        <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 px-4 py-5 text-center text-xs text-muted-foreground">
+          Nenhuma retirada pendente.
+        </div>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {pending.map((pickup) => (

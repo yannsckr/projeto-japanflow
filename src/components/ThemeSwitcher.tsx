@@ -1,4 +1,5 @@
-import { Contrast, Moon, Sun } from 'lucide-react';
+import { useEffect } from 'react';
+import { Moon, Sun } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -12,14 +13,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Theme, useThemeToggle } from '@/hooks/useThemeToggle';
 
-const themeMeta: Record<
-  Theme,
-  {
-    label: string;
-    description: string;
-    icon: typeof Moon;
-  }
-> = {
+const visibleThemes = ['dark', 'light'] as const;
+
+const themeMeta = {
   dark: {
     label: 'Escuro',
     description: 'Mais foco e contraste',
@@ -30,16 +26,19 @@ const themeMeta: Record<
     description: 'Leitura leve e direta',
     icon: Sun,
   },
-  hybrid: {
-    label: 'Híbrido',
-    description: 'Contraste autoral JapanFlow',
-    icon: Contrast,
-  },
-};
+} as const;
 
 export default function ThemeSwitcher() {
   const { theme, setTheme } = useThemeToggle();
-  const CurrentIcon = themeMeta[theme].icon;
+
+  useEffect(() => {
+    if (theme === 'hybrid') {
+      setTheme('dark');
+    }
+  }, [theme, setTheme]);
+
+  const activeTheme = theme === 'light' ? 'light' : 'dark';
+  const CurrentIcon = themeMeta[activeTheme].icon;
 
   return (
     <DropdownMenu>
@@ -49,7 +48,7 @@ export default function ThemeSwitcher() {
           size="icon"
           className="h-9 w-9 rounded-xl text-muted-foreground hover:bg-muted/70 hover:text-foreground"
           aria-label="Alterar tema"
-          title={`Tema: ${themeMeta[theme].label}`}
+          title={`Tema: ${themeMeta[activeTheme].label}`}
         >
           <CurrentIcon className="h-[18px] w-[18px]" />
         </Button>
@@ -66,11 +65,11 @@ export default function ThemeSwitcher() {
         <DropdownMenuSeparator className="my-1 bg-border/70" />
 
         <DropdownMenuRadioGroup
-          value={theme}
+          value={activeTheme}
           onValueChange={(value) => setTheme(value as Theme)}
           className="space-y-1"
         >
-          {(Object.keys(themeMeta) as Theme[]).map((itemTheme) => {
+          {visibleThemes.map((itemTheme) => {
             const item = themeMeta[itemTheme];
             const Icon = item.icon;
 

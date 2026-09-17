@@ -152,7 +152,7 @@ const AdminCalendarView = () => {
   };
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
+    <div className="min-w-0 rounded-2xl border border-border/70 bg-card p-4 shadow-card">
       <div className="flex items-center gap-2 mb-4">
         <Users className="w-4 h-4 text-primary" />
         <h3 className="text-sm font-semibold">Calendário Global da Equipe</h3>
@@ -161,27 +161,27 @@ const AdminCalendarView = () => {
         </span>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="flex-shrink-0">
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row">
+        <div className="flex min-w-0 justify-center lg:block">
           <Calendar
             mode="single"
             selected={selectedDate}
             onSelect={setSelectedDate}
             locale={ptBR}
-            className="p-3 pointer-events-auto rounded-lg border border-border"
+            className="pointer-events-auto mx-auto max-w-full rounded-xl border border-border p-2 sm:p-3"
             modifiers={{ hasEvent: datesWithEvents }}
             modifiersClassNames={{ hasEvent: 'bg-primary/20 font-bold' }}
           />
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-medium">
               {selectedDate
                 ? format(selectedDate, "dd 'de' MMMM", { locale: ptBR })
                 : 'Selecione uma data'}
             </p>
-            <div className="flex gap-2">
+            <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto">
               <AICalendarCreator />
               <Button size="sm" variant="outline" onClick={() => setShowDialog(true)}>
                 <Plus className="w-3 h-3 mr-1" />
@@ -274,7 +274,7 @@ const AdminCalendarView = () => {
           else setShowDialog(true);
         }}
       >
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] w-[calc(100vw-1rem)] max-w-md overflow-y-auto rounded-2xl sm:w-full">
           <DialogHeader>
             <DialogTitle>Novo Evento / Lembrete</DialogTitle>
           </DialogHeader>

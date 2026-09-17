@@ -294,10 +294,12 @@ const AdminBackfillImagesPage = () => {
   if (currentUser.role !== 'admin') return <Navigate to="/board" replace />;
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center gap-3">
+    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4">
+      <div className="flex min-w-0 items-start gap-3 sm:items-center">
         <ImageIcon className="w-6 h-6" />
-        <h1 className="text-2xl font-bold">Backfill de Imagens (WebP)</h1>
+        <h1 className="min-w-0 break-words text-xl font-bold sm:text-2xl">
+          Backfill de Imagens (WebP)
+        </h1>
       </div>
       <p className="text-sm text-muted-foreground">
         Escaneia imagens JPEG/PNG já presentes no Cloudflare R2. Neste estágio, arquivos históricos
