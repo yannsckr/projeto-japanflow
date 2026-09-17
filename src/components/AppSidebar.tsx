@@ -347,7 +347,10 @@ const AppSidebar = ({
         )}
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2 [scrollbar-gutter:stable]" aria-label="Navegação principal">
+      <nav
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2 [scrollbar-gutter:stable]"
+        aria-label="Navegação principal"
+      >
         {!collapsed && (
           <button
             type="button"
@@ -377,7 +380,10 @@ const AppSidebar = ({
               >
                 <span>Operação</span>
                 <ChevronRight
-                  className={cn('ml-auto h-3.5 w-3.5 transition-transform', operationOpen && 'rotate-90')}
+                  className={cn(
+                    'ml-auto h-3.5 w-3.5 transition-transform',
+                    operationOpen && 'rotate-90'
+                  )}
                 />
               </button>
             )}

@@ -26,11 +26,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 import { getClientPublicIp, isIpAllowed } from '@/lib/networkGuard';
 import { userCanAccessExternally } from '@/lib/externalAccess';
-import {
-  hasShownLoginSplash,
-  markLoginSplashAsShown,
-  resetLoginSplash,
-} from '@/lib/loginSplash';
+import { hasShownLoginSplash, markLoginSplashAsShown, resetLoginSplash } from '@/lib/loginSplash';
 
 const SIDEBAR_STORAGE_KEY = 'japanflow-sidebar-collapsed';
 
@@ -196,11 +192,7 @@ const AppLayout = () => {
                     className="w-[min(88vw,320px)] border-r-0 bg-transparent p-0 shadow-none"
                     aria-label="Menu principal"
                   >
-                    <AppSidebar
-                      mobile
-                      collapsed={false}
-                      onNavigate={() => setSidebarOpen(false)}
-                    />
+                    <AppSidebar mobile collapsed={false} onNavigate={() => setSidebarOpen(false)} />
                   </SheetContent>
                 </Sheet>
               )}

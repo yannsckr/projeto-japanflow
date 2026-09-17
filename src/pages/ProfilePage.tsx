@@ -52,7 +52,9 @@ const ProfilePage = () => {
       toast.success('Foto atualizada!');
     } catch (error) {
       console.error('Erro ao atualizar foto de perfil:', error);
-      toast.error(error instanceof Error ? `Erro ao enviar foto: ${error.message}` : 'Erro ao enviar foto');
+      toast.error(
+        error instanceof Error ? `Erro ao enviar foto: ${error.message}` : 'Erro ao enviar foto'
+      );
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -121,10 +123,10 @@ const ProfilePage = () => {
           <div className="flex flex-col items-center text-center">
             <div className="relative">
               <ChatAvatar
-                  src={currentUser.avatar}
-                  name={currentUser.name}
-                  className="h-24 w-24 rounded-2xl text-2xl"
-                />
+                src={currentUser.avatar}
+                name={currentUser.name}
+                className="h-24 w-24 rounded-2xl text-2xl"
+              />
 
               <input
                 ref={fileInputRef}
