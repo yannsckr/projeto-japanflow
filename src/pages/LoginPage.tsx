@@ -126,9 +126,7 @@ const LoginPage = () => {
 
         if (!isIpAllowed(ip)) {
           const allowedExternal = await userCanAccessExternally(user.id);
-
           if (!allowedExternal) {
-            resetLoginSplash();
             await logout();
             toast.error('Credenciais inválidas');
             return;
