@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Coffee, UtensilsCrossed, Play, Pause, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -98,8 +99,8 @@ const PauseButton = ({ updatePresence }: PauseButtonProps) => {
       }
 
       await updatePresence('online');
-    } catch (e) {
-      console.error('Error ending pause:', e);
+    } catch (error) {
+      console.error('Error ending pause:', error);
     }
   }, [currentUser, pauseType, pauseStartTime, updatePresence]);
 
@@ -128,115 +129,141 @@ const PauseButton = ({ updatePresence }: PauseButtonProps) => {
     };
   }, [isPaused, pauseStartTime, pauseType]);
 
+  useEffect(() => {
+    if (!isPaused) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isPaused]);
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const headerIndicator = isPaused ? (
-    <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-      <button
-        type="button"
-        onClick={() => setShowDialog(false)}
-        className={`flex h-9 min-w-0 items-center gap-1.5 rounded-xl px-2 text-xs font-bold sm:px-2.5 ${
-          overtimeSeconds > 0 ? 'bg-destructive/15 text-destructive' : 'bg-warning/15 text-warning'
-        }`}
-        aria-label="Pausa em andamento"
-      >
-        {pauseType === 'almoco' ? (
-          <UtensilsCrossed className="h-3.5 w-3.5 shrink-0" />
-        ) : (
-          <Coffee className="h-3.5 w-3.5 shrink-0" />
-        )}
-        <span className="tabular-nums">
-          {remainingSeconds > 0 ? formatTime(remainingSeconds) : `+${formatTime(overtimeSeconds)}`}
-        </span>
-      </button>
+  const pauseOverlay =
+    isPaused && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[9999] grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pausa em andamento"
+          >
+            <div className="relative flex w-full max-w-md flex-col items-center justify-center gap-5 rounded-2xl border border-white/10 bg-card/95 p-6 text-center shadow-2xl sm:min-h-[410px] sm:gap-6">
+              <button
+                type="button"
+                onClick={endPause}
+                className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Encerrar pausa"
+              >
+                <X className="h-5 w-5" />
+              </button>
 
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={endPause}
-        className="h-9 gap-1 px-2 text-success hover:bg-success/10 hover:text-success"
-        aria-label="Encerrar pausa e voltar"
-      >
-        <Play className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Voltar</span>
-      </Button>
-    </div>
-  ) : (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground"
-      onClick={() => setShowDialog(true)}
-      title="Fazer pausa"
-      aria-label="Fazer pausa"
-    >
-      <Pause className="h-4 w-4" />
-    </Button>
-  );
+              <div className="flex flex-col items-center gap-2">
+                {pauseType === 'almoco' ? (
+                  <UtensilsCrossed className="h-9 w-9 text-orange-400" />
+                ) : (
+                  <Coffee className="h-9 w-9 text-amber-400" />
+                )}
+
+                <span className="text-xl font-semibold sm:text-2xl">
+                  {pauseType === 'almoco' ? 'Almoço' : 'Café'}
+                </span>
+              </div>
+
+              {remainingSeconds > 0 ? (
+                <div className="w-full text-center">
+                  <p
+                    className="whitespace-nowrap font-mono font-bold leading-none tracking-tight text-foreground tabular-nums"
+                    style={{ fontSize: 'clamp(3.2rem, 10vw, 5.8rem)' }}
+                  >
+                    {formatTime(remainingSeconds)}
+                  </p>
+                  <p className="mt-3 text-sm text-muted-foreground">Tempo restante</p>
+                </div>
+              ) : (
+                <div className="w-full text-center">
+                  <p
+                    className="whitespace-nowrap font-mono font-bold leading-none tracking-tight text-destructive tabular-nums"
+                    style={{ fontSize: 'clamp(3.2rem, 10vw, 5.8rem)' }}
+                  >
+                    +{formatTime(overtimeSeconds)}
+                  </p>
+                  <p className="mt-3 text-sm font-semibold text-destructive">Tempo excedido!</p>
+                </div>
+              )}
+
+              <Button
+                onClick={endPause}
+                size="lg"
+                className="h-12 w-full max-w-xs gap-2 bg-success text-base text-success-foreground hover:bg-success/90"
+              >
+                <Play className="h-5 w-5" />
+                Encerrar Pausa
+              </Button>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
     <>
-      {headerIndicator}
-
-      {isPaused && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-black/65 px-3 py-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Pausa em andamento"
-        >
-          <div className="relative flex min-h-[360px] w-full max-w-md flex-col items-center justify-center gap-5 rounded-2xl border border-border bg-card p-5 text-center shadow-2xl sm:min-h-[420px] sm:gap-6 sm:p-6">
-            <button
-              type="button"
-              onClick={endPause}
-              className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:right-4 sm:top-4"
-              aria-label="Encerrar pausa"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-3">
-              {pauseType === 'almoco' ? (
-                <UtensilsCrossed className="h-8 w-8 text-orange-400 sm:h-10 sm:w-10" />
-              ) : (
-                <Coffee className="h-8 w-8 text-amber-400 sm:h-10 sm:w-10" />
-              )}
-              <span className="text-xl font-bold sm:text-2xl">
-                {pauseType === 'almoco' ? 'Almoço' : 'Café'}
-              </span>
-            </div>
-
-            {remainingSeconds > 0 ? (
-              <div className="w-full text-center">
-                <p className="whitespace-nowrap font-mono text-[clamp(3.2rem,17vw,6rem)] font-bold leading-none tracking-tight text-foreground tabular-nums">
-                  {formatTime(remainingSeconds)}
-                </p>
-                <p className="mt-3 text-sm text-muted-foreground">Tempo restante</p>
-              </div>
+      {isPaused ? (
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+          <button
+            type="button"
+            className={`flex h-9 min-w-0 items-center gap-1.5 rounded-xl px-2 text-xs font-bold sm:px-2.5 ${
+              overtimeSeconds > 0
+                ? 'bg-destructive/15 text-destructive'
+                : 'bg-warning/15 text-warning'
+            }`}
+            aria-label="Pausa em andamento"
+          >
+            {pauseType === 'almoco' ? (
+              <UtensilsCrossed className="h-3.5 w-3.5 shrink-0" />
             ) : (
-              <div className="w-full text-center">
-                <p className="whitespace-nowrap font-mono text-[clamp(3.2rem,17vw,6rem)] font-bold leading-none tracking-tight text-destructive tabular-nums">
-                  +{formatTime(overtimeSeconds)}
-                </p>
-                <p className="mt-3 text-sm font-semibold text-destructive">Tempo excedido!</p>
-              </div>
+              <Coffee className="h-3.5 w-3.5 shrink-0" />
             )}
 
-            <Button
-              onClick={endPause}
-              size="lg"
-              className="h-12 w-full max-w-xs gap-2 bg-success text-base text-success-foreground hover:bg-success/90"
-            >
-              <Play className="h-5 w-5" />
-              Encerrar Pausa
-            </Button>
-          </div>
+            <span className="tabular-nums">
+              {remainingSeconds > 0
+                ? formatTime(remainingSeconds)
+                : `+${formatTime(overtimeSeconds)}`}
+            </span>
+          </button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={endPause}
+            className="h-9 gap-1 px-2 text-success hover:bg-success/10 hover:text-success"
+            aria-label="Encerrar pausa e voltar"
+          >
+            <Play className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Voltar</span>
+          </Button>
         </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground"
+          onClick={() => setShowDialog(true)}
+          title="Fazer pausa"
+          aria-label="Fazer pausa"
+        >
+          <Pause className="h-4 w-4" />
+        </Button>
       )}
+
+      {pauseOverlay}
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-h-[90dvh] w-[calc(100vw-1rem)] max-w-xs overflow-y-auto rounded-2xl sm:w-full">

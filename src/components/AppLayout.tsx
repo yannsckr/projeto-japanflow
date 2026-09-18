@@ -26,7 +26,6 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 import { getClientPublicIp, isIpAllowed } from '@/lib/networkGuard';
 import { userCanAccessExternally } from '@/lib/externalAccess';
-import { hasShownLoginSplash, markLoginSplashAsShown, resetLoginSplash } from '@/lib/loginSplash';
 
 const SIDEBAR_STORAGE_KEY = 'japanflow-sidebar-collapsed';
 
@@ -65,7 +64,10 @@ const AppLayout = () => {
   const isMobile = useIsMobile();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showLoginSplash, setShowLoginSplash] = useState(() => !hasShownLoginSplash());
+  const splashRequested = Boolean(
+    (location.state as { showLoginSplash?: boolean } | null)?.showLoginSplash
+  );
+  const [showLoginSplash, setShowLoginSplash] = useState(splashRequested);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
@@ -89,15 +91,18 @@ const AppLayout = () => {
   useTabTitleNotifications(unreadNotifs + unreadMessages);
 
   const handleSplashComplete = useCallback(() => {
-    markLoginSplashAsShown();
     setShowLoginSplash(false);
-  }, []);
+    navigate(location.pathname, {
+      replace: true,
+      state: null,
+    });
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
-    if (!authLoading && !currentUser) {
-      resetLoginSplash();
+    if (splashRequested) {
+      setShowLoginSplash(true);
     }
-  }, [authLoading, currentUser]);
+  }, [splashRequested]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
@@ -124,7 +129,6 @@ const AppLayout = () => {
       if (cancelled) return;
 
       if (!allowed) {
-        resetLoginSplash();
         await logout();
         navigate('/login');
       }
@@ -155,7 +159,13 @@ const AppLayout = () => {
   }
 
   if (showLoginSplash) {
-    return <LoginSplash userName={currentUser.name} onComplete={handleSplashComplete} />;
+    return (
+      <LoginSplash
+        userName={currentUser.name}
+        onComplete={handleSplashComplete}
+        minimumDuration={5000}
+      />
+    );
   }
 
   return (

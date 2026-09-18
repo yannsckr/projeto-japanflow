@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Calculator, Loader2, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import JapanFlowIcon from '@/components/JapanFlowIcon';
 import { freightCalcApi } from '@/lib/api';
 
 const formatBRL = (v: number) =>
@@ -558,27 +559,33 @@ function FreightCalculator() {
 
 interface Props {
   triggerClassName?: string;
+  trigger?: React.ReactNode;
 }
 
-const SalesCalculatorDialog = ({ triggerClassName }: Props) => {
+const SalesCalculatorDialog = ({ triggerClassName, trigger }: Props) => {
   const [open, setOpen] = useState(false);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button
-          className={cn(
-            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
-            triggerClassName
-          )}
-        >
-          <Calculator className="w-4 h-4" />
-          Calculadora de Vendas
-        </button>
+        {trigger || (
+          <button
+            className={cn(
+              'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground/72 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+              triggerClassName
+            )}
+          >
+            <JapanFlowIcon name="calculadora-de-vendas" className="h-[18px] w-[18px]" />
+            Calculadora de Vendas
+          </button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Calculadora de Vendas</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <JapanFlowIcon name="calculadora-de-vendas" className="h-5 w-5 text-primary" />
+            Calculadora de Vendas
+          </DialogTitle>
         </DialogHeader>
         <Tabs defaultValue="sjc" className="w-full">
           <TabsList className="grid w-full grid-cols-6">

@@ -10,9 +10,16 @@ self.addEventListener('push', function (event) {
   const notification = payload.notification || {};
   const data = payload.data || {};
 
-  const title = notification.title || data.title || payload.title || 'JapanFlow';
+  const incomingTitle = notification.title || data.title || payload.title || '';
 
-  const body = notification.body || data.body || payload.body || 'Nova notificação';
+  const incomingBody = notification.body || data.body || payload.body || 'Nova notificação';
+
+  const title = 'JapanFlow';
+
+  const body =
+    incomingTitle && incomingTitle !== 'JapanFlow'
+      ? incomingTitle + ' — ' + incomingBody
+      : incomingBody;
 
   const url = data.url || payload.url || '/';
 
@@ -21,9 +28,10 @@ self.addEventListener('push', function (event) {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: '/logo_japanflow.png',
-      badge: '/logo_japanflow.png',
+      icon: '/favicon-light.png',
+      badge: '/favicon-light.png',
       tag,
+      renotify: true,
       data: { url },
     })
   );

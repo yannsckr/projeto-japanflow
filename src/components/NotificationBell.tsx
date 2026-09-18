@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { Bell, MessageSquare } from 'lucide-react';
+import { collection, doc, onSnapshot, query, where, writeBatch } from 'firebase/firestore';
+import { Bell, CheckCheck, MessageSquare, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
@@ -44,6 +45,7 @@ const NotificationBell = () => {
 
   const [open, setOpen] = useState(false);
   const [flash, setFlash] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [userNotifs, setUserNotifs] = useState<BellNotification[]>([]);
 
   const prevCount = useRef(0);
@@ -54,8 +56,6 @@ const NotificationBell = () => {
       return;
     }
 
-    // Listener próprio do sino para não depender do timing do AppContext.
-    // Ordenamos no cliente para evitar índice composto user_id + created_at.
     const notificationsQuery = query(
       collection(db, 'notifications'),
       where('user_id', '==', currentUser.id)
@@ -121,6 +121,53 @@ const NotificationBell = () => {
     }
   };
 
+  const handleMarkAllRead = async () => {
+    const unread = userNotifs.filter((notification) => !notification.read);
+    if (unread.length === 0 || busy) return;
+
+    setBusy(true);
+
+    try {
+      const batch = writeBatch(db);
+
+      unread.forEach((notification) => {
+        batch.update(doc(db, 'notifications', notification.id), {
+          read: true,
+        });
+      });
+
+      await batch.commit();
+      toast.success('Todas as notificações foram marcadas como lidas.');
+    } catch (error) {
+      console.error('Erro ao marcar notificações como lidas:', error);
+      toast.error('Não foi possível marcar todas como lidas.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleClearNotifications = async () => {
+    if (userNotifs.length === 0 || busy) return;
+
+    setBusy(true);
+
+    try {
+      const batch = writeBatch(db);
+
+      userNotifs.forEach((notification) => {
+        batch.delete(doc(db, 'notifications', notification.id));
+      });
+
+      await batch.commit();
+      toast.success('Notificações limpas.');
+    } catch (error) {
+      console.error('Erro ao limpar notificações:', error);
+      toast.error('Não foi possível limpar as notificações.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -152,24 +199,59 @@ const NotificationBell = () => {
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border-border/70 p-0 shadow-card"
+        className="w-[min(390px,calc(100vw-24px))] overflow-hidden rounded-2xl border-border/70 p-0 shadow-card"
         align="end"
       >
-        <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
-          <div>
-            <h3 className="text-sm font-semibold">Notificações</h3>
-            <p className="text-[11px] text-muted-foreground">
-              {unreadCount > 0
-                ? `${unreadCount} não lida${unreadCount !== 1 ? 's' : ''}`
-                : 'Tudo em dia'}
-            </p>
+        <div className="border-b border-border/70 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Notificações</h3>
+              <p className="text-[11px] text-muted-foreground">
+                {unreadCount > 0
+                  ? `${unreadCount} não lida${unreadCount !== 1 ? 's' : ''}`
+                  : 'Tudo em dia'}
+              </p>
+            </div>
+
+            <Bell className="mt-0.5 h-4 w-4 text-muted-foreground" />
           </div>
-          <Bell className="h-4 w-4 text-muted-foreground" />
+
+          {userNotifs.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleMarkAllRead()}
+                disabled={busy || unreadCount === 0}
+                className="jf-interactive inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/70 px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                Marcar todas como lidas
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleClearNotifications()}
+                disabled={busy}
+                className="jf-interactive inline-flex h-8 items-center gap-1.5 rounded-lg border border-destructive/20 px-2.5 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Limpar
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="max-h-80 overflow-y-auto p-1.5">
           {userNotifs.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">Nenhuma notificação</p>
+            <div className="flex flex-col items-center justify-center px-6 py-9 text-center">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                <Bell className="h-4 w-4" />
+              </div>
+              <p className="text-sm font-medium text-foreground">Nenhuma notificação</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Quando houver novidades, elas aparecerão aqui.
+              </p>
+            </div>
           ) : (
             userNotifs.map((notification) => {
               const formattedDate = formatNotificationDate(notification.timestamp);
