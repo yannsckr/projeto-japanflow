@@ -189,7 +189,6 @@ const ChatHistoryPage = () => {
   useEffect(() => {
     if (isAdminSector) load();
     else setLoading(false);
-
   }, [isAdminSector]);
 
   const nameOf = (u: string) => names[u] || u;

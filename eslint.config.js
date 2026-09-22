@@ -6,18 +6,11 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: [
-      'dist',
-      'qa-report',
-      'qa-results',
-    ],
+    ignores: ['dist', 'qa-report', 'qa-results'],
   },
 
   {
-    extends: [
-      js.configs.recommended,
-      ...tseslint.configs.recommended,
-    ],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
 
     files: ['**/*.{ts,tsx}'],
 

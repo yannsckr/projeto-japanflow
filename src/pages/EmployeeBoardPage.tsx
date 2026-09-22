@@ -36,49 +36,29 @@ const EmployeeBoardPage = () => {
 
   const isAdmin = currentUser?.role === 'admin';
 
-  const viewUserId =
-    isAdmin && employeeId
-      ? employeeId
-      : currentUser?.id;
+  const viewUserId = isAdmin && employeeId ? employeeId : currentUser?.id;
 
-  const viewUser = viewUserId
-    ? users.find((user) => user.id === viewUserId)
-    : undefined;
+  const viewUser = viewUserId ? users.find((user) => user.id === viewUserId) : undefined;
 
-  const tasks = viewUserId
-    ? getTasksForUser(viewUserId)
-    : [];
+  const tasks = viewUserId ? getTasksForUser(viewUserId) : [];
 
   const hasPermissions =
     currentUser && !permissionsLoading
-      ? permissions.some(
-          (permission) =>
-            permission.granterId === currentUser.id
-        )
+      ? permissions.some((permission) => permission.granterId === currentUser.id)
       : false;
 
   const showCreateTask = isAdmin || hasPermissions;
 
-  const boardTitle = isAdmin
-    ? `Quadro de ${viewUser?.name ?? 'colaborador'}`
-    : 'Meu Quadro';
+  const boardTitle = isAdmin ? `Quadro de ${viewUser?.name ?? 'colaborador'}` : 'Meu Quadro';
 
   const stats = {
-    todo: tasks.filter(
-      (task) => task.status === 'todo'
-    ).length,
+    todo: tasks.filter((task) => task.status === 'todo').length,
 
-    inProgress: tasks.filter(
-      (task) => task.status === 'in_progress'
-    ).length,
+    inProgress: tasks.filter((task) => task.status === 'in_progress').length,
 
-    paused: tasks.filter(
-      (task) => task.status === 'paused'
-    ).length,
+    paused: tasks.filter((task) => task.status === 'paused').length,
 
-    done: tasks.filter(
-      (task) => task.status === 'done'
-    ).length,
+    done: tasks.filter((task) => task.status === 'done').length,
   };
 
   const statCards: StatCard[] = [
@@ -140,17 +120,14 @@ const EmployeeBoardPage = () => {
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                   <span>
                     {tasks.length} tarefa
-                    {tasks.length !== 1 ? 's' : ''}{' '}
-                    vinculada
+                    {tasks.length !== 1 ? 's' : ''} vinculada
                     {tasks.length !== 1 ? 's' : ''}
                   </span>
 
                   {viewUser?.function && (
                     <>
                       <span>•</span>
-                      <span>
-                        {viewUser.function}
-                      </span>
+                      <span>{viewUser.function}</span>
                     </>
                   )}
                 </div>
@@ -159,81 +136,44 @@ const EmployeeBoardPage = () => {
 
             {!!viewUser?.sectors?.length && (
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {viewUser.sectors.map(
-                  (sector) => (
-                    <span
-                      key={sector}
-                      className="rounded-lg border border-border/70 bg-muted/35 px-2 py-1 text-[10px] font-medium text-muted-foreground"
-                    >
-                      {
-                        SECTOR_LABELS[
-                          sector as Sector
-                        ]
-                      }
-                    </span>
-                  )
-                )}
+                {viewUser.sectors.map((sector) => (
+                  <span
+                    key={sector}
+                    className="rounded-lg border border-border/70 bg-muted/35 px-2 py-1 text-[10px] font-medium text-muted-foreground"
+                  >
+                    {SECTOR_LABELS[sector as Sector]}
+                  </span>
+                ))}
               </div>
             )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <DailyCompletedCounter
-              userId={viewUserId}
-              compact
-            />
+            <DailyCompletedCounter userId={viewUserId} compact />
 
-            <TaskHistoryDialog
-              userId={viewUserId}
-            />
+            <TaskHistoryDialog userId={viewUserId} />
 
-            {isAdmin && (
-              <CreateTaskDialog
-                preselectedAssignee={
-                  viewUserId
-                }
-              />
-            )}
+            {isAdmin && <CreateTaskDialog preselectedAssignee={viewUserId} />}
 
-            {!isAdmin &&
-              showCreateTask && (
-                <CreateTaskDialog />
-              )}
+            {!isAdmin && showCreateTask && <CreateTaskDialog />}
           </div>
         </div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {statCards.map(
-          ({
-            key,
-            value,
-            label,
-            icon: Icon,
-            style,
-          }) => (
-            <div
-              key={key}
-              className="jf-surface flex items-center gap-3 p-3.5"
-            >
-              <div
-                className={`flex h-9 w-9 items-center justify-center rounded-xl ${style}`}
-              >
-                <Icon className="h-4 w-4" />
-              </div>
-
-              <div>
-                <p className="text-lg font-semibold leading-none">
-                  {value}
-                </p>
-
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {label}
-                </p>
-              </div>
+        {statCards.map(({ key, value, label, icon: Icon, style }) => (
+          <div key={key} className="jf-surface flex items-center gap-3 p-3.5">
+            <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${style}`}>
+              <Icon className="h-4 w-4" />
             </div>
-          )
-        )}
+
+            <div>
+              <p className="text-lg font-semibold leading-none">{value}</p>
+
+              <p className="mt-1 text-[11px] text-muted-foreground">{label}</p>
+            </div>
+          </div>
+        ))}
       </section>
 
       <section className="grid items-start gap-4 xl:grid-cols-2">
@@ -248,9 +188,7 @@ const EmployeeBoardPage = () => {
 
       {!isAdmin && (
         <section className="min-w-0">
-          <SectorTasksList
-            userId={viewUserId}
-          />
+          <SectorTasksList userId={viewUserId} />
         </section>
       )}
 
@@ -259,9 +197,7 @@ const EmployeeBoardPage = () => {
       </section>
 
       <section className="min-w-0">
-        <EmployeeCalendar
-          userId={viewUserId}
-        />
+        <EmployeeCalendar userId={viewUserId} />
       </section>
     </div>
   );

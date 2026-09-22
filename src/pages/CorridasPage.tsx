@@ -78,12 +78,9 @@ const CorridasPage = () => {
   const mondayStr = weekDates[0];
 
   // Returns the effective date for grouping: scheduled date if set, else creation date
-  const getEffectiveDate = useCallback(
-    (ma: (typeof motoboyAssignments)[number]) => {
-      return (ma.scheduledFor || ma.createdAt).split('T')[0];
-    },
-    []
-  );
+  const getEffectiveDate = useCallback((ma: (typeof motoboyAssignments)[number]) => {
+    return (ma.scheduledFor || ma.createdAt).split('T')[0];
+  }, []);
 
   // Filter assignments for this week (motoboys only see their own)
   const weekAssignments = useMemo(() => {
