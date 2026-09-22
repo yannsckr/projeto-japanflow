@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Plus, Trash2, Truck, DollarSign, Save, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { cn } from '@/lib/utils';
 
 export interface Carrier {
@@ -64,6 +65,13 @@ const CarriersPanel = () => {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [newCity, setNewCity] = useState('');
   const [adding, setAdding] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   const fetchCarriers = useCallback(async () => {
     try {
@@ -198,8 +206,6 @@ const CarriersPanel = () => {
   };
 
   const remove = async (c: Carrier) => {
-    if (!confirm(`Excluir a transportadora "${c.name}"?`)) return;
-
     try {
       await deleteDoc(doc(db, 'carriers', c.id));
       toast.success('Transportadora excluída');
@@ -238,11 +244,8 @@ const CarriersPanel = () => {
   };
 
   const removeDest = async (d: FreightDestination) => {
-    if (!confirm(`Remover o destino "${d.city_name}"?`)) return;
-
     try {
       await deleteDoc(doc(db, 'freight_destinations', d.id));
-
       toast.success('Destino removido');
     } catch (error) {
       console.error('Erro ao remover destino:', error);
@@ -363,7 +366,15 @@ const CarriersPanel = () => {
                     size="icon"
                     variant="ghost"
                     className="h-8 w-8 text-destructive"
-                    onClick={() => remove(c)}
+                    onClick={() =>
+                      setConfirmAction({
+                        title: 'Excluir transportadora',
+                        description: `A transportadora "${c.name}" será removida definitivamente.`,
+                        confirmLabel: 'Excluir',
+                        destructive: true,
+                        action: () => remove(c),
+                      })
+                    }
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -555,6 +566,20 @@ const CarriersPanel = () => {
           </div>
         )}
       </section>
+
+      <ConfirmActionDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title={confirmAction?.title || 'Confirmar ação'}
+        description={confirmAction?.description || ''}
+        confirmLabel={confirmAction?.confirmLabel}
+        destructive={confirmAction?.destructive}
+        onConfirm={async () => {
+          if (!confirmAction) return;
+          await confirmAction.action();
+          setConfirmAction(null);
+        }}
+      />
     </div>
   );
 };

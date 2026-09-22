@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { ScrollText, Upload, Download, Trash2, Search, FileText, ImageIcon } from 'lucide-react';
 
 interface PolicyDoc {
@@ -59,6 +60,7 @@ const InternalPoliciesPage = () => {
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<PolicyDoc | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = currentUser?.role === 'admin';
@@ -173,19 +175,20 @@ const InternalPoliciesPage = () => {
   };
 
   const handleDelete = async (policy: PolicyDoc) => {
-    if (!isAdmin) return toast.error('Apenas administradores podem excluir');
-    if (!confirm(`Excluir "${policy.title}"?`)) return;
-
-    try {
-      await deleteDoc(doc(db, 'internal_policies', policy.id));
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao excluir');
+    if (!isAdmin) {
+      toast.error('Apenas administradores podem excluir');
       return;
     }
 
-    toast.success('Documento excluído');
-    fetchDocs();
+    try {
+      await deleteDoc(doc(db, 'internal_policies', policy.id));
+      toast.success('Documento excluído');
+      setDeleteTarget(null);
+      fetchDocs();
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao excluir');
+    }
   };
 
   if (!currentUser) return null;
@@ -331,7 +334,7 @@ const InternalPoliciesPage = () => {
                   </a>
                 </Button>
                 {isAdmin && (
-                  <Button size="sm" variant="ghost" onClick={() => handleDelete(doc)}>
+                  <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(doc)}>
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 )}
@@ -340,6 +343,27 @@ const InternalPoliciesPage = () => {
           );
         })}
       </div>
+
+      <ConfirmActionDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Excluir política interna"
+        description={
+          deleteTarget ? (
+            <>
+              A política <strong>{deleteTarget.title}</strong> será removida para todos os usuários.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Excluir"
+        destructive
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          await handleDelete(deleteTarget);
+        }}
+      />
     </div>
   );
 };

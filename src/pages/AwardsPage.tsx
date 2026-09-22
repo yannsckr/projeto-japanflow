@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { Trophy, Paperclip, FileText, Trash2, Plus, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { Sector } from '@/types';
 import { uploadImage } from '@/lib/uploadImage';
 import SignedLink from '@/components/SignedLink';
@@ -67,6 +68,13 @@ const AwardsPage = () => {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   // form state
   const [targetUserId, setTargetUserId] = useState('');
@@ -196,16 +204,14 @@ const AwardsPage = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Excluir esta premiação?')) return;
     try {
       await deleteDoc(doc(db, 'awards', id));
+      toast.success('Premiação excluída');
+      fetchRows();
     } catch (error) {
       console.error(error);
       toast.error('Erro ao excluir');
-      return;
     }
-    toast.success('Excluída');
-    fetchRows();
   };
 
   // who can be a target: the allowed users list
@@ -379,7 +385,19 @@ const AwardsPage = () => {
                   </p>
                 </div>
                 {canManage && (
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(r.id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      setConfirmAction({
+                        title: 'Excluir premiação',
+                        description: `A premiação "${r.title}" será removida definitivamente.`,
+                        confirmLabel: 'Excluir',
+                        destructive: true,
+                        action: () => handleDelete(r.id),
+                      })
+                    }
+                  >
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 )}
@@ -388,6 +406,20 @@ const AwardsPage = () => {
           ))}
         </div>
       )}
+
+      <ConfirmActionDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title={confirmAction?.title || 'Confirmar ação'}
+        description={confirmAction?.description || ''}
+        confirmLabel={confirmAction?.confirmLabel}
+        destructive={confirmAction?.destructive}
+        onConfirm={async () => {
+          if (!confirmAction) return;
+          await confirmAction.action();
+          setConfirmAction(null);
+        }}
+      />
     </div>
   );
 };

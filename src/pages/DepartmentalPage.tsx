@@ -50,6 +50,7 @@ import { Badge } from '@/components/ui/badge';
 import { SECTOR_LABELS, Sector } from '@/types';
 import { parseOrderInfo, stripOrderInfo, OrderInfoBadges } from '@/lib/orderInfo';
 import { uploadImage } from '@/lib/uploadImage';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 
 const MotoboyTimer = ({ startTime }: { startTime: string }) => {
   const [, setTick] = useState(0);
@@ -126,6 +127,13 @@ const DepartmentalPage = () => {
   const [motoboyLoading, setMotoboyLoading] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
   const [unifyOpen, setUnifyOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   const filteredTracking = dept.tracking.filter((t) => {
     const matchClient =
@@ -470,9 +478,18 @@ const DepartmentalPage = () => {
                           size="icon"
                           variant="ghost"
                           className="absolute right-2 top-2 h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => {
-                            if (confirm('Excluir este rastreamento?')) dept.deleteTracking(t.id);
-                          }}
+                          onClick={() =>
+                            setConfirmAction({
+                              title: 'Excluir rastreamento',
+                              description: `O rastreamento ${t.trackingCode} será removido definitivamente.`,
+                              confirmLabel: 'Excluir',
+                              destructive: true,
+                              action: async () => {
+                                await dept.deleteTracking(t.id);
+                                toast.success('Rastreamento excluído');
+                              },
+                            })
+                          }
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -741,12 +758,19 @@ const DepartmentalPage = () => {
                               size="sm"
                               variant="outline"
                               className="h-7 text-xs text-destructive hover:text-destructive"
-                              onClick={() => {
-                                if (confirm('Deseja realmente excluir este orçamento?')) {
-                                  dept.deleteQuote(cq.id);
-                                  toast.success('Orçamento excluído');
-                                }
-                              }}
+                              onClick={() =>
+                                setConfirmAction({
+                                  title: 'Excluir orçamento',
+                                  description:
+                                    'Este orçamento será removido definitivamente do JapanFlow.',
+                                  confirmLabel: 'Excluir',
+                                  destructive: true,
+                                  action: async () => {
+                                    await dept.deleteQuote(cq.id);
+                                    toast.success('Orçamento excluído');
+                                  },
+                                })
+                              }
                             >
                               <Trash2 className="w-3 h-3 mr-1" />
                               Excluir
@@ -1232,12 +1256,19 @@ const DepartmentalPage = () => {
                               size="sm"
                               variant="outline"
                               className="h-7 text-xs text-destructive"
-                              onClick={() => {
-                                if (confirm('Recusar corrida?')) {
-                                  dept.deleteMotoboyAssignment(ma.id);
-                                  toast.info('Corrida recusada');
-                                }
-                              }}
+                              onClick={() =>
+                                setConfirmAction({
+                                  title: 'Recusar corrida',
+                                  description:
+                                    'A corrida será removida da fila de aprovação. Deseja continuar?',
+                                  confirmLabel: 'Recusar',
+                                  destructive: true,
+                                  action: async () => {
+                                    await dept.deleteMotoboyAssignment(ma.id);
+                                    toast.info('Corrida recusada');
+                                  },
+                                })
+                              }
                             >
                               <Trash2 className="w-3 h-3" />
                             </Button>
@@ -1587,18 +1618,20 @@ const DepartmentalPage = () => {
                                         size="sm"
                                         variant="outline"
                                         className="h-5 text-[9px] px-1.5 text-warning hover:text-warning"
-                                        onClick={() => {
-                                          if (
-                                            confirm(
-                                              'Retirar esta corrida do motoboy? Ela voltará para a fila de redistribuição.'
-                                            )
-                                          ) {
-                                            dept.unassignMotoboy(ma.id);
-                                            toast.success(
-                                              'Corrida desatribuída — disponível para redistribuição'
-                                            );
-                                          }
-                                        }}
+                                        onClick={() =>
+                                          setConfirmAction({
+                                            title: 'Desatribuir corrida',
+                                            description:
+                                              'A corrida será retirada do motoboy e voltará para a fila de redistribuição.',
+                                            confirmLabel: 'Desatribuir',
+                                            action: async () => {
+                                              await dept.unassignMotoboy(ma.id);
+                                              toast.success(
+                                                'Corrida desatribuída — disponível para redistribuição'
+                                              );
+                                            },
+                                          })
+                                        }
                                       >
                                         <UserX className="w-2.5 h-2.5 mr-0.5" />
                                         Desatribuir
@@ -1609,12 +1642,19 @@ const DepartmentalPage = () => {
                                       size="sm"
                                       variant="outline"
                                       className="h-5 text-[9px] px-1.5 text-destructive hover:text-destructive"
-                                      onClick={() => {
-                                        if (confirm('Excluir corrida?')) {
-                                          dept.deleteMotoboyAssignment(ma.id);
-                                          toast.success('Excluída');
-                                        }
-                                      }}
+                                      onClick={() =>
+                                        setConfirmAction({
+                                          title: 'Excluir corrida',
+                                          description:
+                                            'Esta corrida será removida definitivamente do JapanFlow.',
+                                          confirmLabel: 'Excluir',
+                                          destructive: true,
+                                          action: async () => {
+                                            await dept.deleteMotoboyAssignment(ma.id);
+                                            toast.success('Corrida excluída');
+                                          },
+                                        })
+                                      }
                                     >
                                       <Trash2 className="w-2.5 h-2.5" />
                                     </Button>
@@ -2153,6 +2193,20 @@ const DepartmentalPage = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title={confirmAction?.title || 'Confirmar ação'}
+        description={confirmAction?.description || ''}
+        confirmLabel={confirmAction?.confirmLabel}
+        destructive={confirmAction?.destructive}
+        onConfirm={async () => {
+          if (!confirmAction) return;
+          await confirmAction.action();
+          setConfirmAction(null);
+        }}
+      />
     </div>
   );
 };

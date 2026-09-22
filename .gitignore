@@ -45,3 +45,7 @@ japanflow-supabase-export.zip
 japanflow-firestore-inventory.zip
 
 *.tsbuildinfo
+
+qa-report/
+qa-results/
+.env.qa.local

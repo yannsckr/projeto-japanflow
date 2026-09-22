@@ -19,6 +19,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { ChatAvatar } from '@/components/ChatMedia';
 import { usePrivateTypingUsers } from '@/hooks/useTypingPresence';
 import { useGroupUnread } from '@/hooks/useGroupUnread';
@@ -48,6 +49,13 @@ const ChatPage = () => {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   const isAdmin = currentUser?.role === 'admin';
   const currentSectors = currentUser?.sectors || [];
@@ -399,13 +407,19 @@ const ChatPage = () => {
 
                   {isAdmin && (
                     <button
-                      onClick={() => {
-                        if (confirm('Excluir este grupo?')) {
-                          deleteGroup(group.id);
-                          if (selectedGroup === group.id) setSelectedGroup(null);
-                          toast.success('Grupo excluído');
-                        }
-                      }}
+                      onClick={() =>
+                        setConfirmAction({
+                          title: 'Excluir grupo',
+                          description: `O grupo "${group.name}" será excluído para todos os participantes.`,
+                          confirmLabel: 'Excluir',
+                          destructive: true,
+                          action: async () => {
+                            await deleteGroup(group.id);
+                            if (selectedGroup === group.id) setSelectedGroup(null);
+                            toast.success('Grupo excluído');
+                          },
+                        })
+                      }
                       className="jf-interactive flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-destructive/10"
                       type="button"
                       aria-label={`Excluir grupo ${group.name}`}
@@ -505,6 +519,20 @@ const ChatPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title={confirmAction?.title || 'Confirmar ação'}
+        description={confirmAction?.description || ''}
+        confirmLabel={confirmAction?.confirmLabel}
+        destructive={confirmAction?.destructive}
+        onConfirm={async () => {
+          if (!confirmAction) return;
+          await confirmAction.action();
+          setConfirmAction(null);
+        }}
+      />
     </div>
   );
 };

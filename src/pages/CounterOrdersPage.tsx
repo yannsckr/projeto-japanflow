@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { ShoppingBag, ExternalLink, Trash2, Check, History, Clock } from 'lucide-react';
 import { arrivalLabel } from '@/lib/counterOrderDeadline';
 
@@ -102,6 +103,7 @@ export default function CounterOrdersPage() {
   const [orders, setOrders] = useState<CounterOrder[]>([]);
   const [form, setForm] = useState({ ...empty });
   const [loading, setLoading] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = async () => {
@@ -216,9 +218,10 @@ export default function CounterOrdersPage() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Excluir esta encomenda?')) return;
     try {
       await deleteDoc(doc(db, 'counter_orders', id));
+      setDeleteTargetId(null);
+      toast.success('Encomenda excluída');
     } catch (error) {
       console.error(error);
       toast.error('Erro ao excluir');
@@ -232,7 +235,7 @@ export default function CounterOrdersPage() {
   const archivedOrders = orders.filter((o) => o.status === 'canceled' || o.status === 'completed');
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-5 md:space-y-6">
       <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
@@ -444,7 +447,7 @@ export default function CounterOrdersPage() {
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2"
-                        onClick={() => remove(o.id)}
+                        onClick={() => setDeleteTargetId(o.id)}
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
@@ -548,6 +551,16 @@ export default function CounterOrdersPage() {
           </Button>
         </div>
       </Card>
+
+      <ConfirmActionDialog
+        open={!!deleteTargetId}
+        onOpenChange={(open) => !open && setDeleteTargetId(null)}
+        title="Excluir encomenda"
+        description="Esta encomenda será removida definitivamente do JapanFlow."
+        confirmLabel="Excluir"
+        destructive
+        onConfirm={() => deleteTargetId && remove(deleteTargetId)}
+      />
     </div>
   );
 }

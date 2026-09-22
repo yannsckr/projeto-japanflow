@@ -10,6 +10,9 @@ export default defineConfig(() => ({
     hmr: {
       overlay: false,
     },
+    watch: {
+      ignored: ['**/qa-results/**', '**/qa-report/**'],
+    },
   },
   plugins: [react()],
   resolve: {

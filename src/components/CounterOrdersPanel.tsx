@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { ShoppingBag, ExternalLink, Trash2, Check, History, Clock } from 'lucide-react';
 import { arrivalLabel } from '@/lib/counterOrderDeadline';
 
@@ -103,6 +104,13 @@ export default function CounterOrdersPage() {
   const [form, setForm] = useState({ ...empty });
   const [loading, setLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   const load = async () => {
     // Mantido por compatibilidade; o listener abaixo já mantém a lista atualizada.
@@ -216,9 +224,9 @@ export default function CounterOrdersPage() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Excluir esta encomenda?')) return;
     try {
       await deleteDoc(doc(db, 'counter_orders', id));
+      toast.success('Encomenda excluída');
     } catch (error) {
       console.error(error);
       toast.error('Erro ao excluir');
@@ -444,7 +452,15 @@ export default function CounterOrdersPage() {
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2"
-                        onClick={() => remove(o.id)}
+                        onClick={() =>
+                          setConfirmAction({
+                            title: 'Excluir encomenda',
+                            description: `A encomenda "${o.item_name}" será removida definitivamente.`,
+                            confirmLabel: 'Excluir',
+                            destructive: true,
+                            action: () => remove(o.id),
+                          })
+                        }
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
@@ -548,6 +564,20 @@ export default function CounterOrdersPage() {
           </Button>
         </div>
       </Card>
+
+      <ConfirmActionDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title={confirmAction?.title || 'Confirmar ação'}
+        description={confirmAction?.description || ''}
+        confirmLabel={confirmAction?.confirmLabel}
+        destructive={confirmAction?.destructive}
+        onConfirm={async () => {
+          if (!confirmAction) return;
+          await confirmAction.action();
+          setConfirmAction(null);
+        }}
+      />
     </div>
   );
 }

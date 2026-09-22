@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { Plus, Trash2, FileUp, Loader2, Eye, Pencil, Printer, Save } from 'lucide-react';
 import logoImg from '@/assets/logo_japan_imports.png';
 import { parsePurchaseOrderApi } from '@/lib/api';
@@ -105,6 +106,14 @@ const PedidoComprasPage = () => {
   const [saving, setSaving] = useState(false);
   const [supplierManagerOpen, setSupplierManagerOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    action: () => void | Promise<void>;
+  } | null>(null);
+
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isAdminSector =
@@ -679,11 +688,18 @@ const PedidoComprasPage = () => {
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={async () => {
-                          if (!confirm('Remover fornecedor?')) return;
-                          await deleteDoc(doc(db, 'suppliers', s.id));
-                          toast.success('Fornecedor removido.');
-                        }}
+                        onClick={() =>
+                          setConfirmAction({
+                            title: 'Remover fornecedor',
+                            description: `O fornecedor "${s.razao_social}" será removido do cadastro.`,
+                            confirmLabel: 'Remover',
+                            destructive: true,
+                            action: async () => {
+                              await deleteDoc(doc(db, 'suppliers', s.id));
+                              toast.success('Fornecedor removido.');
+                            },
+                          })
+                        }
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
@@ -698,6 +714,20 @@ const PedidoComprasPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title={confirmAction?.title || 'Confirmar ação'}
+        description={confirmAction?.description || ''}
+        confirmLabel={confirmAction?.confirmLabel}
+        destructive={confirmAction?.destructive}
+        onConfirm={async () => {
+          if (!confirmAction) return;
+          await confirmAction.action();
+          setConfirmAction(null);
+        }}
+      />
     </div>
   );
 };

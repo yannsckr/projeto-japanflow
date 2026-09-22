@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { Plus, Play, FileText, CheckCircle2, Trash2, X, Camera, Loader2 } from 'lucide-react';
 import { Sector } from '@/types';
 import { parseInventoryLabelApi } from '@/lib/api';
@@ -58,6 +59,13 @@ const InventoryPage = () => {
   const [locationCode, setLocationCode] = useState('');
   const [items, setItems] = useState<InventoryItem[]>(() => Array.from({ length: 5 }, emptyItem));
   const [scanningIdx, setScanningIdx] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> =>
     new Promise((resolve, reject) => {
@@ -322,7 +330,6 @@ ${reportText}`,
 
   const handleCancel = async () => {
     if (!activeInventory) return;
-    if (!confirm('Cancelar este inventário? Os dados informados serão descartados.')) return;
     if ((activeInventory as any).popup_id) {
       await deleteDoc(doc(db, 'admin_popups', (activeInventory as any).popup_id));
     }
@@ -442,7 +449,20 @@ ${reportText}`,
                 {activeInventory.shelf_code}
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={handleCancel}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setConfirmAction({
+                  title: 'Cancelar inventário',
+                  description:
+                    'Os dados informados neste inventário serão descartados definitivamente.',
+                  confirmLabel: 'Cancelar inventário',
+                  destructive: true,
+                  action: handleCancel,
+                })
+              }
+            >
               <X className="h-4 w-4" /> Cancelar
             </Button>
           </div>
@@ -609,6 +629,20 @@ ${reportText}`,
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title={confirmAction?.title || 'Confirmar ação'}
+        description={confirmAction?.description || ''}
+        confirmLabel={confirmAction?.confirmLabel}
+        destructive={confirmAction?.destructive}
+        onConfirm={async () => {
+          if (!confirmAction) return;
+          await confirmAction.action();
+          setConfirmAction(null);
+        }}
+      />
     </div>
   );
 };

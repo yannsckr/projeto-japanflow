@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog';
 import { uploadImage } from '@/lib/uploadImage';
 import { toast } from 'sonner';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import {
   FileText,
   Upload,
@@ -73,6 +74,7 @@ const SharedDocsPage = () => {
   const [shareAll, setShareAll] = useState(false);
   const [sharedWith, setSharedWith] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SharedDoc | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = currentUser?.role === 'admin';
@@ -197,21 +199,19 @@ const SharedDocsPage = () => {
     if (!currentUser) return;
 
     if (sharedDoc.owner_id !== currentUser.id && !isAdmin) {
-      return toast.error('Apenas o dono ou administrador pode excluir');
-    }
-
-    if (!confirm(`Excluir "${sharedDoc.title}"?`)) return;
-
-    try {
-      await deleteDoc(doc(db, 'shared_documents', sharedDoc.id));
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao excluir');
+      toast.error('Apenas o dono ou administrador pode excluir');
       return;
     }
 
-    toast.success('Documento excluído');
-    fetchDocs();
+    try {
+      await deleteDoc(doc(db, 'shared_documents', sharedDoc.id));
+      toast.success('Documento excluído');
+      setDeleteTarget(null);
+      fetchDocs();
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao excluir');
+    }
   };
 
   const recipientNames = (doc: SharedDoc) => {
@@ -381,7 +381,7 @@ const SharedDocsPage = () => {
                 </a>
               </Button>
               {(doc.owner_id === currentUser.id || isAdmin) && (
-                <Button size="sm" variant="ghost" onClick={() => handleDelete(doc)}>
+                <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(doc)}>
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               )}
@@ -389,6 +389,27 @@ const SharedDocsPage = () => {
           </div>
         ))}
       </div>
+
+      <ConfirmActionDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Excluir documento"
+        description={
+          deleteTarget ? (
+            <>
+              O documento <strong>{deleteTarget.title}</strong> será removido do JapanFlow.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Excluir"
+        destructive
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          await handleDelete(deleteTarget);
+        }}
+      />
     </div>
   );
 };
