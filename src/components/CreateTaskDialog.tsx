@@ -164,36 +164,50 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
     setPaymentProofPreviews([]);
   };
 
-  const handleImageSelect = (file: File) => {
+  const handleImageSelect = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
       toast.error('Apenas imagens são permitidas');
       return;
     }
+
     if (file.size > 5 * 1024 * 1024) {
       toast.error('Imagem deve ter no máximo 5MB');
       return;
     }
-    if (imageFiles.length >= 10) {
-      toast.error('Máximo de 10 imagens por tarefa');
-      return;
-    }
-    setImageFiles((prev) => [...prev, file]);
-    const reader = new FileReader();
-    reader.onload = (e) => setImagePreviews((prev) => [...prev, e.target?.result as string]);
-    reader.readAsDataURL(file);
-  };
 
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) handleImageSelect(file);
-        break;
+    setImageFiles((prev) => {
+      if (prev.length >= 10) {
+        toast.error('Máximo de 10 imagens por tarefa');
+        return prev;
       }
-    }
+
+      return [...prev, file];
+    });
+
+    const reader = new FileReader();
+    reader.onload = (e) =>
+      setImagePreviews((prev) => {
+        if (prev.length >= 10) return prev;
+        return [...prev, e.target?.result as string];
+      });
+    reader.readAsDataURL(file);
   }, []);
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) handleImageSelect(file);
+          break;
+        }
+      }
+    },
+    [handleImageSelect]
+  );
 
   const removeImage = (index: number) => {
     setImageFiles((prev) => prev.filter((_, i) => i !== index));

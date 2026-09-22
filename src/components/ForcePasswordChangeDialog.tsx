@@ -56,7 +56,7 @@ const ForcePasswordChangeDialog = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
 
   useEffect(() => {
-    if (!currentUser || !auth.currentUser) {
+    if (!currentUser?.id || !auth.currentUser) {
       setMustChange(false);
       return;
     }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { useDepartmental } from '@/hooks/useDepartmental';
 import { Navigate } from 'react-router-dom';
@@ -78,9 +78,12 @@ const CorridasPage = () => {
   const mondayStr = weekDates[0];
 
   // Returns the effective date for grouping: scheduled date if set, else creation date
-  const getEffectiveDate = (ma: (typeof motoboyAssignments)[number]) => {
-    return (ma.scheduledFor || ma.createdAt).split('T')[0];
-  };
+  const getEffectiveDate = useCallback(
+    (ma: (typeof motoboyAssignments)[number]) => {
+      return (ma.scheduledFor || ma.createdAt).split('T')[0];
+    },
+    []
+  );
 
   // Filter assignments for this week (motoboys only see their own)
   const weekAssignments = useMemo(() => {
@@ -90,7 +93,7 @@ const CorridasPage = () => {
       if (isMotoboy) return inWeek && ma.assignedTo === currentUser?.id;
       return inWeek;
     });
-  }, [motoboyAssignments, mondayStr, sundayStr, isMotoboy, currentUser?.id]);
+  }, [motoboyAssignments, mondayStr, sundayStr, isMotoboy, currentUser?.id, getEffectiveDate]);
 
   // Apply search and additional filters
   const filteredAssignments = useMemo(() => {
@@ -111,7 +114,7 @@ const CorridasPage = () => {
       result = result.filter((a) => getEffectiveDate(a) === filterDate);
     }
     return result;
-  }, [weekAssignments, selectedMotoboy, searchQuery, filterDate]);
+  }, [weekAssignments, selectedMotoboy, searchQuery, filterDate, getEffectiveDate]);
 
   // Get unique motoboys from filtered assignments
   const activeMotoboys = useMemo(() => {

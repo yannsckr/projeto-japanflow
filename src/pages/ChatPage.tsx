@@ -82,13 +82,6 @@ const ChatPage = () => {
 
   const privateUnreadTotal = previews.reduce((total, preview) => total + preview.unreadCount, 0);
 
-  // Preload happens globally in AppLayout right after login (background, progressive).
-  // Aqui apenas garantimos que se o usuário entrar direto no /chat, o preload rode também.
-  useEffect(() => {
-    if (currentUser?.username) {
-    }
-  }, [currentUser?.username]);
-
   const selectedPreview = selectedUser
     ? previews.find((preview) => preview.partnerUsername === selectedUser.username)
     : undefined;

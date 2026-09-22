@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { useWarranties, WarrantyClaim, WarrantyUpdate } from '@/hooks/useWarranties';
 import { db } from '@/lib/firebase';
@@ -118,7 +118,7 @@ const WarrantiesPanel = () => {
   const [updateFile, setUpdateFile] = useState<File | null>(null);
   const [posting, setPosting] = useState(false);
 
-  const getName = (id: string) => users.find((u) => u.id === id)?.name || id;
+  const getName = useCallback((id: string) => users.find((u) => u.id === id)?.name || id, [users]);
 
   const filteredClaims = useMemo(() => {
     return claims.filter((c) => {
@@ -132,7 +132,7 @@ const WarrantiesPanel = () => {
       const matchStatus = filterStatus === 'all' || c.status === filterStatus;
       return matchSearch && matchDate && matchStatus;
     });
-  }, [claims, search, filterDate, filterStatus, users]);
+  }, [claims, search, filterDate, filterStatus, getName]);
 
   const claimUpdates = useMemo(() => {
     if (!selectedClaim) return [];

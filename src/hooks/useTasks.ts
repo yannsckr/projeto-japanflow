@@ -125,7 +125,7 @@ export const useTasks = (
         updated_at: Timestamp.now(),
       });
     },
-    [allUsers]
+    []
   );
 
   const updateTask = useCallback(
