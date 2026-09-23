@@ -43,6 +43,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
 
   const { isOtherTyping, pingTyping, stopTyping } = usePrivateTyping(currentUser?.id, otherUser.id);
   const privateTypingUserIds = usePrivateTypingUsers(currentUser?.id);
@@ -61,6 +62,20 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
       container.scrollTop = container.scrollHeight;
     });
   }, [messages.length, isTyping]);
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorder?.state === 'recording') {
+        try {
+          mediaRecorder.stop();
+        } catch {
+          // Ignora falha de encerramento durante desmontagem.
+        }
+      }
+      microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
+      microphoneStreamRef.current = null;
+    };
+  }, [mediaRecorder]);
 
   if (!currentUser) return null;
 
@@ -143,29 +158,120 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
     reader.readAsDataURL(file);
   };
 
+  const stopMicrophoneStream = () => {
+    microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
+    microphoneStreamRef.current = null;
+  };
+
+  const microphoneErrorMessage = (error: unknown) => {
+    const name = error instanceof DOMException ? error.name : '';
+
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      return 'O microfone está bloqueado. Clique no cadeado ao lado do endereço e permita o acesso ao microfone.';
+    }
+
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      return 'Nenhum microfone foi encontrado neste computador.';
+    }
+
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+      return 'O microfone está sendo usado por outro aplicativo ou não pôde ser iniciado.';
+    }
+
+    if (name === 'SecurityError') {
+      return 'O navegador bloqueou o microfone por segurança. Use HTTPS ou localhost.';
+    }
+
+    return 'Não foi possível acessar o microfone. Verifique a permissão do navegador e do Windows.';
+  };
+
   const toggleRecording = async () => {
     if (recording && mediaRecorder) {
-      mediaRecorder.stop();
+      if (mediaRecorder.state === 'recording') mediaRecorder.stop();
       setRecording(false);
       return;
     }
 
+    if (!window.isSecureContext) {
+      toast.error('O microfone só funciona em HTTPS ou localhost.');
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('Este navegador não oferece acesso ao microfone.');
+      return;
+    }
+
+    if (typeof MediaRecorder === 'undefined') {
+      toast.error('A gravação de áudio não é suportada neste navegador.');
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      if (navigator.permissions?.query) {
+        try {
+          const permission = await navigator.permissions.query({
+            name: 'microphone' as PermissionName,
+          });
+
+          if (permission.state === 'denied') {
+            toast.error(
+              'O microfone está bloqueado. Clique no cadeado ao lado do endereço e altere Microfone para Permitir.'
+            );
+            return;
+          }
+        } catch {
+          // Alguns navegadores não implementam Permissions API para microfone.
+        }
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      microphoneStreamRef.current = stream;
+
+      const preferredMimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+      const mimeType = preferredMimeTypes.find((type) => MediaRecorder.isTypeSupported(type));
+
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       const chunks: BlobPart[] = [];
 
-      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
+
+      recorder.onerror = () => {
+        setRecording(false);
+        stopMicrophoneStream();
+        toast.error('A gravação do áudio foi interrompida pelo navegador.');
+      };
 
       recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const finalMimeType = recorder.mimeType || mimeType || 'audio/webm';
+        const blob = new Blob(chunks, { type: finalMimeType });
 
-        if (blob.size > 700 * 1024) {
-          toast.error('Áudio muito longo para o chat. Grave um áudio menor.');
-          stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        setMediaRecorder(null);
+        stopMicrophoneStream();
+
+        if (blob.size === 0) {
+          toast.error('Nenhum áudio foi capturado. Tente novamente.');
           return;
         }
 
+        if (blob.size > 700 * 1024) {
+          toast.error('Áudio muito longo para o chat. Grave um áudio menor.');
+          return;
+        }
+
+        const extension = finalMimeType.includes('ogg') ? 'ogg' : 'webm';
         const reader = new FileReader();
         reader.onload = () => {
           void sendMessage({
@@ -173,18 +279,21 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
             content: '🎤 Áudio',
             attachmentUrl: reader.result as string,
             attachmentType: 'audio',
-            attachmentName: 'audio.webm',
+            attachmentName: `audio.${extension}`,
           });
         };
         reader.readAsDataURL(blob);
-        stream.getTracks().forEach((t) => t.stop());
       };
 
       recorder.start();
       setMediaRecorder(recorder);
       setRecording(true);
-    } catch {
-      toast.error('Não foi possível acessar o microfone');
+    } catch (error) {
+      console.error('Erro ao acessar microfone:', error);
+      stopMicrophoneStream();
+      setMediaRecorder(null);
+      setRecording(false);
+      toast.error(microphoneErrorMessage(error));
     }
   };
 

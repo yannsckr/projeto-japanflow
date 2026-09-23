@@ -85,7 +85,7 @@ export const usePresence = (userId: string | null) => {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        stateRef.current.status = 'online';
+        // Atualiza o heartbeat sem sobrescrever um estado ativo, como "paused".
         void updateFirestorePresence();
       }
     };

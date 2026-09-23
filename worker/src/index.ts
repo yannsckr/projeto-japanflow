@@ -173,6 +173,33 @@ async function readAuthLink(
   };
 }
 
+async function userHasTiMasterAccess(env: Env, userId: string, idToken: string): Promise<boolean> {
+  if (!env.FIREBASE_PROJECT_ID || !userId) return false;
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/users/${encodeURIComponent(userId)}`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+
+  if (!response.ok) {
+    console.warn('ti-master-profile', response.status);
+    return false;
+  }
+
+  const document: any = await response.json().catch(() => ({}));
+  const values = document?.fields?.sectors?.arrayValue?.values || [];
+
+  return values.some(
+    (value: any) =>
+      String(value?.stringValue || '')
+        .trim()
+        .toLowerCase() === 'ti'
+  );
+}
+
 async function authenticateRequest(
   request: Request,
   env: Env
@@ -188,7 +215,15 @@ async function authenticateRequest(
       return json(request, env, { error: 'Acesso desativado' }, 403);
     }
 
-    return { uid: payload.sub, token, userId: link.userId, role: link.role };
+    const hasTiMasterAccess =
+      link.role !== 'admin' && (await userHasTiMasterAccess(env, link.userId, token));
+
+    return {
+      uid: payload.sub,
+      token,
+      userId: link.userId,
+      role: link.role === 'admin' || hasTiMasterAccess ? 'admin' : 'employee',
+    };
   } catch (error) {
     console.warn('auth', error);
     return json(request, env, { error: 'Sessão inválida ou expirada' }, 401);
@@ -1414,6 +1449,7 @@ type ScheduledTaskRecord = {
   active: boolean;
   created_by: string;
   last_created_at: string | null;
+  last_occurrence_key: string | null;
 };
 
 type ScheduledTasksRunSummary = {
@@ -1614,6 +1650,7 @@ function isScheduleDueToday(
   if (!/^\d{2}:\d{2}$/.test(schedule.schedule_time)) return false;
   if (clock.time < schedule.schedule_time) return false;
 
+  if (schedule.last_occurrence_key === clock.date) return false;
   return isoDateInSaoPaulo(schedule.last_created_at) !== clock.date;
 }
 
@@ -1666,6 +1703,7 @@ async function listScheduledTasks(env: Env, accessToken: string): Promise<Schedu
         active: row.active !== false,
         created_by: String(row.created_by || ''),
         last_created_at: row.last_created_at ? String(row.last_created_at) : null,
+        last_occurrence_key: row.last_occurrence_key ? String(row.last_occurrence_key) : null,
       });
     }
 
@@ -1707,6 +1745,33 @@ async function createFirestoreDocument(
   }
 
   return 'created';
+}
+
+async function firestoreDocumentExists(
+  env: Env,
+  accessToken: string,
+  collectionName: string,
+  documentId: string
+): Promise<boolean> {
+  if (!env.FIREBASE_PROJECT_ID) throw new Error('FIREBASE_PROJECT_ID não configurado');
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+    `/databases/(default)/documents/${encodeURIComponent(collectionName)}/${encodeURIComponent(documentId)}`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (response.status === 404) return false;
+
+  if (!response.ok) {
+    throw new Error(
+      `Firestore read ${collectionName}/${documentId} HTTP ${response.status}: ${await response.text()}`
+    );
+  }
+
+  return true;
 }
 
 async function patchScheduledTaskRun(
@@ -1790,6 +1855,13 @@ async function createScheduledTaskOccurrence(
     updated_at: { timestampValue: nowIso },
   });
 
+  // Confirma a existência da tarefa antes de criar qualquer notificação.
+  // Isso torna impossível o job considerar a notificação válida sem a ocorrência correspondente.
+  const taskExists = await firestoreDocumentExists(env, accessToken, 'tasks', taskId);
+  if (!taskExists) {
+    throw new Error(`Tarefa agendada ${taskId} não encontrada após a criação`);
+  }
+
   // Notificação interna: usa ID determinístico para não duplicar em reexecuções.
   if (schedule.assign_mode === 'employee' && schedule.assignee_id) {
     await createFirestoreDocument(env, accessToken, 'notifications', taskId, {
@@ -1804,6 +1876,13 @@ async function createScheduledTaskOccurrence(
   }
 
   await patchScheduledTaskRun(env, accessToken, schedule.id, nowIso, localDate);
+
+  console.log('scheduled-task occurrence', {
+    scheduleId: schedule.id,
+    taskId,
+    localDate,
+    taskResult,
+  });
 
   return taskResult;
 }
@@ -2216,6 +2295,283 @@ async function backfillWebpR2(request: Request, env: Env): Promise<Response> {
   }
 
   return json(request, env, { results });
+}
+
+/* ADMIN USER MANAGEMENT */
+async function adminUpdateUser(
+  request: Request,
+  env: Env,
+  caller: AuthenticatedCaller
+): Promise<Response> {
+  const denied = requireAdmin(request, env, caller);
+  if (denied) return denied;
+
+  if (!env.FIREBASE_PROJECT_ID) {
+    return json(request, env, { error: 'FIREBASE_PROJECT_ID não configurado' }, 500);
+  }
+
+  const body: any = await request.json().catch(() => ({}));
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+  const requestedUsername =
+    typeof body.username === 'string' ? normalizeUsername(body.username) : '';
+
+  if (!userId || !requestedUsername) {
+    return json(request, env, { error: 'userId e username são obrigatórios' }, 400);
+  }
+
+  try {
+    const accessToken = await getGoogleAccessToken(env);
+    const user = await getCurrentUserDocument(env, accessToken, userId);
+
+    if (!user) {
+      return json(request, env, { error: 'Usuário não encontrado' }, 404);
+    }
+
+    const authUid = String(user.auth_uid || '').trim();
+    if (!authUid) {
+      return json(request, env, { error: 'Usuário sem vínculo com Firebase Auth' }, 409);
+    }
+
+    const previousEmail = String(user.auth_email || '').trim();
+    const authEmail = authEmailForUsername(requestedUsername);
+
+    if (requestedUsername === String(user.username || '').trim() && authEmail === previousEmail) {
+      return json(request, env, {
+        ok: true,
+        userId,
+        username: requestedUsername,
+        authEmail,
+      });
+    }
+
+    const authResponse = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/accounts:update`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          localId: authUid,
+          email: authEmail,
+          returnSecureToken: false,
+        }),
+      }
+    );
+
+    const authData: any = await authResponse.json().catch(() => ({}));
+
+    if (!authResponse.ok) {
+      const code = String(authData?.error?.message || '');
+      const message =
+        code === 'EMAIL_EXISTS'
+          ? 'Esse @ já está em uso'
+          : 'Não foi possível atualizar o @ no Firebase Auth';
+      return json(request, env, { error: message }, code === 'EMAIL_EXISTS' ? 409 : 502);
+    }
+
+    const nowIso = new Date().toISOString();
+    const userUrl =
+      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+      `/databases/(default)/documents/users/${encodeURIComponent(userId)}` +
+      '?updateMask.fieldPaths=username&updateMask.fieldPaths=auth_email&updateMask.fieldPaths=updated_at';
+
+    const firestoreResponse = await fetch(userUrl, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fields: {
+          username: firestoreString(requestedUsername),
+          auth_email: firestoreString(authEmail),
+          updated_at: { timestampValue: nowIso },
+        },
+      }),
+    });
+
+    if (!firestoreResponse.ok) {
+      if (previousEmail) {
+        await fetch(
+          `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/accounts:update`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              localId: authUid,
+              email: previousEmail,
+              returnSecureToken: false,
+            }),
+          }
+        ).catch(() => undefined);
+      }
+
+      throw new Error(
+        `Firestore update username HTTP ${firestoreResponse.status}: ${await firestoreResponse.text()}`
+      );
+    }
+
+    console.log('admin-update-user', {
+      targetUserId: userId,
+      username: requestedUsername,
+      updatedBy: caller.userId,
+    });
+
+    return json(request, env, {
+      ok: true,
+      userId,
+      username: requestedUsername,
+      authEmail,
+    });
+  } catch (error) {
+    console.error('admin-update-user', error);
+    return json(
+      request,
+      env,
+      { error: error instanceof Error ? error.message : String(error) },
+      500
+    );
+  }
+}
+
+async function adminDeleteUser(
+  request: Request,
+  env: Env,
+  caller: AuthenticatedCaller
+): Promise<Response> {
+  const denied = requireAdmin(request, env, caller);
+  if (denied) return denied;
+
+  if (!env.FIREBASE_PROJECT_ID) {
+    return json(request, env, { error: 'FIREBASE_PROJECT_ID não configurado' }, 500);
+  }
+
+  const body: any = await request.json().catch(() => ({}));
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+
+  if (!userId) {
+    return json(request, env, { error: 'userId é obrigatório' }, 400);
+  }
+
+  if (userId === caller.userId) {
+    return json(request, env, { error: 'Você não pode excluir a própria conta' }, 400);
+  }
+
+  try {
+    const accessToken = await getGoogleAccessToken(env);
+    const user = await getCurrentUserDocument(env, accessToken, userId);
+
+    if (!user) {
+      return json(request, env, { error: 'Usuário não encontrado' }, 404);
+    }
+
+    const authUid = String(user.auth_uid || '').trim();
+    const nowIso = new Date().toISOString();
+    const databaseRoot = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+
+    const writes: any[] = [
+      {
+        update: {
+          name: `${databaseRoot}/users/${userId}`,
+          fields: {
+            active: { booleanValue: false },
+            deleted_at: { timestampValue: nowIso },
+            deleted_by: firestoreString(caller.userId),
+            updated_at: { timestampValue: nowIso },
+          },
+        },
+        updateMask: {
+          fieldPaths: ['active', 'deleted_at', 'deleted_by', 'updated_at'],
+        },
+      },
+    ];
+
+    if (authUid) {
+      writes.push({
+        update: {
+          name: `${databaseRoot}/auth_links/${authUid}`,
+          fields: {
+            active: { booleanValue: false },
+            updated_at: { timestampValue: nowIso },
+          },
+        },
+        updateMask: {
+          fieldPaths: ['active', 'updated_at'],
+        },
+      });
+    }
+
+    const commit = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents:commit`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ writes }),
+      }
+    );
+
+    if (!commit.ok) {
+      throw new Error(`Firestore delete-user HTTP ${commit.status}: ${await commit.text()}`);
+    }
+
+    let authDeleted = false;
+
+    if (authUid) {
+      const authResponse = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/accounts:delete`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ localId: authUid }),
+        }
+      );
+
+      const authData: any = await authResponse.json().catch(() => ({}));
+      const code = String(authData?.error?.message || '');
+
+      if (!authResponse.ok && code !== 'USER_NOT_FOUND') {
+        console.error('admin-delete-user Identity Toolkit', authResponse.status, authData);
+        return json(
+          request,
+          env,
+          {
+            error:
+              'O acesso foi desativado no JapanFlow, mas a conta Firebase Auth não pôde ser removida.',
+          },
+          502
+        );
+      }
+
+      authDeleted = true;
+    }
+
+    console.log('admin-delete-user', {
+      targetUserId: userId,
+      deletedBy: caller.userId,
+      authDeleted,
+    });
+
+    return json(request, env, { ok: true, userId, authDeleted });
+  } catch (error) {
+    console.error('admin-delete-user', error);
+    return json(
+      request,
+      env,
+      { error: error instanceof Error ? error.message : String(error) },
+      500
+    );
+  }
 }
 
 /* ADMIN ACCESS RESET */
@@ -2831,6 +3187,8 @@ export default {
           'storage-audit-report-admin',
           'backfill-webp-admin',
           'admin-users-create',
+          'admin-users-update',
+          'admin-users-delete',
           'admin-users-reset-access',
           'account-password-reset-status',
           'account-password-reset-complete',
@@ -2861,6 +3219,14 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/admin/users/create') {
       return adminCreateUser(request, env, caller);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/users/update') {
+      return adminUpdateUser(request, env, caller);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/users/delete') {
+      return adminDeleteUser(request, env, caller);
     }
 
     if (request.method === 'POST' && url.pathname === '/admin/users/reset-access') {

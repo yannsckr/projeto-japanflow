@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { collection, doc, onSnapshot, Timestamp, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { adminCreateUserApi } from '@/lib/api';
+import { adminCreateUserApi, adminDeleteUserApi, adminUpdateUserApi } from '@/lib/api';
 import { CreateUserInput, Sector, User, UserRole } from '@/types';
 
 function mapUser(id: string, data: Record<string, any>): User {
@@ -63,11 +63,20 @@ export function useFirebaseUsers(enabled = true) {
   const updateUser = useCallback(
     async (
       userId: string,
-      updates: Partial<Pick<User, 'name' | 'role' | 'sectors' | 'function' | 'active' | 'avatar'>>
+      updates: Partial<
+        Pick<User, 'name' | 'username' | 'role' | 'sectors' | 'function' | 'active' | 'avatar'>
+      >
     ) => {
       const current = users.find((user) => user.id === userId);
       const userRef = doc(db, 'users', userId);
       const dbUpdates: Record<string, unknown> = { updated_at: Timestamp.now() };
+
+      if (updates.username !== undefined) {
+        await adminUpdateUserApi({
+          userId,
+          username: updates.username,
+        });
+      }
 
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.role !== undefined) dbUpdates.role = updates.role;
@@ -93,12 +102,9 @@ export function useFirebaseUsers(enabled = true) {
     [users]
   );
 
-  const deleteUser = useCallback(
-    async (userId: string) => {
-      await updateUser(userId, { active: false });
-    },
-    [updateUser]
-  );
+  const deleteUser = useCallback(async (userId: string) => {
+    await adminDeleteUserApi({ userId });
+  }, []);
 
   const updateProfile = useCallback(
     async (userId: string, updates: { avatar?: string; backgroundColor?: string }) => {

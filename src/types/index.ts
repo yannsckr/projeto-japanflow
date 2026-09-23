@@ -13,7 +13,8 @@ export type Sector =
   | 'estoque'
   | 'financeiro'
   | 'administracao'
-  | 'garantias';
+  | 'garantias'
+  | 'ti';
 
 export const SECTOR_LABELS: Record<Sector, string> = {
   vendas: 'Vendas',
@@ -25,6 +26,7 @@ export const SECTOR_LABELS: Record<Sector, string> = {
   financeiro: 'Financeiro',
   administracao: 'Administração',
   garantias: 'Garantias',
+  ti: 'TI',
 };
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {

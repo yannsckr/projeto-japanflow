@@ -16,6 +16,7 @@ import ManageExternalAccessDialog from '@/components/ManageExternalAccessDialog'
 const AdminMonitorPage = () => {
   const {
     currentUser,
+    authLoading,
     sectorAssignEnabled,
     setSectorAssignEnabled,
     nfToCarolEnabled,
@@ -23,6 +24,10 @@ const AdminMonitorPage = () => {
     nfBoletoToCarolEnabled,
     setNfBoletoToCarolEnabled,
   } = useApp();
+
+  if (authLoading) {
+    return null;
+  }
 
   if (!currentUser || currentUser.role !== 'admin') {
     return <Navigate to="/login" replace />;

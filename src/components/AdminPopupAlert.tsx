@@ -1,27 +1,30 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
+
 import {
-  collection,
-  query,
-  orderBy,
-  where,
-  getDocs,
   addDoc,
+  collection,
+  getDocs,
   onSnapshot,
+  orderBy,
+  query,
   Timestamp,
+  where,
 } from 'firebase/firestore';
 
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
+
 import { Button } from '@/components/ui/button';
-import { Megaphone, FileIcon, Download } from 'lucide-react';
+import { Download, FileIcon, Megaphone } from 'lucide-react';
 
 interface PopupAttachment {
   url: string;
@@ -49,8 +52,28 @@ interface AdminPopupFirestore {
   target_sectors?: string[];
   target_users?: string[];
   attachments?: PopupAttachment[];
-  created_at: Timestamp;
+  created_at?: Timestamp;
 }
+
+/**
+ * Compatibilidade com pop-ups antigos que foram salvos contendo HTML.
+ * Não renderizamos HTML diretamente: convertemos para texto seguro.
+ */
+const normalizePopupContent = (value: string) => {
+  if (!value) return '';
+
+  const hasHtml = /<\/?[a-z][\s\S]*>/i.test(value);
+  if (!hasHtml) return value;
+
+  const withBreaks = value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<\/?p[^>]*>/gi, '');
+
+  const parsed = new DOMParser().parseFromString(withBreaks, 'text/html');
+
+  return parsed.body.textContent?.trim() || '';
+};
 
 const userMatchesPopup = (popup: AdminPopupRow, userId: string, userSectors: string[]) => {
   if (popup.target_mode === 'all') return true;
@@ -91,7 +114,7 @@ export default function AdminPopupAlert() {
       const data = ackDoc.data();
 
       if (data.popup_id) {
-        acked.add(data.popup_id);
+        acked.add(String(data.popup_id));
       }
     });
 
@@ -126,7 +149,7 @@ export default function AdminPopupAlert() {
   useEffect(() => {
     if (!currentUser) return;
 
-    fetchUnseen();
+    void fetchUnseen();
 
     const popupsQuery = query(collection(db, 'admin_popups'), orderBy('created_at', 'asc'));
 
@@ -192,18 +215,18 @@ export default function AdminPopupAlert() {
     <Dialog
       open={!!current}
       onOpenChange={() => {
-        // bloqueado: precisa confirmar a leitura
+        // Bloqueado: precisa confirmar a leitura.
       }}
     >
       <DialogContent
         className="max-w-2xl border-2 border-primary/40 [&>button]:hidden"
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Megaphone className="w-4 h-4 text-primary animate-pulse" />
+            <Megaphone className="h-4 w-4 animate-pulse text-primary" />
             <span>📣 Mensagem da Administração</span>
           </DialogTitle>
 
@@ -215,19 +238,19 @@ export default function AdminPopupAlert() {
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="bg-card border border-border rounded-xl p-4 max-h-[60vh] overflow-y-auto">
-            <h4 className="font-semibold text-base mb-2">{current.title}</h4>
+          <div className="max-h-[60vh] overflow-y-auto rounded-xl border border-border bg-card p-4">
+            <h4 className="mb-2 text-base font-semibold">{current.title}</h4>
 
-            <div className="text-sm whitespace-pre-wrap break-words leading-relaxed text-foreground/90">
-              {current.content}
-            </div>
+            <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground/90">
+              {normalizePopupContent(current.content)}
+            </p>
 
             {Array.isArray(current.attachments) && current.attachments.length > 0 && (
               <div className="mt-3 space-y-2">
                 {current.attachments.map((attachment, index) =>
                   attachment.type?.startsWith('image/') ? (
                     <a
-                      key={index}
+                      key={`${attachment.url}-${index}`}
                       href={attachment.url}
                       target="_blank"
                       rel="noreferrer"
@@ -241,29 +264,27 @@ export default function AdminPopupAlert() {
                     </a>
                   ) : (
                     <a
-                      key={index}
+                      key={`${attachment.url}-${index}`}
                       href={attachment.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center gap-2 p-2 bg-muted/40 border border-border rounded-lg hover:bg-muted transition-colors"
+                      className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2 transition-colors hover:bg-muted"
                     >
-                      <FileIcon className="w-4 h-4 text-primary" />
-
-                      <span className="flex-1 text-xs truncate">{attachment.name}</span>
-
-                      <Download className="w-3 h-3 text-muted-foreground" />
+                      <FileIcon className="h-4 w-4 text-primary" />
+                      <span className="flex-1 truncate text-xs">{attachment.name}</span>
+                      <Download className="h-3 w-3 text-muted-foreground" />
                     </a>
                   )
                 )}
               </div>
             )}
 
-            <p className="text-[10px] text-muted-foreground mt-3">
+            <p className="mt-3 text-[10px] text-muted-foreground">
               {new Date(current.created_at).toLocaleString('pt-BR')}
             </p>
           </div>
 
-          <p className="text-[11px] text-muted-foreground text-center">
+          <p className="text-center text-[11px] text-muted-foreground">
             Para confirmar que você leu este aviso, curta com 👍
           </p>
         </div>

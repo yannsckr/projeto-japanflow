@@ -116,8 +116,8 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
     .map((p) => p.targetValue);
 
   const assignableUsers = isAdmin
-    ? users.filter((u) => u.role === 'employee' || u.role === 'admin')
-    : users.filter((u) => allowedEmployeeIds.includes(u.id));
+    ? users.filter((u) => (u.role === 'employee' || u.role === 'admin') && u.active !== false)
+    : users.filter((u) => allowedEmployeeIds.includes(u.id) && u.active !== false);
 
   const assignableSectors = isAdmin
     ? (Object.keys(SECTOR_LABELS) as Sector[])
@@ -169,7 +169,6 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
       toast.error('Apenas imagens são permitidas');
       return;
     }
-
     if (file.size > 5 * 1024 * 1024) {
       toast.error('Imagem deve ter no máximo 5MB');
       return;
@@ -180,16 +179,11 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
         toast.error('Máximo de 10 imagens por tarefa');
         return prev;
       }
-
       return [...prev, file];
     });
 
     const reader = new FileReader();
-    reader.onload = (e) =>
-      setImagePreviews((prev) => {
-        if (prev.length >= 10) return prev;
-        return [...prev, e.target?.result as string];
-      });
+    reader.onload = (e) => setImagePreviews((prev) => [...prev, e.target?.result as string]);
     reader.readAsDataURL(file);
   }, []);
 
@@ -197,7 +191,6 @@ const CreateTaskDialog = ({ preselectedAssignee }: CreateTaskDialogProps) => {
     (e: React.ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
-
       for (const item of Array.from(items)) {
         if (item.type.startsWith('image/')) {
           const file = item.getAsFile();

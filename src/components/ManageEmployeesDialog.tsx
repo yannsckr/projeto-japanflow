@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { UserPlus, Pencil, Save, X, UserX, UserCheck, KeyRound, Copy } from 'lucide-react';
+import { UserPlus, Pencil, Save, X, KeyRound, Copy, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Sector, SECTOR_LABELS } from '@/types';
@@ -26,7 +26,20 @@ const ALL_SECTORS: Sector[] = [
   'financeiro',
   'administracao',
   'garantias',
+  'ti' as Sector,
 ];
+
+const normalizeUsername = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9._-]/g, '.')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^\.+|\.+$/g, '');
+
+const sectorLabel = (sector: Sector) => (String(sector) === 'ti' ? 'TI' : SECTOR_LABELS[sector]);
 
 const SectorPicker = ({
   selected,
@@ -56,7 +69,7 @@ const SectorPicker = ({
             onChange(checked ? [...selected, s] : selected.filter((x) => x !== s));
           }}
         />
-        {SECTOR_LABELS[s]}
+        {sectorLabel(s)}
       </label>
     ))}
   </div>
@@ -73,6 +86,7 @@ const ManageEmployeesDialog = () => {
   const [newFunction, setNewFunction] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
   const [editSectors, setEditSectors] = useState<Sector[]>([]);
   const [editFunction, setEditFunction] = useState('');
   const [saving, setSaving] = useState(false);
@@ -80,8 +94,9 @@ const ManageEmployeesDialog = () => {
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [resetEmployeeName, setResetEmployeeName] = useState('');
   const [pendingReset, setPendingReset] = useState<{ id: string; name: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
 
-  const employees = users.filter((u) => u.role === 'employee');
+  const employees = users.filter((u) => u.role === 'employee' && u.active !== false);
 
   const handleAdd = async () => {
     if (!newName.trim() || !newUsername.trim() || newPassword.length < 6) {
@@ -122,12 +137,24 @@ const ManageEmployeesDialog = () => {
   };
 
   const handleEdit = async (id: string) => {
+    const username = normalizeUsername(editUsername);
+
     if (!editName.trim()) {
       toast.error('Preencha o nome');
       return;
     }
+    if (!username) {
+      toast.error('Informe um @ de usuário válido');
+      return;
+    }
     if (editSectors.length === 0) {
       toast.error('Selecione ao menos um setor');
+      return;
+    }
+    if (
+      users.some((user) => user.id !== id && user.username.toLowerCase() === username.toLowerCase())
+    ) {
+      toast.error('Esse @ já está em uso');
       return;
     }
 
@@ -135,30 +162,32 @@ const ManageEmployeesDialog = () => {
     try {
       await updateUser(id, {
         name: editName.trim(),
+        username,
         sectors: editSectors,
         function: editFunction.trim() || undefined,
       });
       setEditingId(null);
       toast.success('Funcionário atualizado');
-    } catch {
-      toast.error('Erro ao atualizar funcionário');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao atualizar funcionário');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleToggleActive = async (id: string, active: boolean) => {
+  const handleDeleteEmployee = async () => {
+    if (!pendingDelete || saving) return;
+
     setSaving(true);
     try {
-      if (active) {
-        await deleteUser(id);
-        toast.success('Acesso desativado. O histórico foi preservado.');
-      } else {
-        await updateUser(id, { active: true });
-        toast.success('Acesso reativado.');
-      }
-    } catch {
-      toast.error('Não foi possível alterar o acesso');
+      await deleteUser(pendingDelete.id);
+      toast.success('Funcionário excluído. O histórico foi preservado.');
+      setPendingDelete(null);
+      if (editingId === pendingDelete.id) setEditingId(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Não foi possível excluir o funcionário'
+      );
     } finally {
       setSaving(false);
     }
@@ -220,6 +249,7 @@ const ManageEmployeesDialog = () => {
   const startEdit = (emp: (typeof employees)[0]) => {
     setEditingId(emp.id);
     setEditName(emp.name);
+    setEditUsername(emp.username);
     setEditSectors(emp.sectors || []);
     setEditFunction(emp.function || '');
   };
@@ -254,7 +284,20 @@ const ManageEmployeesDialog = () => {
                       onChange={(e) => setEditName(e.target.value)}
                       placeholder="Nome"
                     />
-                    <Input value={emp.username} disabled aria-label="Usuário" />
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        @
+                      </span>
+                      <Input
+                        value={editUsername}
+                        onChange={(e) => setEditUsername(e.target.value)}
+                        onBlur={() => setEditUsername(normalizeUsername(editUsername))}
+                        placeholder="usuario"
+                        aria-label="Usuário"
+                        className="pl-7"
+                        autoComplete="off"
+                      />
+                    </div>
                     <Input
                       value={editFunction}
                       onChange={(e) => setEditFunction(e.target.value)}
@@ -290,7 +333,7 @@ const ManageEmployeesDialog = () => {
                               key={s}
                               className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium"
                             >
-                              {SECTOR_LABELS[s]}
+                              {sectorLabel(s)}
                             </span>
                           ))}
                         </div>
@@ -318,19 +361,12 @@ const ManageEmployeesDialog = () => {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className={cn(
-                          'h-8 w-8',
-                          emp.active && 'text-destructive hover:text-destructive'
-                        )}
-                        onClick={() => handleToggleActive(emp.id, emp.active)}
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => setPendingDelete({ id: emp.id, name: emp.name })}
                         disabled={saving}
-                        title={emp.active ? 'Desativar acesso' : 'Reativar acesso'}
+                        title="Excluir funcionário"
                       >
-                        {emp.active ? (
-                          <UserX className="w-3.5 h-3.5" />
-                        ) : (
-                          <UserCheck className="w-3.5 h-3.5" />
-                        )}
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   </div>
@@ -395,6 +431,60 @@ const ManageEmployeesDialog = () => {
                 Novo Funcionário
               </Button>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!pendingDelete}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !saving) setPendingDelete(null);
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-2xl border-border/70 p-0">
+          <div className="border-b border-border/70 px-5 py-4">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <Trash2 className="h-4 w-4 text-destructive" />
+                Excluir funcionário
+              </DialogTitle>
+            </DialogHeader>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              O acesso de <span className="font-medium text-foreground">{pendingDelete?.name}</span>{' '}
+              será removido do Firebase Auth.
+            </p>
+          </div>
+
+          <div className="space-y-4 px-5 py-5">
+            <div className="rounded-xl border border-destructive/20 bg-destructive/[0.05] px-4 py-3">
+              <p className="text-sm font-medium text-foreground">O histórico será preservado.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Tarefas, mensagens e demais registros continuam associados ao funcionário para não
+                quebrar o histórico do JapanFlow. O perfil deixa de aparecer nas listas ativas e não
+                poderá mais entrar no sistema.
+              </p>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setPendingDelete(null)}
+                disabled={saving}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="gap-2"
+                onClick={() => void handleDeleteEmployee()}
+                disabled={!pendingDelete || saving}
+              >
+                <Trash2 className="h-4 w-4" />
+                {saving ? 'Excluindo...' : 'Excluir funcionário'}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

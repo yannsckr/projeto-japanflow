@@ -405,7 +405,10 @@ const ScheduledTasksManager = () => {
 
                       <SelectContent>
                         {users
-                          .filter((u) => u.role === 'employee' || u.role === 'admin')
+                          .filter(
+                            (u) =>
+                              (u.role === 'employee' || u.role === 'admin') && u.active !== false
+                          )
                           .map((u) => (
                             <SelectItem key={u.id} value={u.id}>
                               {u.name}

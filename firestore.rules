@@ -1,4 +1,4 @@
-rules_version = '2';
+﻿rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -22,8 +22,19 @@ service cloud.firestore {
       return hasOwnLink() && ownLink().active != false;
     }
 
+    function currentUserPath() {
+      return /databases/$(database)/documents/users/$(ownLink().user_id);
+    }
+
+    function isTiMaster() {
+      return isActive()
+        && exists(currentUserPath())
+        && ('sectors' in get(currentUserPath()).data)
+        && get(currentUserPath()).data.sectors.hasAny(['ti']);
+    }
+
     function isAdmin() {
-      return isActive() && ownLink().role == 'admin';
+      return isActive() && (ownLink().role == 'admin' || isTiMaster());
     }
 
     function currentUserId() {
@@ -71,9 +82,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Regra transitória do v1: dados operacionais continuam disponíveis para
-    // usuários ativos. Identidade, permissões e configurações ficam protegidas
-    // pelas regras específicas acima. O endurecimento por coleção entra no backlog.
+    // Regra transitÃ³ria do v1: dados operacionais continuam disponÃ­veis para
+    // usuÃ¡rios ativos. Identidade, permissÃµes e configuraÃ§Ãµes ficam protegidas
+    // pelas regras especÃ­ficas acima. O endurecimento por coleÃ§Ã£o entra no backlog.
     match /{collection}/{document=**} {
       allow read, write: if isActive()
         && collection != 'users'

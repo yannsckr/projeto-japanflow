@@ -5,10 +5,9 @@ import KanbanBoard from '@/components/KanbanBoard';
 import CreateTaskDialog from '@/components/CreateTaskDialog';
 import EmployeeCalendar from '@/components/EmployeeCalendar';
 import DailyCompletedCounter from '@/components/DailyCompletedCounter';
-import SectorTasksList from '@/components/SectorTasksList';
 import TaskHistoryDialog from '@/components/TaskHistoryDialog';
-import PickupsPanel from '@/components/PickupsPanel';
 import WorkScheduleBanner from '@/components/WorkScheduleBanner';
+import PickupsPanel from '@/components/PickupsPanel';
 
 const AdminPage = () => {
   const { currentUser, getTasksForUser } = useApp();
@@ -52,10 +51,6 @@ const AdminPage = () => {
 
       <section className="min-w-0">
         <PickupsPanel />
-      </section>
-
-      <section className="min-w-0">
-        <SectorTasksList userId={currentUser.id} />
       </section>
 
       <section className="min-w-0 overflow-hidden">

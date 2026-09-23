@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useMemo,
+} from 'react';
 import { useLocation } from 'react-router-dom';
 import { CreateUserInput } from '@/types';
 import {
@@ -35,16 +43,18 @@ interface AppContextType {
   addUser: (user: CreateUserInput) => Promise<void>;
   updateUser: (
     userId: string,
-    updates: Partial<Pick<User, 'name' | 'role' | 'sectors' | 'function' | 'active' | 'avatar'>>
+    updates: Partial<
+      Pick<User, 'name' | 'username' | 'role' | 'sectors' | 'function' | 'active' | 'avatar'>
+    >
   ) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'statusHistory'>) => void;
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'statusHistory'>) => Promise<void>;
   updateTask: (
     taskId: string,
     updates: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'deadline' | 'assigneeId'>>
   ) => void;
   deleteTask: (taskId: string) => void;
-  updateTaskStatus: (taskId: string, status: TaskStatus) => void;
+  updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>;
   updateTaskPriority: (taskId: string, priority: Priority) => void;
   claimSectorTask: (taskId: string) => void;
   sendMessage: (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
@@ -72,6 +82,37 @@ interface AppContextType {
   nfBoletoToCarolEnabled: boolean;
   setNfBoletoToCarolEnabled: (enabled: boolean) => void;
 }
+
+const normalizeTaskStatus = (value: unknown): TaskStatus => {
+  const status = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (['todo', 'to_do', 'pending', 'pendente', 'a_fazer', 'a fazer'].includes(status)) {
+    return 'todo';
+  }
+
+  if (['in_progress', 'in-progress', 'accepted', 'em_andamento', 'em andamento'].includes(status)) {
+    return 'in_progress';
+  }
+
+  if (['paused', 'pause', 'em_pausa', 'em pausa'].includes(status)) {
+    return 'paused';
+  }
+
+  if (['done', 'completed', 'complete', 'concluido', 'concluído'].includes(status)) {
+    return 'done';
+  }
+
+  // Segurança para registros antigos/incompletos: nunca deixa uma tarefa vinculada invisível no quadro.
+  return 'todo';
+};
+
+const promoteMasterUser = (user: User | null): User | null => {
+  if (!user) return null;
+  const isTiMaster = (user.sectors as unknown as string[] | undefined)?.includes('ti') === true;
+  return isTiMaster && user.role !== 'admin' ? { ...user, role: 'admin' } : user;
+};
 
 const AppContext = createContext<AppContextType | null>(null);
 
@@ -102,7 +143,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     const unsubscribe = subscribeToAuthChanges(
-      (user) => setCurrentUser(user),
+      (user) => setCurrentUser(promoteMasterUser(user)),
       () => setAuthLoading(false)
     );
 
@@ -162,7 +203,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const usersForAutoAssign = users.map((u) => ({ id: u.id, role: u.role, sectors: u.sectors }));
   const firebaseTasks = useFirebaseTasks(usersForAutoAssign, dataEnabled);
-  const tasks = firebaseTasks.tasks;
+  const tasks = useMemo(
+    () =>
+      firebaseTasks.tasks.map((task) => ({
+        ...task,
+        status: normalizeTaskStatus(task.status),
+        statusHistory: (task.statusHistory || []).map((entry) => ({
+          ...entry,
+          status: normalizeTaskStatus(entry.status),
+        })),
+      })),
+    [firebaseTasks.tasks]
+  );
 
   const firebaseCalendar = useFirebaseCalendar(dataEnabled);
   const calendarEvents = firebaseCalendar.events;
@@ -200,15 +252,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!currentUser) return;
     const updated = users.find((u) => u.id === currentUser.id);
-    if (updated && JSON.stringify(updated) !== JSON.stringify(currentUser)) {
-      setCurrentUser(updated);
+    const effectiveUser = updated ? promoteMasterUser(updated) : null;
+    if (effectiveUser && JSON.stringify(effectiveUser) !== JSON.stringify(currentUser)) {
+      setCurrentUser(effectiveUser);
     }
   }, [users, currentUser]);
 
   const login = useCallback(async (username: string, password: string) => {
     const user = await loginUser(username, password);
-    setCurrentUser(user);
-    return user;
+    const effectiveUser = promoteMasterUser(user) as User;
+    setCurrentUser(effectiveUser);
+    return effectiveUser;
   }, []);
 
   const logout = useCallback(async () => {
@@ -226,7 +280,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateUser = useCallback(
     async (
       userId: string,
-      updates: Partial<Pick<User, 'name' | 'role' | 'sectors' | 'function' | 'active' | 'avatar'>>
+      updates: Partial<
+        Pick<User, 'name' | 'username' | 'role' | 'sectors' | 'function' | 'active' | 'avatar'>
+      >
     ) => {
       await firebaseUsers.updateUser(userId, updates);
     },
@@ -249,16 +305,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const addTask = useCallback(
-    (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'statusHistory'>) => {
-      firebaseTasks.addTask(task);
-      if (task.assigneeId) {
-        firebaseNotifications.addNotification(
-          task.assigneeId,
-          `Nova tarefa atribuída: ${task.title}`,
-          'task_created'
-        );
-        sendPushToUser(task.assigneeId, 'Nova tarefa', task.title);
-      }
+    async (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'statusHistory'>) => {
+      // A tarefa precisa existir antes de qualquer notificação ser emitida.
+      await firebaseTasks.addTask(task);
+
+      if (!task.assigneeId) return;
+
+      await firebaseNotifications.addNotification(
+        task.assigneeId,
+        `Nova tarefa atribuída: ${task.title}`,
+        'task_created'
+      );
+
+      void Promise.resolve(sendPushToUser(task.assigneeId, 'Nova tarefa', task.title)).catch(
+        (error) => {
+          console.warn('Não foi possível enviar push da nova tarefa:', error);
+        }
+      );
     },
     [firebaseTasks, firebaseNotifications]
   );
@@ -281,8 +344,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const updateTaskStatus = useCallback(
-    (taskId: string, status: TaskStatus) => {
-      firebaseTasks.updateTaskStatus(taskId, status);
+    async (taskId: string, status: TaskStatus) => {
+      await firebaseTasks.updateTaskStatus(taskId, status);
     },
     [firebaseTasks]
   );
@@ -341,8 +404,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const getTasksForUser = useCallback(
-    (userId: string) => tasks.filter((t) => t.assigneeId === userId),
-    [tasks]
+    (userId: string) => {
+      const user = users.find((candidate) => candidate.id === userId);
+      const aliases = new Set(
+        [userId, user?.authUid]
+          .filter((value): value is string => Boolean(value))
+          .map((value) => value.trim())
+      );
+
+      return tasks.filter((task) => aliases.has(String(task.assigneeId || '').trim()));
+    },
+    [tasks, users]
   );
   const getSectorTasks = useCallback(
     (sector: Sector) => tasks.filter((t) => t.sector === sector && !t.assigneeId),

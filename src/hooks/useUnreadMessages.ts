@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
+
+import { db } from '@/lib/firebase';
+import { useChatPreferences } from '@/hooks/useChatPreferences';
 
 interface MessageData {
   senderId: string;
@@ -13,9 +15,16 @@ export function useUnreadMessages(currentUserIdOrUsername: string | null) {
   const [totalUnread, setTotalUnread] = useState(0);
   const [resolvedUserId, setResolvedUserId] = useState<string | null>(null);
 
-  const previousCountRef = useRef(0);
+  const previousUnreadIdsRef = useRef<Set<string>>(new Set());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const initializedRef = useRef(false);
+  const mutedPartnerIdsRef = useRef<Set<string>>(new Set());
+
+  const { mutedPartnerIds } = useChatPreferences(resolvedUserId);
+
+  useEffect(() => {
+    mutedPartnerIdsRef.current = mutedPartnerIds;
+  }, [mutedPartnerIds]);
 
   useEffect(() => {
     const audio = new Audio(
@@ -29,7 +38,7 @@ export function useUnreadMessages(currentUserIdOrUsername: string | null) {
     };
   }, []);
 
-  // Compatibilidade: algumas telas antigas passavam username; as novas podem passar id.
+  // Compatibilidade: algumas telas antigas ainda podem passar username; as novas passam id.
   useEffect(() => {
     if (!currentUserIdOrUsername) {
       setResolvedUserId(null);
@@ -37,7 +46,7 @@ export function useUnreadMessages(currentUserIdOrUsername: string | null) {
     }
 
     const unsubscribe = onSnapshot(
-      collection(db, 'app_users'),
+      collection(db, 'users'),
       (snapshot) => {
         const direct = snapshot.docs.find((userDoc) => userDoc.id === currentUserIdOrUsername);
 
@@ -64,7 +73,7 @@ export function useUnreadMessages(currentUserIdOrUsername: string | null) {
   useEffect(() => {
     if (!resolvedUserId) {
       setTotalUnread(0);
-      previousCountRef.current = 0;
+      previousUnreadIdsRef.current = new Set();
       initializedRef.current = false;
       return;
     }
@@ -77,21 +86,33 @@ export function useUnreadMessages(currentUserIdOrUsername: string | null) {
     const unsubscribe = onSnapshot(
       messagesQuery,
       (snapshot) => {
-        let unreadCount = 0;
+        const unread = snapshot.docs
+          .map((messageDoc) => ({
+            id: messageDoc.id,
+            ...(messageDoc.data() as MessageData),
+          }))
+          .filter((message) => message.read !== true && message.deleted !== true);
 
-        snapshot.forEach((messageDoc) => {
-          const message = messageDoc.data() as MessageData;
-          if (message.read !== true && message.deleted !== true) unreadCount += 1;
-        });
+        const unreadIds = new Set(unread.map((message) => message.id));
 
-        if (initializedRef.current && unreadCount > previousCountRef.current && audioRef.current) {
-          audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(() => {});
+        if (initializedRef.current && audioRef.current) {
+          const newlyUnread = unread.filter(
+            (message) => !previousUnreadIdsRef.current.has(message.id)
+          );
+
+          const hasAudibleMessage = newlyUnread.some(
+            (message) => !mutedPartnerIdsRef.current.has(String(message.senderId || ''))
+          );
+
+          if (hasAudibleMessage) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.play().catch(() => undefined);
+          }
         }
 
         initializedRef.current = true;
-        previousCountRef.current = unreadCount;
-        setTotalUnread(unreadCount);
+        previousUnreadIdsRef.current = unreadIds;
+        setTotalUnread(unread.length);
       },
       (error) => {
         console.error('Erro ao acompanhar mensagens não lidas:', error);
@@ -101,7 +122,7 @@ export function useUnreadMessages(currentUserIdOrUsername: string | null) {
     return () => {
       unsubscribe();
       initializedRef.current = false;
-      previousCountRef.current = 0;
+      previousUnreadIdsRef.current = new Set();
     };
   }, [resolvedUserId]);
 

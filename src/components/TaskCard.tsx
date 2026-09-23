@@ -27,6 +27,8 @@ const MOTOBOY_COLUMNS: TaskStatus[] = ['todo', 'in_progress', 'done'];
 interface TaskCardProps {
   task: Task;
   onClick?: () => void;
+  onSelectionClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  selected?: boolean;
   showIdleAlert?: boolean;
 }
 
@@ -39,7 +41,13 @@ const formatDuration = (ms: number) => {
   return `${mins}m`;
 };
 
-const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
+const TaskCard = ({
+  task,
+  onClick,
+  onSelectionClick,
+  selected = false,
+  showIdleAlert,
+}: TaskCardProps) => {
   const { users, getTaskMessages, currentUser, updateTaskStatus } = useApp();
   const assignee = users.find((u) => u.id === task.assigneeId);
   const creator = users.find((u) => u.id === task.createdBy);
@@ -180,6 +188,17 @@ const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
 
   const isDone = task.status === 'done';
 
+  const handleCardClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.ctrlKey || event.metaKey || event.shiftKey) && onSelectionClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      onSelectionClick(event);
+      return;
+    }
+
+    onClick?.();
+  };
+
   if (isDone) {
     return (
       <>
@@ -188,12 +207,15 @@ const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
           style={style}
           {...attributes}
           {...listeners}
-          onClick={onClick}
+          onClick={handleCardClick}
+          aria-selected={selected}
           className={cn(
             'rounded-md px-3 py-1.5 border-2 cursor-pointer transition-all hover:bg-accent/50 opacity-70',
             task.priority === 'high' && 'border-red-500',
             task.priority === 'medium' && 'border-yellow-500',
             task.priority === 'low' && 'border-green-500',
+            selected &&
+              'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-md opacity-100',
             isDragging && 'opacity-30'
           )}
         >
@@ -228,13 +250,15 @@ const TaskCard = ({ task, onClick, showIdleAlert }: TaskCardProps) => {
         style={style}
         {...attributes}
         {...listeners}
-        onClick={onClick}
+        onClick={handleCardClick}
+        aria-selected={selected}
         className={cn(
           'rounded-lg p-3.5 shadow-sm border-2 cursor-grab active:cursor-grabbing transition-all hover:shadow-md',
           task.priority === 'high' && 'border-red-500',
           task.priority === 'medium' && 'border-yellow-500',
           task.priority === 'low' && 'border-green-500',
           `priority-bg-${task.priority}`,
+          selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-md',
           isDragging && 'opacity-50 shadow-lg rotate-2',
           isIdle && isAdmin && 'ring-2 ring-destructive/50',
           hasEnderecoDiferente &&

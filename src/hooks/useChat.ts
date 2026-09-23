@@ -8,6 +8,7 @@ import {
   addDoc,
   updateDoc,
   doc,
+  getDoc,
   Timestamp,
 } from 'firebase/firestore';
 import { useApp } from '@/contexts/AppContext';
@@ -59,18 +60,26 @@ export const useChat = () => {
       try {
         await addDoc(collection(db, 'messages'), newMessage);
 
-        await addDoc(collection(db, 'notifications'), {
-          user_id: msg.receiverId,
-          message: `Nova mensagem recebida de ${currentUser.name || currentUser.username}`,
-          type: 'chat_message',
-          read: false,
-          created_at: Timestamp.now(),
-        });
+        const preferenceId = `${msg.receiverId}__${currentUser.id}`;
+        const preferenceSnapshot = await getDoc(doc(db, 'chat_preferences', preferenceId)).catch(
+          () => null
+        );
+        const mutedByReceiver = preferenceSnapshot?.data()?.muted === true;
 
-        try {
-          await sendPushToUser(msg.receiverId, 'Nova mensagem', msg.content, '/chat');
-        } catch (pushError) {
-          console.warn('Mensagem enviada, mas o push falhou:', pushError);
+        if (!mutedByReceiver) {
+          await addDoc(collection(db, 'notifications'), {
+            user_id: msg.receiverId,
+            message: `Nova mensagem recebida de ${currentUser.name || currentUser.username}`,
+            type: 'chat_message',
+            read: false,
+            created_at: Timestamp.now(),
+          });
+
+          try {
+            await sendPushToUser(msg.receiverId, 'Nova mensagem', msg.content, '/chat');
+          } catch (pushError) {
+            console.warn('Mensagem enviada, mas o push falhou:', pushError);
+          }
         }
       } catch (error) {
         console.error('Error sending message:', error);

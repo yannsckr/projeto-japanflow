@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Archive, BellOff, MessageSquare, Pin, Star, UsersRound } from 'lucide-react';
+
 import { useApp } from '@/contexts/AppContext';
 import ChatPanel from '@/components/ChatPanel';
-import GroupChatPanel from '@/components/GroupChatPanel';
 import { User, Sector, SECTOR_LABELS } from '@/types';
 import { cn } from '@/lib/utils';
-import { MessageSquare, Users, Plus, Trash2 } from 'lucide-react';
 import { useChatPreviews } from '@/hooks/useChatPreviews';
-import { useCustomGroups } from '@/hooks/useCustomGroups';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,80 +15,272 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import ConfirmActionDialog from '@/components/ConfirmActionDialog';
 import { ChatAvatar } from '@/components/ChatMedia';
 import { usePrivateTypingUsers } from '@/hooks/useTypingPresence';
-import { useGroupUnread } from '@/hooks/useGroupUnread';
+import { ChatPreference, useChatPreferences } from '@/hooks/useChatPreferences';
 
-const SECTOR_CHATS = [
-  {
-    id: 'expedicao',
-    name: 'Expedição',
-    sectors: ['expedicao', 'vendas', 'administracao'] as Sector[],
-  },
-  {
-    id: 'financeiro',
-    name: 'Financeiro',
-    sectors: ['vendas', 'financeiro', 'administracao'] as Sector[],
-  },
-];
+interface ConversationRowProps {
+  user: User;
+  preview?: {
+    partnerUsername: string;
+    lastMessageAt: string;
+    lastMessageContent: string;
+    unreadCount: number;
+  };
+  preference: ChatPreference;
+  selected: boolean;
+  typing: boolean;
+  onOpen: () => void;
+  onTogglePin: () => void;
+  onArchive: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
+}
+
+const SWIPE_THRESHOLD = 54;
+const SWIPE_LIMIT = 86;
+
+const sectorLabel = (sector: Sector) =>
+  String(sector) === 'ti' ? 'TI' : SECTOR_LABELS[sector] || String(sector);
+
+const ConversationRow = ({
+  user,
+  preview,
+  preference,
+  selected,
+  typing,
+  onOpen,
+  onTogglePin,
+  onArchive,
+  onContextMenu,
+}: ConversationRowProps) => {
+  const [offsetX, setOffsetX] = useState(0);
+  const dragStartX = useRef<number | null>(null);
+  const pointerId = useRef<number | null>(null);
+  const dragged = useRef(false);
+
+  const finishSwipe = () => {
+    if (offsetX <= -SWIPE_THRESHOLD) onTogglePin();
+    if (offsetX >= SWIPE_THRESHOLD) onArchive();
+    setOffsetX(0);
+    dragStartX.current = null;
+    pointerId.current = null;
+    window.setTimeout(() => {
+      dragged.current = false;
+    }, 0);
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-xl" onContextMenu={onContextMenu}>
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-between overflow-hidden rounded-xl">
+        <div
+          className={cn(
+            'flex h-full w-[86px] items-center justify-center gap-1.5 bg-muted text-xs font-semibold text-foreground transition-opacity',
+            offsetX > 4 ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          <Archive className="h-4 w-4" />
+          Arquivar
+        </div>
+        <div
+          className={cn(
+            'flex h-full w-[86px] items-center justify-center gap-1.5 bg-primary/12 text-xs font-semibold text-primary transition-opacity',
+            offsetX < -4 ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          <Pin className="h-4 w-4" />
+          {preference.pinned ? 'Desfixar' : 'Fixar'}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        aria-label={`Abrir conversa com ${user.name}`}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          dragStartX.current = event.clientX;
+          pointerId.current = event.pointerId;
+          dragged.current = false;
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (dragStartX.current === null || pointerId.current !== event.pointerId) return;
+          const delta = event.clientX - dragStartX.current;
+          if (Math.abs(delta) > 5) dragged.current = true;
+          setOffsetX(Math.max(-SWIPE_LIMIT, Math.min(SWIPE_LIMIT, delta)));
+        }}
+        onPointerUp={finishSwipe}
+        onPointerCancel={() => {
+          setOffsetX(0);
+          dragStartX.current = null;
+          pointerId.current = null;
+          dragged.current = false;
+        }}
+        onClick={() => {
+          if (!dragged.current) onOpen();
+        }}
+        className={cn(
+          'jf-interactive relative z-10 flex w-full items-center gap-3 rounded-xl bg-card px-3 py-2.5 text-left hover:bg-muted/45',
+          selected && 'bg-primary/[0.07] ring-1 ring-primary/15',
+          preview?.unreadCount && !selected && 'bg-primary/[0.035]'
+        )}
+        style={{
+          transform: `translateX(${offsetX}px)`,
+          transition: dragStartX.current === null ? 'transform 180ms ease-out' : 'none',
+          touchAction: 'pan-y',
+        }}
+      >
+        <ChatAvatar src={user.avatar} name={user.name} className="h-10 w-10 rounded-xl" />
+
+        <div className="min-w-0 flex-1 text-left">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p
+              className={cn(
+                'truncate text-sm text-foreground',
+                preview?.unreadCount ? 'font-bold' : 'font-medium'
+              )}
+            >
+              {user.name}
+            </p>
+            {preference.pinned && <Pin className="h-3 w-3 shrink-0 text-primary" />}
+            {preference.favorite && <Star className="h-3 w-3 shrink-0 fill-warning text-warning" />}
+            {preference.muted && <BellOff className="h-3 w-3 shrink-0 text-muted-foreground" />}
+          </div>
+
+          {preview ? (
+            <p
+              className={cn(
+                'truncate text-[11px]',
+                typing
+                  ? 'animate-pulse font-bold italic text-primary [animation-duration:1.8s]'
+                  : preview.unreadCount > 0
+                    ? 'font-semibold text-foreground'
+                    : 'text-muted-foreground'
+              )}
+            >
+              {typing ? 'Digitando...' : preview.lastMessageContent}
+            </p>
+          ) : (
+            <p
+              className={cn(
+                'truncate text-[11px]',
+                typing
+                  ? 'animate-pulse font-bold italic text-primary [animation-duration:1.8s]'
+                  : 'text-muted-foreground'
+              )}
+            >
+              {typing
+                ? 'Digitando...'
+                : user.role === 'admin'
+                  ? 'Administrador'
+                  : user.function || user.sectors?.map(sectorLabel).join(', ') || 'Funcionário'}
+            </p>
+          )}
+        </div>
+
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {preview && (
+            <span className="text-[10px] text-muted-foreground">
+              {new Date(preview.lastMessageAt).toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          )}
+          {!!preview?.unreadCount && (
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+              <Badge
+                variant="default"
+                className="flex h-5 min-w-[20px] items-center justify-center rounded-lg px-1.5 text-[10px]"
+              >
+                {preview.unreadCount > 99 ? '99+' : preview.unreadCount}
+              </Badge>
+            </div>
+          )}
+        </div>
+      </button>
+    </div>
+  );
+};
 
 const ChatPage = () => {
   const { currentUser, users } = useApp();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [selectedGroupName, setSelectedGroupName] = useState('');
-  const [tab, setTab] = useState<'private' | 'groups'>('private');
-  const { previews, markAsRead } = useChatPreviews(currentUser?.username || null);
-  const { groups: customGroups, createGroup, deleteGroup } = useCustomGroups();
-  const privateTypingUserIds = usePrivateTypingUsers(currentUser?.id);
-  const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
-  const [confirmAction, setConfirmAction] = useState<{
-    title: string;
-    description: string;
-    confirmLabel?: string;
-    destructive?: boolean;
-    action: () => void | Promise<void>;
+  const [tab, setTab] = useState<'conversations' | 'contacts'>('conversations');
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    user: User;
   } | null>(null);
 
-  const isAdmin = currentUser?.role === 'admin';
-  const currentSectors = currentUser?.sectors || [];
+  const { previews, markAsRead } = useChatPreviews(currentUser?.username || null);
+  const privateTypingUserIds = usePrivateTypingUsers(currentUser?.id);
+  const { getPreference, updatePreference } = useChatPreferences(currentUser?.id);
 
-  const accessibleSectorGroups = SECTOR_CHATS.filter(
-    (group) => Boolean(isAdmin) || currentSectors.some((sector) => group.sectors.includes(sector))
+  const activeUsers = useMemo(
+    () => users.filter((user) => user.active !== false && user.id !== currentUser?.id),
+    [users, currentUser?.id]
   );
 
-  const accessibleCustomGroups = customGroups.filter(
-    (group) =>
-      Boolean(currentUser) && (group.participants.includes(currentUser.id) || Boolean(isAdmin))
+  const previewByUsername = useMemo(
+    () => new Map(previews.map((preview) => [preview.partnerUsername, preview])),
+    [previews]
   );
-
-  const accessibleGroupIds = [
-    ...accessibleSectorGroups.map((group) => group.id),
-    ...accessibleCustomGroups.map((group) => group.id),
-  ];
-
-  const {
-    unreadByGroup,
-    totalUnread: groupUnreadTotal,
-    markGroupAsRead,
-  } = useGroupUnread(currentUser?.id, currentUser?.username, accessibleGroupIds);
 
   const privateUnreadTotal = previews.reduce((total, preview) => total + preview.unreadCount, 0);
+  const selectedPreview = selectedUser ? previewByUsername.get(selectedUser.username) : undefined;
 
-  const selectedPreview = selectedUser
-    ? previews.find((preview) => preview.partnerUsername === selectedUser.username)
-    : undefined;
+  const conversationUsers = useMemo(() => {
+    return activeUsers
+      .filter((user) => {
+        const preference = getPreference(user.id);
+        const hasConversation = previewByUsername.has(user.username);
+        return (
+          !preference.archived && (hasConversation || preference.pinned || preference.favorite)
+        );
+      })
+      .sort((a, b) => {
+        const prefA = getPreference(a.id);
+        const prefB = getPreference(b.id);
+
+        if (prefA.pinned !== prefB.pinned) return prefA.pinned ? -1 : 1;
+        if (prefA.favorite !== prefB.favorite) return prefA.favorite ? -1 : 1;
+
+        const previewA = previewByUsername.get(a.username);
+        const previewB = previewByUsername.get(b.username);
+        const timeA = previewA ? new Date(previewA.lastMessageAt || 0).getTime() : 0;
+        const timeB = previewB ? new Date(previewB.lastMessageAt || 0).getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA;
+
+        return a.name.localeCompare(b.name, 'pt-BR');
+      });
+  }, [activeUsers, getPreference, previewByUsername]);
+
+  const contactUsers = useMemo(
+    () => [...activeUsers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [activeUsers]
+  );
+
+  const archivedUsers = useMemo(
+    () =>
+      activeUsers
+        .filter((user) => getPreference(user.id).archived)
+        .sort((a, b) => {
+          const previewA = previewByUsername.get(a.username);
+          const previewB = previewByUsername.get(b.username);
+          return (
+            new Date(previewB?.lastMessageAt || 0).getTime() -
+            new Date(previewA?.lastMessageAt || 0).getTime()
+          );
+        }),
+    [activeUsers, getPreference, previewByUsername]
+  );
 
   useEffect(() => {
-    if (selectedUser && currentUser) {
-      void markAsRead(selectedUser.username);
-    }
+    if (!selectedUser || !currentUser) return;
+    void markAsRead(selectedUser.username);
   }, [
     selectedUser,
     currentUser,
@@ -99,57 +290,89 @@ const ChatPage = () => {
   ]);
 
   useEffect(() => {
-    if (selectedGroup && (unreadByGroup[selectedGroup] || 0) > 0) {
-      void markGroupAsRead(selectedGroup);
-    }
-  }, [selectedGroup, unreadByGroup, markGroupAsRead]);
+    if (!contextMenu) return;
+
+    const close = () => setContextMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+
+    window.addEventListener('click', close);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [contextMenu]);
 
   if (!currentUser) return null;
 
-  const chatPartners = users.filter((u) => u.id !== currentUser.id);
-
-  const sortedPartners = [...chatPartners].sort((a, b) => {
-    const previewA = previews.find((p) => p.partnerUsername === a.username);
-    const previewB = previews.find((p) => p.partnerUsername === b.username);
-    if (!previewA && !previewB) return 0;
-    if (!previewA) return 1;
-    if (!previewB) return -1;
-    return new Date(previewB.lastMessageAt).getTime() - new Date(previewA.lastMessageAt).getTime();
-  });
-
-  const selectPrivate = (user: User) => {
+  const openConversation = (user: User) => {
     setSelectedUser(user);
-    setSelectedGroup(null);
+    void markAsRead(user.username);
   };
 
-  const selectGroup = (groupId: string, name: string) => {
-    setSelectedGroup(groupId);
-    setSelectedGroupName(name);
-    setSelectedUser(null);
-    void markGroupAsRead(groupId);
+  const archiveConversation = async (user: User) => {
+    await updatePreference(user.id, { archived: true });
+    if (selectedUser?.id === user.id) setSelectedUser(null);
+    toast.success('Conversa arquivada');
   };
 
-  const handleCreateGroup = async () => {
-    if (!newGroupName.trim()) {
-      toast.error('Digite um nome para o grupo');
-      return;
-    }
-    if (selectedParticipants.length === 0) {
-      toast.error('Selecione ao menos um participante');
-      return;
-    }
-    // Always include the creator
-    const participants = [...new Set([currentUser.id, ...selectedParticipants])];
-    await createGroup(newGroupName.trim(), participants, currentUser.id);
-    toast.success('Grupo criado!');
-    setShowCreateGroup(false);
-    setNewGroupName('');
-    setSelectedParticipants([]);
+  const togglePin = async (user: User) => {
+    const preference = getPreference(user.id);
+    const nextPinned = !preference.pinned;
+    await updatePreference(user.id, {
+      pinned: nextPinned,
+      ...(nextPinned ? { archived: false } : {}),
+    });
+    toast.success(nextPinned ? 'Conversa fixada' : 'Conversa desfixada');
   };
 
-  const toggleParticipant = (userId: string) => {
-    setSelectedParticipants((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+  const toggleFavorite = async (user: User) => {
+    const preference = getPreference(user.id);
+    const nextFavorite = !preference.favorite;
+    await updatePreference(user.id, {
+      favorite: nextFavorite,
+      ...(nextFavorite ? { archived: false } : {}),
+    });
+    toast.success(
+      nextFavorite ? 'Conversa adicionada aos favoritos' : 'Conversa removida dos favoritos'
+    );
+  };
+
+  const toggleMuted = async (user: User) => {
+    const preference = getPreference(user.id);
+    await updatePreference(user.id, { muted: !preference.muted });
+    toast.success(preference.muted ? 'Som da conversa ativado' : 'Conversa silenciada');
+  };
+
+  const renderConversationRow = (user: User) => {
+    const preview = previewByUsername.get(user.username);
+    const preference = getPreference(user.id);
+
+    return (
+      <ConversationRow
+        key={user.id}
+        user={user}
+        preview={preview}
+        preference={preference}
+        selected={selectedUser?.id === user.id}
+        typing={privateTypingUserIds.includes(user.id)}
+        onOpen={() => openConversation(user)}
+        onTogglePin={() => void togglePin(user)}
+        onArchive={() => void archiveConversation(user)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setContextMenu({
+            x: Math.min(event.clientX, Math.max(8, window.innerWidth - 220)),
+            y: Math.min(event.clientY, Math.max(8, window.innerHeight - 140)),
+            user,
+          });
+        }}
+      />
     );
   };
 
@@ -158,7 +381,7 @@ const ChatPage = () => {
       <div
         className={cn(
           'min-h-0 flex-col overflow-hidden border-border/70 bg-card',
-          selectedUser || selectedGroup
+          selectedUser
             ? 'hidden md:flex md:w-[300px] md:min-w-[280px] md:border-r lg:w-[320px]'
             : 'flex w-full md:w-[300px] md:min-w-[280px] md:border-r lg:w-[320px]'
         )}
@@ -170,24 +393,33 @@ const ChatPage = () => {
           <div className="mt-1 flex items-center justify-between gap-3">
             <div>
               <h1 className="text-xl font-semibold tracking-tight text-foreground">Chat</h1>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Conversas privadas e grupos da equipe
-              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Conversas privadas da equipe</p>
             </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <MessageSquare className="h-4 w-4" />
-            </div>
+            <button
+              type="button"
+              onClick={() => setArchiveOpen(true)}
+              className="jf-interactive relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary hover:bg-primary/15"
+              aria-label="Abrir conversas arquivadas"
+              title="Conversas arquivadas"
+            >
+              <Archive className="h-4 w-4" />
+              {archivedUsers.length > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                  {archivedUsers.length > 99 ? '99+' : archivedUsers.length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
         <div className="flex shrink-0 gap-1 border-b border-border/70 p-2">
           <button
             type="button"
-            aria-pressed={tab === 'private'}
-            onClick={() => setTab('private')}
+            aria-pressed={tab === 'conversations'}
+            onClick={() => setTab('conversations')}
             className={cn(
               'jf-interactive flex-1 rounded-xl px-3 py-2 text-sm font-medium',
-              tab === 'private'
+              tab === 'conversations'
                 ? 'bg-primary/10 text-primary'
                 : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
             )}
@@ -203,226 +435,82 @@ const ChatPage = () => {
           </button>
           <button
             type="button"
-            aria-pressed={tab === 'groups'}
-            onClick={() => setTab('groups')}
+            aria-pressed={tab === 'contacts'}
+            onClick={() => setTab('contacts')}
             className={cn(
               'jf-interactive flex-1 rounded-xl px-3 py-2 text-sm font-medium',
-              tab === 'groups'
+              tab === 'contacts'
                 ? 'bg-primary/10 text-primary'
                 : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
             )}
           >
             <span className="inline-flex items-center justify-center gap-2">
-              Grupos
-              {groupUnreadTotal > 0 && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                  {groupUnreadTotal > 99 ? '99+' : groupUnreadTotal}
-                </span>
-              )}
+              <UsersRound className="h-3.5 w-3.5" />
+              Contatos
             </span>
           </button>
         </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {tab === 'private' ? (
-            sortedPartners.map((user) => {
-              const preview = previews.find((p) => p.partnerUsername === user.username);
-              return (
-                <button
-                  key={user.id}
-                  type="button"
-                  aria-label={`Abrir conversa com ${user.name}`}
-                  onClick={() => selectPrivate(user)}
-                  className={cn(
-                    'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
-                    selectedUser?.id === user.id &&
-                      !selectedGroup &&
-                      'bg-primary/[0.07] ring-1 ring-primary/15',
-                    preview?.unreadCount && selectedUser?.id !== user.id && 'bg-primary/[0.035]'
-                  )}
-                >
-                  <ChatAvatar src={user.avatar} name={user.name} className="h-10 w-10 rounded-xl" />
-                  <div className="min-w-0 flex-1 text-left">
-                    <p
-                      className={cn(
-                        'truncate text-sm text-foreground',
-                        preview?.unreadCount ? 'font-bold' : 'font-medium'
-                      )}
-                    >
-                      {user.name}
-                    </p>
-                    {preview ? (
-                      <p
-                        className={cn(
-                          'truncate text-[11px]',
-                          privateTypingUserIds.includes(user.id)
-                            ? 'font-bold italic text-primary animate-pulse [animation-duration:1.8s]'
-                            : preview.unreadCount > 0
-                              ? 'font-semibold text-foreground'
-                              : 'text-muted-foreground'
-                        )}
-                      >
-                        {privateTypingUserIds.includes(user.id)
-                          ? 'Digitando...'
-                          : preview.lastMessageContent}
-                      </p>
-                    ) : (
-                      <p
-                        className={cn(
-                          'text-[11px] capitalize',
-                          privateTypingUserIds.includes(user.id)
-                            ? 'font-bold italic text-primary animate-pulse [animation-duration:1.8s]'
-                            : 'text-muted-foreground'
-                        )}
-                      >
-                        {privateTypingUserIds.includes(user.id)
-                          ? 'Digitando...'
-                          : user.role === 'admin'
-                            ? 'Administrador'
-                            : 'Funcionário'}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    {preview && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {new Date(preview.lastMessageAt).toLocaleTimeString('pt-BR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    )}
-                    {preview && preview.unreadCount > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
-                        <Badge
-                          variant="default"
-                          className="flex h-5 min-w-[20px] items-center justify-center rounded-lg px-1.5 text-[10px]"
-                        >
-                          {preview.unreadCount > 99 ? '99+' : preview.unreadCount}
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })
+          {tab === 'conversations' ? (
+            conversationUsers.length > 0 ? (
+              <div className="space-y-1">{conversationUsers.map(renderConversationRow)}</div>
+            ) : (
+              <div className="flex min-h-40 flex-col items-center justify-center px-5 text-center">
+                <MessageSquare className="mb-2 h-7 w-7 text-muted-foreground/30" />
+                <p className="text-xs font-medium text-foreground">Nenhuma conversa recente</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Abra Contatos para iniciar uma conversa.
+                </p>
+              </div>
+            )
           ) : (
-            <>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setShowCreateGroup(true)}
-                  className="jf-interactive mb-1 flex w-full items-center gap-3 rounded-xl border border-dashed border-primary/25 bg-primary/[0.04] px-3 py-2.5 text-primary hover:bg-primary/[0.07]"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                    <Plus className="w-4 h-4" />
-                  </div>
-                  <p className="text-sm font-medium">Criar Novo Grupo</p>
-                </button>
-              )}
-              {accessibleSectorGroups.map((group) => (
-                <button
-                  key={group.id}
-                  type="button"
-                  aria-label={`Abrir grupo ${group.name}`}
-                  onClick={() => selectGroup(group.id, group.name)}
-                  className={cn(
-                    'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
-                    selectedGroup === group.id && 'bg-primary/[0.07] ring-1 ring-primary/15',
-                    (unreadByGroup[group.id] || 0) > 0 &&
-                      selectedGroup !== group.id &&
-                      'bg-primary/[0.035]'
-                  )}
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                    <Users className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1 text-left">
-                    <p
-                      className={cn(
-                        'truncate text-sm text-foreground',
-                        (unreadByGroup[group.id] || 0) > 0 ? 'font-bold' : 'font-medium'
-                      )}
-                    >
-                      {group.name}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {group.sectors.length} setores
-                    </p>
-                  </div>
-                  {(unreadByGroup[group.id] || 0) > 0 && (
-                    <Badge className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px]">
-                      {unreadByGroup[group.id] > 99 ? '99+' : unreadByGroup[group.id]}
-                    </Badge>
-                  )}
-                </button>
-              ))}
-              {accessibleCustomGroups.map((group) => (
-                <div
-                  key={group.id}
-                  className={cn(
-                    'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
-                    selectedGroup === group.id && 'bg-primary/[0.07] ring-1 ring-primary/15',
-                    (unreadByGroup[group.id] || 0) > 0 &&
-                      selectedGroup !== group.id &&
-                      'bg-primary/[0.035]'
-                  )}
-                >
+            <div className="space-y-1">
+              {contactUsers.map((user) => {
+                const preview = previewByUsername.get(user.username);
+                const preference = getPreference(user.id);
+                return (
                   <button
+                    key={user.id}
                     type="button"
-                    aria-label={`Abrir grupo ${group.name}`}
-                    onClick={() => selectGroup(group.id, group.name)}
-                    className="flex min-w-0 flex-1 items-center gap-3"
+                    onClick={() => openConversation(user)}
+                    className={cn(
+                      'jf-interactive flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted/45',
+                      selectedUser?.id === user.id && 'bg-primary/[0.07] ring-1 ring-primary/15'
+                    )}
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                      <Users className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1 text-left">
-                      <p
-                        className={cn(
-                          'truncate text-sm text-foreground',
-                          (unreadByGroup[group.id] || 0) > 0 ? 'font-bold' : 'font-medium'
+                    <ChatAvatar
+                      src={user.avatar}
+                      name={user.name}
+                      className="h-10 w-10 rounded-xl"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
+                        {preference.favorite && (
+                          <Star className="h-3 w-3 fill-warning text-warning" />
                         )}
-                      >
-                        {group.name}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {group.participants.length} participantes
+                      </div>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        @{user.username}
+                        {user.role === 'admin'
+                          ? ' • Administrador'
+                          : user.function
+                            ? ` • ${user.function}`
+                            : user.sectors?.length
+                              ? ` • ${user.sectors.map(sectorLabel).join(', ')}`
+                              : ''}
                       </p>
                     </div>
+                    {!!preview?.unreadCount && (
+                      <Badge className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px]">
+                        {preview.unreadCount > 99 ? '99+' : preview.unreadCount}
+                      </Badge>
+                    )}
                   </button>
-
-                  {(unreadByGroup[group.id] || 0) > 0 && (
-                    <Badge className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px]">
-                      {unreadByGroup[group.id] > 99 ? '99+' : unreadByGroup[group.id]}
-                    </Badge>
-                  )}
-
-                  {isAdmin && (
-                    <button
-                      onClick={() =>
-                        setConfirmAction({
-                          title: 'Excluir grupo',
-                          description: `O grupo "${group.name}" será excluído para todos os participantes.`,
-                          confirmLabel: 'Excluir',
-                          destructive: true,
-                          action: async () => {
-                            await deleteGroup(group.id);
-                            if (selectedGroup === group.id) setSelectedGroup(null);
-                            toast.success('Grupo excluído');
-                          },
-                        })
-                      }
-                      className="jf-interactive flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-destructive/10"
-                      type="button"
-                      aria-label={`Excluir grupo ${group.name}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
@@ -430,102 +518,127 @@ const ChatPage = () => {
       <section
         className={cn(
           'min-h-0 flex-1 flex-col overflow-hidden bg-background/20',
-          !selectedUser && !selectedGroup ? 'hidden md:flex' : 'flex'
+          !selectedUser ? 'hidden md:flex' : 'flex'
         )}
       >
-        {(selectedUser || selectedGroup) && (
+        {selectedUser && (
           <button
             type="button"
             aria-label="Voltar para a lista de conversas"
-            onClick={() => {
-              setSelectedUser(null);
-              setSelectedGroup(null);
-            }}
+            onClick={() => setSelectedUser(null)}
             className="jf-interactive flex shrink-0 items-center gap-2 border-b border-border/70 bg-card px-4 py-3 text-sm font-medium text-primary md:hidden"
           >
             ← Voltar
           </button>
         )}
         <div className="min-h-0 flex-1 overflow-hidden">
-          {selectedGroup ? (
-            <GroupChatPanel groupId={selectedGroup} groupName={selectedGroupName} />
-          ) : selectedUser ? (
+          {selectedUser ? (
             <ChatPanel otherUser={selectedUser} />
           ) : (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
               <MessageSquare className="mb-4 h-12 w-12 opacity-20" />
               <p className="text-sm font-medium text-foreground">Selecione uma conversa</p>
               <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                Escolha uma pessoa ou grupo ao lado para iniciar ou continuar uma conversa.
+                Escolha uma conversa recente ou abra a aba Contatos para falar com alguém da equipe.
               </p>
             </div>
           )}
         </div>
       </section>
 
-      {/* Create Group Dialog */}
-      <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
-        <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto rounded-2xl">
+      <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Criar Novo Grupo</DialogTitle>
+            <DialogTitle>Conversas arquivadas</DialogTitle>
             <DialogDescription>
-              Defina o nome do grupo e selecione os participantes.
+              Abra uma conversa arquivada ou restaure-a para a lista principal.
             </DialogDescription>
           </DialogHeader>
-          <Input
-            placeholder="Nome do grupo"
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-          />
-          <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Selecionar participantes:
-            </p>
-            {users
-              .filter((u) => u.id !== currentUser.id)
-              .map((user) => (
-                <label
-                  key={user.id}
-                  className="jf-interactive flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-muted/45"
-                >
-                  <Checkbox
-                    checked={selectedParticipants.includes(user.id)}
-                    onCheckedChange={() => toggleParticipant(user.id)}
-                  />
-                  <ChatAvatar src={user.avatar} name={user.name} className="h-8 w-8 rounded-lg" />
-                  <div>
-                    <p className="text-sm font-medium">{user.name}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {user.role === 'admin'
-                        ? 'Admin'
-                        : user.sectors?.map((s) => SECTOR_LABELS[s]).join(', ') || 'Sem setor'}
-                    </p>
+
+          <div className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
+            {archivedUsers.length === 0 ? (
+              <div className="flex min-h-32 items-center justify-center rounded-xl border border-dashed border-border/70 text-center text-sm text-muted-foreground">
+                Nenhuma conversa arquivada.
+              </div>
+            ) : (
+              archivedUsers.map((user) => {
+                const preview = previewByUsername.get(user.username);
+                return (
+                  <div
+                    key={user.id}
+                    className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/15 p-2.5"
+                  >
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      onClick={() => {
+                        openConversation(user);
+                        setArchiveOpen(false);
+                      }}
+                    >
+                      <ChatAvatar
+                        src={user.avatar}
+                        name={user.name}
+                        className="h-9 w-9 rounded-xl"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {preview?.lastMessageContent || `@${user.username}`}
+                        </p>
+                      </div>
+                    </button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void updatePreference(user.id, { archived: false })}
+                    >
+                      Restaurar
+                    </Button>
                   </div>
-                </label>
-              ))}
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => setShowCreateGroup(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleCreateGroup}>Criar Grupo</Button>
+                );
+              })
+            )}
           </div>
         </DialogContent>
       </Dialog>
 
-      <ConfirmActionDialog
-        open={!!confirmAction}
-        onOpenChange={(open) => !open && setConfirmAction(null)}
-        title={confirmAction?.title || 'Confirmar ação'}
-        description={confirmAction?.description || ''}
-        confirmLabel={confirmAction?.confirmLabel}
-        destructive={confirmAction?.destructive}
-        onConfirm={async () => {
-          if (!confirmAction) return;
-          await confirmAction.action();
-          setConfirmAction(null);
-        }}
-      />
+      {contextMenu && (
+        <div
+          role="menu"
+          className="fixed z-[100] w-52 overflow-hidden rounded-xl border border-border/70 bg-popover p-1.5 text-popover-foreground shadow-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              void toggleMuted(contextMenu.user);
+              setContextMenu(null);
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
+          >
+            <BellOff className="h-4 w-4" />
+            {getPreference(contextMenu.user.id).muted ? 'Ativar som' : 'Silenciar'}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              void toggleFavorite(contextMenu.user);
+              setContextMenu(null);
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
+          >
+            <Star className="h-4 w-4" />
+            {getPreference(contextMenu.user.id).favorite
+              ? 'Remover dos favoritos'
+              : 'Marcar como favorito'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

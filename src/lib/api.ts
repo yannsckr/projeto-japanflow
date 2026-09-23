@@ -186,6 +186,19 @@ export async function adminCreateUserApi(input: CreateUserInput): Promise<{ user
   return postJson<{ user: User }>('/admin/users/create', input);
 }
 
+export async function adminUpdateUserApi(input: {
+  userId: string;
+  username?: string;
+}): Promise<{ ok: boolean; userId: string; username?: string; authEmail?: string }> {
+  return postJson('/admin/users/update', input);
+}
+
+export async function adminDeleteUserApi(input: {
+  userId: string;
+}): Promise<{ ok: boolean; userId: string; authDeleted: boolean }> {
+  return postJson('/admin/users/delete', input);
+}
+
 export interface ParsedCalendarEvent {
   title: string;
   description?: string;

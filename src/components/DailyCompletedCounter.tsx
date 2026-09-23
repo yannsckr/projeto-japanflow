@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 
@@ -6,31 +7,63 @@ interface Props {
   compact?: boolean;
 }
 
-const isSameLocalDay = (value: string | undefined, ref: Date) => {
-  if (!value) return false;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return false;
-  return (
-    d.getFullYear() === ref.getFullYear() &&
-    d.getMonth() === ref.getMonth() &&
-    d.getDate() === ref.getDate()
-  );
+const SAO_PAULO_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const getSaoPauloDayKey = (value: string | Date | undefined): string | null => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return SAO_PAULO_DATE.format(date);
 };
 
 const DailyCompletedCounter = ({ userId, compact }: Props) => {
   const { tasks } = useApp();
-  const now = new Date();
-  const relevant = userId ? tasks.filter((t) => t.assigneeId === userId) : tasks;
+  const [todayKey, setTodayKey] = useState(() => getSaoPauloDayKey(new Date()));
 
-  const completedToday = relevant.filter((task) => {
-    if (task.status !== 'done') return false;
-    const doneEntries = (task.statusHistory || [])
-      .filter((h) => h.status === 'done' && h.enteredAt)
-      .sort((a, b) => new Date(a.enteredAt).getTime() - new Date(b.enteredAt).getTime());
-    const lastDone = doneEntries[doneEntries.length - 1];
-    if (lastDone?.enteredAt) return isSameLocalDay(lastDone.enteredAt, now);
-    return isSameLocalDay(task.updatedAt || task.createdAt, now);
-  }).length;
+  useEffect(() => {
+    const syncDay = () => {
+      const nextDayKey = getSaoPauloDayKey(new Date());
+      setTodayKey((current) => (current === nextDayKey ? current : nextDayKey));
+    };
+
+    syncDay();
+    const interval = window.setInterval(syncDay, 60_000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') syncDay();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  const completedToday = useMemo(() => {
+    if (!todayKey) return 0;
+
+    const relevant = userId ? tasks.filter((task) => task.assigneeId === userId) : tasks;
+
+    return relevant.filter((task) => {
+      if (task.status !== 'done') return false;
+
+      const doneEntries = (task.statusHistory || [])
+        .filter((entry) => entry.status === 'done' && entry.enteredAt)
+        .sort((a, b) => new Date(a.enteredAt).getTime() - new Date(b.enteredAt).getTime());
+
+      const lastDone = doneEntries[doneEntries.length - 1];
+      const completedAt = lastDone?.enteredAt || task.updatedAt || task.createdAt;
+
+      return getSaoPauloDayKey(completedAt) === todayKey;
+    }).length;
+  }, [tasks, todayKey, userId]);
 
   if (compact)
     return (
@@ -57,4 +90,5 @@ const DailyCompletedCounter = ({ userId, compact }: Props) => {
     </div>
   );
 };
+
 export default DailyCompletedCounter;

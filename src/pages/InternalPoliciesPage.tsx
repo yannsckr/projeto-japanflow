@@ -151,9 +151,15 @@ const InternalPoliciesPage = () => {
 
       await addDoc(collection(db, 'admin_popups'), {
         title: '📄 Nova Política Interna disponível',
-        content: `<p>Um novo documento foi disponibilizado na aba <strong>Políticas Internas</strong>:</p><p><strong>${title.trim()}</strong></p>${
-          description.trim() ? `<p>${description.trim()}</p>` : ''
-        }<p>Acesse a aba <strong>Políticas Internas</strong> no menu lateral para ler o documento.</p>`,
+        content: [
+          'Um novo documento foi disponibilizado na aba Políticas Internas:',
+          title.trim(),
+          description.trim() || null,
+          'Acesse a aba Políticas Internas no menu lateral para ler o documento.',
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+
         created_by: currentUser.id,
         target_mode: 'all',
         target_sectors: [],

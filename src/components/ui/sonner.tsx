@@ -13,11 +13,14 @@ const Toaster = ({ ...props }: ToasterProps) => {
       position="top-right"
       richColors={false}
       closeButton
+      gap={8}
+      visibleToasts={3}
       className="toaster group"
       toastOptions={{
+        duration: 2600,
         classNames: {
           toast:
-            'group toast !rounded-2xl !border-border/80 !bg-popover !text-popover-foreground !shadow-floating',
+            'group toast !rounded-2xl !border-border/80 !bg-popover !text-popover-foreground !shadow-floating !transition-[transform,opacity,height] !duration-300 !ease-out',
           title: 'group-[.toast]:font-semibold',
           description: 'group-[.toast]:text-muted-foreground',
           actionButton:

@@ -87,6 +87,9 @@ const AppSidebar = ({
   useEffect(() => {
     if (!currentUser?.id) return;
 
+    // O status manual é uma preferência de disponibilidade separada da presença de sessão.
+    setManualStatus('available');
+
     const unsubscribe = onSnapshot(
       doc(db, 'user_presence', currentUser.id),
       (snapshot) => {
@@ -110,7 +113,6 @@ const AppSidebar = ({
         {
           user_id: currentUser.id,
           manual_status: next,
-          status: next === 'available' ? 'online' : next === 'busy' ? 'busy' : 'offline',
           updated_at: Timestamp.now(),
         },
         { merge: true }
@@ -584,31 +586,30 @@ const AppSidebar = ({
             collapsed ? 'justify-center py-2.5' : 'gap-3 px-3 py-2.5'
           )}
         >
-          <button
-            type="button"
-            onClick={() => handleNav('/profile')}
-            title={collapsed ? currentUser.name : undefined}
-            className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-visible rounded-full bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground"
-            aria-label={`Abrir perfil de ${currentUser.name}`}
-          >
-            {currentUser.avatar ? (
-              <img
-                src={currentUser.avatar}
-                alt={`Foto de perfil de ${currentUser.name}`}
-                className="h-full w-full rounded-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              initials
-            )}
+          <div className="relative h-9 w-9 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleNav('/profile')}
+              title={collapsed ? currentUser.name : undefined}
+              className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground"
+              aria-label={`Abrir perfil de ${currentUser.name}`}
+            >
+              {currentUser.avatar ? (
+                <img
+                  src={currentUser.avatar}
+                  alt={`Foto de perfil de ${currentUser.name}`}
+                  className="h-full w-full rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                initials
+              )}
+            </button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
+                <button
+                  type="button"
                   className={cn(
                     'absolute -bottom-1 -right-1 h-4 w-4 cursor-pointer rounded-full border-2 border-sidebar-background shadow-sm transition-transform duration-200 hover:scale-125 focus:outline-none focus:ring-2 focus:ring-primary/40',
                     manualStatus === 'available'
@@ -637,7 +638,7 @@ const AppSidebar = ({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </button>
+          </div>
 
           {!collapsed && (
             <div className="min-w-0 flex-1">
