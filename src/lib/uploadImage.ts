@@ -25,9 +25,7 @@ export async function uploadImage(
   file: File,
   opts: UploadImageOptions = {}
 ): Promise<UploadImageResult> {
-  const toUpload = file.type.startsWith('image/')
-    ? await compressImage(file)
-    : file;
+  const toUpload = file.type.startsWith('image/') ? await compressImage(file) : file;
 
   const ext = (toUpload.name.split('.').pop() || 'bin').toLowerCase();
   const rnd = Math.random().toString(36).slice(2);
@@ -65,10 +63,7 @@ export async function uploadImage(
       updated_at: Timestamp.now(),
     });
   } catch (error) {
-    console.warn(
-      '[uploadImage] não foi possível registrar image_assets:',
-      error
-    );
+    console.warn('[uploadImage] não foi possível registrar image_assets:', error);
   }
 
   return {

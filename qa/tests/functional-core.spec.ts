@@ -1,10 +1,5 @@
 import { test, expect } from '@playwright/test';
-import {
-  assertNoHorizontalOverflow,
-  assertNoRuntimeIssues,
-  login,
-  watchRuntime,
-} from './helpers';
+import { assertNoHorizontalOverflow, assertNoRuntimeIssues, login, watchRuntime } from './helpers';
 
 async function gotoAndWatch(page: any, route: string) {
   const issues = watchRuntime(page);
@@ -54,9 +49,7 @@ test.describe('JapanFlow — Fluxos funcionais seguros', () => {
     await expect(button).toBeVisible();
     await button.click();
 
-    await expect(
-      page.getByRole('heading', { name: /Compartilhar documento/i })
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Compartilhar documento/i })).toBeVisible();
 
     await page.keyboard.press('Escape');
     await assertNoRuntimeIssues(issues, testInfo);
@@ -69,9 +62,7 @@ test.describe('JapanFlow — Fluxos funcionais seguros', () => {
     await expect(button).toBeVisible();
     await button.click();
 
-    await expect(
-      page.getByRole('heading', { name: /Registrar Premiação/i })
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Registrar Premiação/i })).toBeVisible();
 
     await page.keyboard.press('Escape');
     await assertNoRuntimeIssues(issues, testInfo);
@@ -80,9 +71,7 @@ test.describe('JapanFlow — Fluxos funcionais seguros', () => {
   test('Inventário abre relatórios', async ({ page }, testInfo) => {
     const issues = await gotoAndWatch(page, '/inventario');
 
-    await expect(
-      page.getByRole('heading', { name: /^Inventário$/i })
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Inventário$/i })).toBeVisible();
 
     const reportsButton = page
       .locator('#main-content')
