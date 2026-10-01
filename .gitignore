@@ -49,3 +49,9 @@ japanflow-firestore-inventory.zip
 qa-report/
 qa-results/
 .env.qa.local
+auth-users.json
+
+*service-account*.json
+*admin*.json
+.dev.vars
+.firebase/

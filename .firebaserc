@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "japanflow-9b196"
-  }
+    "default": "japanflow-9b196",
+    "enterprise": "japanflow-erp"
+  },
+  "targets": {},
+  "etags": {}
 }
