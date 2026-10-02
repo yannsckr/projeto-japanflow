@@ -8,5 +8,8 @@
   },
   "engines": {
     "node": "22"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^9.3.1"
   }
 }
