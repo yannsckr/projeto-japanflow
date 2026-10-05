@@ -27,8 +27,12 @@ import { useFirebaseNotifications } from '@/hooks/useFirebaseNotifications';
 import { useFirebaseUsers } from '@/hooks/useFirebaseUsers';
 import { sendPushToUser } from '@/hooks/usePushNotifications';
 import { loginUser, logoutUser, subscribeToAuthChanges } from '@/lib/authService';
-
 interface AppContextType {
+  authenticatedUser: User | null;
+  isActingAsTi: boolean;
+  canSwitchToTi: boolean;
+  switchToTi: () => void;
+  switchToRyan: () => void;
   currentUser: User | null;
   users: User[];
   usersLoading: boolean;
@@ -82,51 +86,41 @@ interface AppContextType {
   nfBoletoToCarolEnabled: boolean;
   setNfBoletoToCarolEnabled: (enabled: boolean) => void;
 }
-
 const normalizeTaskStatus = (value: unknown): TaskStatus => {
   const status = String(value ?? '')
     .trim()
     .toLowerCase();
-
   if (['todo', 'to_do', 'pending', 'pendente', 'a_fazer', 'a fazer'].includes(status)) {
     return 'todo';
   }
-
   if (['in_progress', 'in-progress', 'accepted', 'em_andamento', 'em andamento'].includes(status)) {
     return 'in_progress';
   }
-
   if (['paused', 'pause', 'em_pausa', 'em pausa'].includes(status)) {
     return 'paused';
   }
-
   if (['done', 'completed', 'complete', 'concluido', 'concluído'].includes(status)) {
     return 'done';
   }
-
   // Segurança para registros antigos/incompletos: nunca deixa uma tarefa vinculada invisível no quadro.
   return 'todo';
 };
-
 const promoteMasterUser = (user: User | null): User | null => {
   if (!user) return null;
   const isTiMaster = (user.sectors as unknown as string[] | undefined)?.includes('ti') === true;
   return isTiMaster && user.role !== 'admin' ? { ...user, role: 'admin' } : user;
 };
-
 const AppContext = createContext<AppContextType | null>(null);
-
 export const useApp = () => {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
 };
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const isLoginRoute = location.pathname === '/login';
-
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authenticatedUser, setAuthenticatedUser] = useState<User | null>(null);
+  const [actingUserId, setActingUserId] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sectorAssignEnabled, setSectorAssignEnabled] = useState<boolean>(() => {
@@ -135,27 +129,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [nfToCarolEnabled, setNfToCarolEnabledState] = useState<boolean>(false);
   const [nfBoletoToCarolEnabled, setNfBoletoToCarolEnabledState] = useState<boolean>(false);
-
   const handleSetSectorAssignEnabled = useCallback((enabled: boolean) => {
     setSectorAssignEnabled(enabled);
     localStorage.setItem('sectorAssignEnabled', String(enabled));
   }, []);
-
   useEffect(() => {
     const unsubscribe = subscribeToAuthChanges(
-      (user) => setCurrentUser(promoteMasterUser(user)),
+      (user) => {
+        setAuthenticatedUser(promoteMasterUser(user));
+        setActingUserId(null);
+      },
       () => setAuthLoading(false)
     );
-
     return () => unsubscribe();
   }, []);
-
-  const dataEnabled = Boolean(currentUser) && !isLoginRoute;
-
+  const dataEnabled = Boolean(authenticatedUser) && !isLoginRoute;
   // Monitorar configurações globais em tempo real no Firestore (app_settings)
   useEffect(() => {
     if (!dataEnabled) return;
-
     const settingsRef = doc(db, 'app_settings', 'global');
     const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -168,10 +159,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
     });
-
     return () => unsubscribe();
   }, [dataEnabled]);
-
   const persistSetting = useCallback(async (key: string, value: boolean) => {
     const settingsRef = doc(db, 'app_settings', 'global');
     await setDoc(
@@ -180,7 +169,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       { merge: true }
     );
   }, []);
-
   const handleSetNfToCarolEnabled = useCallback(
     (enabled: boolean) => {
       setNfToCarolEnabledState(enabled);
@@ -188,7 +176,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [persistSetting]
   );
-
   const handleSetNfBoletoToCarolEnabled = useCallback(
     (enabled: boolean) => {
       setNfBoletoToCarolEnabledState(enabled);
@@ -196,11 +183,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [persistSetting]
   );
-
   // Hooks do Firebase
-  const firebaseUsers = useFirebaseUsers(Boolean(currentUser));
+  const firebaseUsers = useFirebaseUsers(Boolean(authenticatedUser));
   const users = firebaseUsers.users;
-
+  const tiUser = useMemo(() => {
+    const candidates = users.filter(
+      (user) => user.active !== false && user.id !== authenticatedUser?.id
+    );
+    return (
+      candidates.find((user) => user.username?.trim().toLowerCase() === 'japan-ti') ||
+      candidates.find((user) =>
+        (user.sectors as unknown as string[] | undefined)?.includes('ti')
+      ) ||
+      null
+    );
+  }, [users, authenticatedUser?.id]);
+  const canSwitchToTi =
+    authenticatedUser?.username?.trim().toLowerCase() === 'ryan' &&
+    Boolean(tiUser) &&
+    authenticatedUser?.id !== tiUser?.id;
+  const isActingAsTi = Boolean(actingUserId && actingUserId === tiUser?.id);
+  const currentUser = useMemo(() => {
+    if (!authenticatedUser) return null;
+    if (!actingUserId) return authenticatedUser;
+    const actingUser = users.find((user) => user.id === actingUserId);
+    return actingUser ? promoteMasterUser(actingUser) : authenticatedUser;
+  }, [authenticatedUser, actingUserId, users]);
+  const switchToTi = useCallback(() => {
+    if (!canSwitchToTi || !tiUser) return;
+    setActingUserId(tiUser.id);
+  }, [canSwitchToTi, tiUser]);
+  const switchToRyan = useCallback(() => {
+    setActingUserId(null);
+  }, []);
   const usersForAutoAssign = users.map((u) => ({ id: u.id, role: u.role, sectors: u.sectors }));
   const firebaseTasks = useFirebaseTasks(usersForAutoAssign, dataEnabled);
   const tasks = useMemo(
@@ -215,30 +230,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })),
     [firebaseTasks.tasks]
   );
-
   const firebaseCalendar = useFirebaseCalendar(dataEnabled);
   const calendarEvents = firebaseCalendar.events;
-
   const firebaseNotifications = useFirebaseNotifications(dataEnabled);
   const notifications = firebaseNotifications.notifications;
-
   const prevNotifCount = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
   useEffect(() => {
     const audio = new Audio(
       'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdG2Mj5KNiYJ7dG59hoyRkIyGfHRwdX+Gi46OioR9dnFzfIaOk5KOh390bHJ7hoyRkIyGfHRwdX+Gi46OioR9dnFzfIaOk5KOh390bHJ7hoyRkIyGfHRwdX+Gi46OioR9dnFzfIaOk5KOh390bHJ7'
     );
     audioRef.current = audio;
   }, []);
-
   const playNotificationSound = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
       audioRef.current.play().catch(() => {});
     }
   }, []);
-
   useEffect(() => {
     if (!currentUser || !dataEnabled) return;
     const userNotifs = notifications.filter((n) => n.userId === currentUser.id && !n.read);
@@ -247,36 +256,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     prevNotifCount.current = userNotifs.length;
   }, [notifications, currentUser, playNotificationSound, dataEnabled]);
-
-  // Sincronizar currentUser quando a lista de usuários atualizar
+  // Sincronizar o usuário autenticado real quando a lista de usuários atualizar.
+  // O perfil operacional (currentUser) é derivado separadamente e pode ser TI.
   useEffect(() => {
-    if (!currentUser) return;
-    const updated = users.find((u) => u.id === currentUser.id);
-    const effectiveUser = updated ? promoteMasterUser(updated) : null;
-    if (effectiveUser && JSON.stringify(effectiveUser) !== JSON.stringify(currentUser)) {
-      setCurrentUser(effectiveUser);
+    if (!authenticatedUser) return;
+    const updated = users.find((user) => user.id === authenticatedUser.id);
+    const refreshedUser = updated ? promoteMasterUser(updated) : null;
+    if (refreshedUser && JSON.stringify(refreshedUser) !== JSON.stringify(authenticatedUser)) {
+      setAuthenticatedUser(refreshedUser);
     }
-  }, [users, currentUser]);
-
+  }, [users, authenticatedUser]);
   const login = useCallback(async (username: string, password: string) => {
     const user = await loginUser(username, password);
     const effectiveUser = promoteMasterUser(user) as User;
-    setCurrentUser(effectiveUser);
+    setAuthenticatedUser(effectiveUser);
+    setActingUserId(null);
     return effectiveUser;
   }, []);
-
   const logout = useCallback(async () => {
-    setCurrentUser(null);
+    setAuthenticatedUser(null);
+    setActingUserId(null);
     await logoutUser();
   }, []);
-
   const addUser = useCallback(
     async (user: CreateUserInput) => {
       await firebaseUsers.addUser(user);
     },
     [firebaseUsers]
   );
-
   const updateUser = useCallback(
     async (
       userId: string,
@@ -288,14 +295,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [firebaseUsers]
   );
-
   const deleteUser = useCallback(
     async (userId: string) => {
       await firebaseUsers.deleteUser(userId);
     },
     [firebaseUsers]
   );
-
   const updateProfile = useCallback(
     async (updates: { avatar?: string; backgroundColor?: string }) => {
       if (!currentUser) return;
@@ -303,20 +308,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [currentUser, firebaseUsers]
   );
-
   const addTask = useCallback(
     async (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'statusHistory'>) => {
       // A tarefa precisa existir antes de qualquer notificação ser emitida.
       await firebaseTasks.addTask(task);
-
       if (!task.assigneeId) return;
-
       await firebaseNotifications.addNotification(
         task.assigneeId,
         `Nova tarefa atribuída: ${task.title}`,
         'task_created'
       );
-
       void Promise.resolve(sendPushToUser(task.assigneeId, 'Nova tarefa', task.title)).catch(
         (error) => {
           console.warn('Não foi possível enviar push da nova tarefa:', error);
@@ -325,7 +326,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [firebaseTasks, firebaseNotifications]
   );
-
   const updateTask = useCallback(
     (
       taskId: string,
@@ -335,28 +335,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [firebaseTasks]
   );
-
   const deleteTask = useCallback(
     (taskId: string) => {
       firebaseTasks.deleteTask(taskId);
     },
     [firebaseTasks]
   );
-
   const updateTaskStatus = useCallback(
     async (taskId: string, status: TaskStatus) => {
       await firebaseTasks.updateTaskStatus(taskId, status);
     },
     [firebaseTasks]
   );
-
   const updateTaskPriority = useCallback(
     (taskId: string, priority: Priority) => {
       firebaseTasks.updateTaskPriority(taskId, priority);
     },
     [firebaseTasks]
   );
-
   const claimSectorTask = useCallback(
     (taskId: string) => {
       if (!currentUser) return;
@@ -364,7 +360,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [currentUser, firebaseTasks]
   );
-
   const sendMessage = useCallback(
     (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => {
       const newMsg: ChatMessage = {
@@ -383,26 +378,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [firebaseNotifications]
   );
-
   const editMessage = useCallback((msgId: string, newContent: string) => {
     setMessages((prev) =>
       prev.map((m) => (m.id === msgId ? { ...m, content: newContent, edited: true } : m))
     );
   }, []);
-
   const deleteMessage = useCallback((msgId: string) => {
     setMessages((prev) =>
       prev.map((m) => (m.id === msgId ? { ...m, deleted: true, content: 'Mensagem apagada' } : m))
     );
   }, []);
-
   const markNotificationRead = useCallback(
     (id: string) => {
       firebaseNotifications.markRead(id);
     },
     [firebaseNotifications]
   );
-
   const getTasksForUser = useCallback(
     (userId: string) => {
       const user = users.find((candidate) => candidate.id === userId);
@@ -411,7 +402,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .filter((value): value is string => Boolean(value))
           .map((value) => value.trim())
       );
-
       return tasks.filter((task) => aliases.has(String(task.assigneeId || '').trim()));
     },
     [tasks, users]
@@ -420,7 +410,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (sector: Sector) => tasks.filter((t) => t.sector === sector && !t.assigneeId),
     [tasks]
   );
-
   const getMessagesForChat = useCallback(
     (userId1: string, userId2: string) => {
       return messages
@@ -435,7 +424,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [messages]
   );
-
   const getTaskMessages = useCallback(
     (taskId: string) => {
       return messages
@@ -444,7 +432,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [messages]
   );
-
   const getGroupMessages = useCallback(
     (groupId: string) => {
       return messages
@@ -453,39 +440,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [messages]
   );
-
   const addCalendarEvent = useCallback(
     (event: Omit<CalendarEvent, 'id' | 'createdAt'>) => {
       firebaseCalendar.addEvent(event);
     },
     [firebaseCalendar]
   );
-
   const updateCalendarEvent = useCallback(
     (eventId: string, updates: Partial<Omit<CalendarEvent, 'id' | 'createdAt' | 'createdBy'>>) => {
       firebaseCalendar.updateEvent(eventId, updates);
     },
     [firebaseCalendar]
   );
-
   const deleteCalendarEvent = useCallback(
     (eventId: string) => {
       firebaseCalendar.deleteEvent(eventId);
     },
     [firebaseCalendar]
   );
-
   const getEventsForUser = useCallback(
     (userId: string) => {
       return firebaseCalendar.getEventsForUser(userId);
     },
     [firebaseCalendar]
   );
-
   return (
     <AppContext.Provider
       value={{
+        authenticatedUser,
         currentUser,
+        isActingAsTi,
+        canSwitchToTi,
+        switchToTi,
+        switchToRyan,
         authLoading,
         users,
         usersLoading: firebaseUsers.loading,

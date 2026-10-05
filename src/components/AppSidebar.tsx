@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
+import { useSystemNotifications } from '@/hooks/useSystemNotifications';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  Bell,
   ChevronRight,
   LayoutGrid,
   LogOut,
@@ -11,7 +13,6 @@ import {
   Users,
   Wrench,
 } from 'lucide-react';
-
 import { cn } from '@/lib/utils';
 import JapanFlowIcon, { JapanFlowIconName } from '@/components/JapanFlowIcon';
 import logoDark from '@/assets/japanflow-logo-dark.png';
@@ -35,20 +36,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
 interface AppSidebarProps {
   onNavigate?: () => void;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   mobile?: boolean;
 }
-
 type NavItem = {
   icon: JapanFlowIconName;
   label: string;
   path: string;
 };
-
 const primaryPaths = new Set([
   '/admin',
   '/board',
@@ -57,17 +55,30 @@ const primaryPaths = new Set([
   '/corporate',
   '/departmental',
 ]);
-
 const AppSidebar = ({
   onNavigate,
   collapsed = false,
   onCollapsedChange,
   mobile = false,
 }: AppSidebarProps) => {
-  const { currentUser, logout, users } = useApp();
+  const {
+    currentUser,
+    authenticatedUser,
+    logout,
+    users,
+    canSwitchToTi,
+    isActingAsTi,
+    switchToTi,
+    switchToRyan,
+  } = useApp();
+  const {
+    notifications: systemNotifications,
+    unreadCount: systemUnreadCount,
+    markAsRead: markSystemNotificationAsRead,
+  } = useSystemNotifications();
   const navigate = useNavigate();
   const location = useLocation();
-
+  const presenceUserId = authenticatedUser?.id || currentUser?.id || null;
   const { totalUnread } = useUnreadMessages(currentUser?.id || null);
   const { getStatus } = useAllPresences();
   const { isTabEnabled } = useTabPermissions();
@@ -75,7 +86,6 @@ const AppSidebar = ({
   const { theme } = useThemeToggle();
   const sidebarLogo = theme === 'light' ? logoLight : logoDark;
   const sidebarMark = theme === 'light' ? markLight : markDark;
-
   const [primaryOpen, setPrimaryOpen] = useState(true);
   const [operationOpen, setOperationOpen] = useState(true);
   const [toolsOpen, setToolsOpen] = useState(true);
@@ -83,15 +93,12 @@ const AppSidebar = ({
   const [manualStatus, setManualStatus] = useState<'available' | 'busy' | 'unavailable'>(
     'available'
   );
-
   useEffect(() => {
-    if (!currentUser?.id) return;
-
+    if (!presenceUserId) return;
     // O status manual é uma preferência de disponibilidade separada da presença de sessão.
     setManualStatus('available');
-
     const unsubscribe = onSnapshot(
-      doc(db, 'user_presence', currentUser.id),
+      doc(db, 'user_presence', presenceUserId),
       (snapshot) => {
         const value = snapshot.data()?.manual_status;
         if (value === 'available' || value === 'busy' || value === 'unavailable') {
@@ -100,18 +107,16 @@ const AppSidebar = ({
       },
       () => undefined
     );
-
     return unsubscribe;
-  }, [currentUser?.id]);
-
+  }, [presenceUserId]);
   const updateManualStatus = async (next: 'available' | 'busy' | 'unavailable') => {
+    if (!presenceUserId) return;
     setManualStatus(next);
-
     try {
       await setDoc(
-        doc(db, 'user_presence', currentUser.id),
+        doc(db, 'user_presence', presenceUserId),
         {
-          user_id: currentUser.id,
+          user_id: presenceUserId,
           manual_status: next,
           updated_at: Timestamp.now(),
         },
@@ -121,20 +126,16 @@ const AppSidebar = ({
       console.warn('Não foi possível atualizar o status manual:', error);
     }
   };
-
   if (!currentUser) return null;
-
   const isAdmin = currentUser.role === 'admin';
   const dashboardPath = isAdmin ? '/admin' : '/board';
   const isFinanceiro = currentUser.sectors?.includes('financeiro' as Sector);
   const isMotoboy = currentUser.sectors?.includes('motoboys' as Sector);
   const isPatricia = currentUser.id === 'emp-1';
-
   const employees = users.filter((user) => user.role === 'employee' && user.active !== false);
   const admins = users.filter(
     (user) => user.role === 'admin' && user.active !== false && user.id !== currentUser.id
   );
-
   const baseItems: NavItem[] = isAdmin
     ? [
         { icon: 'meu-quadro', label: 'Meu Quadro', path: '/admin' },
@@ -149,35 +150,26 @@ const AppSidebar = ({
         { icon: 'corporativo', label: 'Corporativo', path: '/corporate' },
         { icon: 'departamental', label: 'Departamental', path: '/departmental' },
       ];
-
   const defaultFinancial = isAdmin || isFinanceiro;
   const defaultCorridas = isAdmin || isMotoboy || isFinanceiro || isPatricia;
   const defaultTracking = true;
-
   const canSeeFinancial = isAdmin || isTabEnabled(currentUser.id, 'financial', defaultFinancial);
   const canSeeCorridas = isAdmin || isTabEnabled(currentUser.id, 'corridas', defaultCorridas);
   const canSeeTracking = isAdmin || isTabEnabled(currentUser.id, 'tracking', defaultTracking);
-
   if (canSeeFinancial) {
     baseItems.push({ icon: 'financeiro', label: 'Financeiro', path: '/financial' });
   }
-
   if (canSeeCorridas) {
     baseItems.push({ icon: 'corridas', label: 'Corridas', path: '/corridas' });
   }
-
   if (canSeeTracking) {
     baseItems.push({ icon: 'acompanhamento', label: 'Acompanhamento', path: '/tracking' });
   }
-
   const AWARDS_USERS = ['emp-6', 'emp-7', 'emp-4', 'emp-8', 'emp-10', 'emp-3', 'emp-11'];
-
   if (isAdmin || AWARDS_USERS.includes(currentUser.id)) {
     baseItems.push({ icon: 'premiacoes', label: 'Premiações', path: '/awards' });
   }
-
   const isAdminSector = isAdmin || currentUser.sectors?.includes('administracao' as Sector);
-
   if (isAdminSector) {
     baseItems.push({
       icon: 'pedido-de-compras',
@@ -185,11 +177,9 @@ const AppSidebar = ({
       path: '/pedido-compras',
     });
   }
-
   const isCompras = currentUser.sectors?.includes('compras' as Sector);
   const isEstoque = currentUser.sectors?.includes('estoque' as Sector);
   const isVendas = currentUser.sectors?.includes('vendas' as Sector);
-
   if (isAdmin || isCompras || isEstoque || isVendas) {
     baseItems.push({
       icon: 'encomendas-balcao',
@@ -197,18 +187,15 @@ const AppSidebar = ({
       path: '/encomendas-balcao',
     });
   }
-
   if (isAdmin || isEstoque || currentUser.id === 'emp-10') {
     baseItems.push({ icon: 'inventario', label: 'Inventário', path: '/inventario' });
   }
-
   baseItems.push({ icon: 'documentos', label: 'Documentos', path: '/documentos' });
   baseItems.push({
     icon: 'politicas-internas',
     label: 'Políticas Internas',
     path: '/politicas-internas',
   });
-
   if (isAdminSector) {
     baseItems.push({
       icon: 'historico-de-conversas',
@@ -216,9 +203,7 @@ const AppSidebar = ({
       path: '/historico-conversas',
     });
   }
-
   baseItems.push({ icon: 'perfil', label: 'Perfil', path: '/profile' });
-
   if (isAdmin) {
     baseItems.push({ icon: 'relatorios', label: 'Relatórios', path: '/time-reports' });
     baseItems.push({
@@ -227,24 +212,19 @@ const AppSidebar = ({
       path: '/admin/backfill-images',
     });
   }
-
   const primaryItems = baseItems.filter((item) => primaryPaths.has(item.path));
   const operationItems = baseItems.filter((item) => !primaryPaths.has(item.path));
-
   const isActive = (path: string) => location.pathname === path;
-
   const handleNav = (path: string) => {
     navigate(path);
     onNavigate?.();
   };
-
   const initials = currentUser.name
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0])
     .join('');
-
   const renderNavItem = (item: NavItem) => (
     <button
       key={item.path}
@@ -262,9 +242,7 @@ const AppSidebar = ({
       aria-label={collapsed ? item.label : undefined}
     >
       <JapanFlowIcon name={item.icon} className="h-[22px] w-[22px]" />
-
       {!collapsed && <span className="truncate">{item.label}</span>}
-
       {item.path === '/chat' && totalUnread > 0 && !isActive('/chat') && (
         <span
           className={cn(
@@ -277,10 +255,8 @@ const AppSidebar = ({
       )}
     </button>
   );
-
   const renderPerson = (person: (typeof users)[number], clickable: boolean, subtitle?: string) => {
     const status = getStatus(person.id);
-
     const content = (
       <>
         <div className="relative shrink-0">
@@ -292,7 +268,6 @@ const AppSidebar = ({
               .map((part) => part[0])
               .join('')}
           </div>
-
           <span
             className={cn(
               'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar-background',
@@ -304,7 +279,6 @@ const AppSidebar = ({
             )}
           />
         </div>
-
         <div className="min-w-0 flex-1 text-left">
           <span className="block truncate text-xs text-sidebar-foreground">{person.name}</span>
           <span className="block truncate text-[10px] text-sidebar-foreground/45">
@@ -317,11 +291,9 @@ const AppSidebar = ({
                     : 'Funcionário'))}
           </span>
         </div>
-
         {clickable && <ChevronRight className="h-3 w-3 shrink-0 opacity-35" />}
       </>
     );
-
     if (!clickable) {
       return (
         <div key={person.id} className="flex items-center gap-2.5 rounded-xl px-2.5 py-2">
@@ -329,7 +301,6 @@ const AppSidebar = ({
         </div>
       );
     }
-
     return (
       <button
         key={person.id}
@@ -344,7 +315,6 @@ const AppSidebar = ({
       </button>
     );
   };
-
   return (
     <aside
       className={cn(
@@ -376,7 +346,6 @@ const AppSidebar = ({
                 className="h-10 w-10 object-contain"
               />
             </button>
-
             {!mobile && (
               <button
                 type="button"
@@ -404,7 +373,6 @@ const AppSidebar = ({
                 className="h-9 w-auto max-w-[148px] object-contain transition-opacity duration-300"
               />
             </button>
-
             {!mobile && (
               <button
                 type="button"
@@ -419,7 +387,6 @@ const AppSidebar = ({
           </>
         )}
       </div>
-
       <nav
         className={cn(
           'min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3 pt-3 [scrollbar-gutter:stable]',
@@ -441,11 +408,9 @@ const AppSidebar = ({
             />
           </button>
         )}
-
         {(collapsed || primaryOpen) && (
           <div className="space-y-0.5">{primaryItems.map(renderNavItem)}</div>
         )}
-
         {operationItems.length > 0 && (
           <>
             {!collapsed && (
@@ -465,19 +430,15 @@ const AppSidebar = ({
                 />
               </button>
             )}
-
             {collapsed && <div className="my-2 h-px bg-sidebar-border" />}
-
             {(collapsed || operationOpen) && (
               <div className="space-y-0.5">{operationItems.map(renderNavItem)}</div>
             )}
           </>
         )}
-
         {!collapsed && (
           <>
             <div className="my-3 h-px bg-sidebar-border/80" />
-
             <button
               type="button"
               onClick={() => setToolsOpen((value) => !value)}
@@ -490,7 +451,6 @@ const AppSidebar = ({
                 className={cn('ml-auto h-3.5 w-3.5 transition-transform', toolsOpen && 'rotate-90')}
               />
             </button>
-
             {toolsOpen && (
               <div className="space-y-0.5">
                 <PersonalNotesDialog
@@ -502,7 +462,6 @@ const AppSidebar = ({
                     </button>
                   }
                 />
-
                 {(isAdmin ||
                   currentUser.sectors?.includes('vendas' as Sector) ||
                   currentUser.id === 'emp-1' ||
@@ -519,9 +478,7 @@ const AppSidebar = ({
                 )}
               </div>
             )}
-
             <div className="my-3 h-px bg-sidebar-border/80" />
-
             <button
               type="button"
               onClick={() => setTeamOpen((value) => !value)}
@@ -534,7 +491,6 @@ const AppSidebar = ({
                 className={cn('ml-auto h-3.5 w-3.5 transition-transform', teamOpen && 'rotate-90')}
               />
             </button>
-
             {teamOpen && (
               <div className="mt-2 space-y-1 pl-1">
                 {isAdmin ? (
@@ -545,7 +501,6 @@ const AppSidebar = ({
                       </p>
                     )}
                     {admins.map((admin) => renderPerson(admin, true, 'Administrador'))}
-
                     {employees.length > 0 && (
                       <p className="px-3 pb-1 pt-3 text-[9px] font-semibold uppercase tracking-wider text-sidebar-foreground/30">
                         Equipe
@@ -562,7 +517,6 @@ const AppSidebar = ({
             )}
           </>
         )}
-
         {collapsed && (
           <>
             <div className="my-3 h-px bg-sidebar-border" />
@@ -578,7 +532,6 @@ const AppSidebar = ({
           </>
         )}
       </nav>
-
       <div className="sticky bottom-0 z-10 shrink-0 border-t border-sidebar-border/80 bg-sidebar-background/95 p-2 backdrop-blur-md">
         <div
           className={cn(
@@ -605,7 +558,6 @@ const AppSidebar = ({
                 initials
               )}
             </button>
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -622,7 +574,6 @@ const AppSidebar = ({
                   title="Alterar status"
                 />
               </DropdownMenuTrigger>
-
               <DropdownMenuContent side="top" align="start" className="w-44">
                 <DropdownMenuItem onClick={() => void updateManualStatus('available')}>
                   <span className="mr-2 h-2.5 w-2.5 rounded-full bg-success" />
@@ -639,7 +590,6 @@ const AppSidebar = ({
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <button
@@ -658,7 +608,86 @@ const AppSidebar = ({
               </button>
             </div>
           )}
-
+          {canSwitchToTi && !collapsed && (
+            <button
+              type="button"
+              onClick={isActingAsTi ? switchToRyan : switchToTi}
+              className={cn(
+                'jf-interactive shrink-0 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition-colors',
+                isActingAsTi
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-sidebar-border text-sidebar-foreground/70 hover:bg-sidebar-accent'
+              )}
+              aria-label={isActingAsTi ? 'Voltar para o perfil Ryan' : 'Entrar no perfil TI'}
+              title="Alternar perfil operacional"
+            >
+              {isActingAsTi ? 'Voltar Ryan' : 'Modo TI'}
+            </button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="jf-interactive relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                aria-label="Notificações do sistema"
+                title="Notificações"
+              >
+                <Bell className="h-[18px] w-[18px]" />
+                {systemUnreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                    {systemUnreadCount > 99 ? '99+' : systemUnreadCount}
+                  </span>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="end"
+              className="max-h-[360px] w-[320px] overflow-y-auto"
+            >
+              {systemNotifications.length === 0 ? (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  Nenhuma notificação
+                </div>
+              ) : (
+                systemNotifications.slice(0, 20).map((notification) => (
+                  <DropdownMenuItem
+                    key={notification.id}
+                    className="flex cursor-pointer flex-col items-start gap-1 px-3 py-3"
+                    onClick={() => void markSystemNotificationAsRead(notification.id)}
+                  >
+                    <div className="flex w-full items-start gap-2">
+                      <span
+                        className={cn(
+                          'mt-1 h-2.5 w-2.5 shrink-0 rounded-full',
+                          notification.severity === 'critical'
+                            ? 'bg-destructive'
+                            : notification.severity === 'warning'
+                              ? 'bg-orange-500'
+                              : notification.severity === 'attention'
+                                ? 'bg-yellow-500'
+                                : 'bg-primary'
+                        )}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={cn(
+                            'text-xs',
+                            notification.read ? 'font-medium' : 'font-semibold'
+                          )}
+                        >
+                          {notification.title}
+                        </p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                          {notification.message}
+                        </p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {!collapsed && (
             <button
               type="button"
@@ -678,5 +707,4 @@ const AppSidebar = ({
     </aside>
   );
 };
-
 export default AppSidebar;
