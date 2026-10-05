@@ -1,8 +1,13 @@
 import http from 'node:http';
 import { Firestore, FieldValue } from '@google-cloud/firestore';
+import monitoring from '@google-cloud/monitoring';
+import { DateTime } from 'luxon';
 
 const port = Number(process.env.PORT || 8080);
+const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || 'japanflow-erp';
+
 const db = new Firestore();
+const monitoringClient = new monitoring.MetricServiceClient();
 
 function json(res, status, body) {
   res.writeHead(status, {
@@ -37,14 +42,12 @@ function decodePubSub(body) {
 async function findRecipients() {
   const recipients = new Map();
 
-  // Ryan recebe os alertas independentemente do setor.
   const ryan = await db.collection('users').where('username', '==', 'ryan').get();
 
   ryan.forEach((doc) => {
     recipients.set(doc.id, doc.data());
   });
 
-  // Todos os usuários do setor TI também recebem.
   const ti = await db.collection('users').where('sectors', 'array-contains', 'ti').get();
 
   ti.forEach((doc) => {
@@ -55,7 +58,6 @@ async function findRecipients() {
 }
 
 function severityFromPercentage(percentage) {
-  if (percentage >= 1) return 'critical';
   if (percentage >= 0.9) return 'critical';
   if (percentage >= 0.75) return 'warning';
   if (percentage >= 0.5) return 'attention';
@@ -63,7 +65,7 @@ function severityFromPercentage(percentage) {
   return 'info';
 }
 
-function titleFromPercentage(percentage) {
+function billingTitle(percentage) {
   if (percentage >= 100) {
     return 'Limite de orçamento atingido';
   }
@@ -75,7 +77,7 @@ function titleFromPercentage(percentage) {
   return `Orçamento Google em ${percentage}%`;
 }
 
-function messageFromPercentage(percentage, cost, budgetAmount) {
+function billingMessage(percentage, cost, budgetAmount) {
   if (percentage <= 1) {
     return (
       'O Google Cloud começou a registrar cobrança no JapanFlow. ' +
@@ -103,8 +105,6 @@ async function handleBudgetAlert(req, res) {
     const budgetAmount = Number(budget.budgetAmount || 100);
     const percentage = Math.round(threshold * 100);
 
-    // Mensagens do Billing que não representam um threshold configurado
-    // são reconhecidas sem gerar notificação interna.
     if (!percentage) {
       return json(res, 204, {});
     }
@@ -128,26 +128,17 @@ async function handleBudgetAlert(req, res) {
 
       batch.set(ref, {
         recipient_user_id: userId,
-
         type: 'billing_budget',
         source: 'google-cloud',
-
-        title: titleFromPercentage(percentage),
-
-        message: messageFromPercentage(percentage, cost, budgetAmount),
-
+        title: billingTitle(percentage),
+        message: billingMessage(percentage, cost, budgetAmount),
         severity: severityFromPercentage(threshold),
-
         budget_percentage: percentage,
         cost_amount: cost,
         budget_amount: budgetAmount,
-
         currency: budget.currencyCode || 'BRL',
-
         budget_name: budget.budgetDisplayName || 'JapanFlow',
-
         read: false,
-
         created_at: FieldValue.serverTimestamp(),
       });
     }
@@ -176,6 +167,248 @@ async function handleBudgetAlert(req, res) {
   }
 }
 
+const FREE_TIER_METRICS = [
+  {
+    key: 'reads',
+    label: 'leituras',
+    metricType: 'firestore.googleapis.com/document/read_count',
+    limit: 50000,
+  },
+  {
+    key: 'writes',
+    label: 'gravações',
+    metricType: 'firestore.googleapis.com/document/write_count',
+    limit: 20000,
+  },
+  {
+    key: 'deletes',
+    label: 'exclusões',
+    metricType: 'firestore.googleapis.com/document/delete_ops_count',
+    limit: 20000,
+  },
+];
+
+const FREE_TIER_THRESHOLDS = [50, 75, 90, 100];
+
+function getPacificDayWindow() {
+  const now = DateTime.now().setZone('America/Los_Angeles');
+  const start = now.startOf('day');
+
+  return {
+    dayKey: now.toFormat('yyyy-LL-dd'),
+    start: start.toUTC(),
+    end: now.toUTC(),
+  };
+}
+
+function pointNumericValue(point) {
+  const value = point?.value;
+
+  if (!value) return 0;
+
+  if (value.int64Value !== undefined && value.int64Value !== null) {
+    return Number(value.int64Value);
+  }
+
+  if (value.doubleValue !== undefined && value.doubleValue !== null) {
+    return Number(value.doubleValue);
+  }
+
+  return 0;
+}
+
+async function readMetricUsage(metricType, start, end) {
+  const name = monitoringClient.projectPath(projectId);
+
+  const [timeSeries] = await monitoringClient.listTimeSeries({
+    name,
+    filter: `metric.type="${metricType}"`,
+    interval: {
+      startTime: {
+        seconds: Math.floor(start.toMillis() / 1000),
+      },
+      endTime: {
+        seconds: Math.floor(end.toMillis() / 1000),
+      },
+    },
+    view: 'FULL',
+  });
+
+  let total = 0;
+
+  for (const series of timeSeries) {
+    for (const point of series.points || []) {
+      total += pointNumericValue(point);
+    }
+  }
+
+  return total;
+}
+
+function freeTierSeverity(percentage) {
+  if (percentage >= 90) return 'critical';
+  if (percentage >= 75) return 'warning';
+  if (percentage >= 50) return 'attention';
+
+  return 'info';
+}
+
+function thresholdReached(percentage) {
+  return [...FREE_TIER_THRESHOLDS].reverse().find((threshold) => percentage >= threshold);
+}
+
+async function sendFreeTierNotifications({
+  metric,
+  usage,
+  percentage,
+  threshold,
+  dayKey,
+  recipients,
+}) {
+  const batch = db.batch();
+
+  for (const [userId] of recipients) {
+    const notificationId = ['free-tier', dayKey, metric.key, threshold, userId].join('-');
+
+    const notificationRef = db.collection('system_notifications').doc(notificationId);
+
+    const title =
+      threshold >= 100
+        ? `Cota gratuita de ${metric.label} atingida`
+        : `Firestore: ${threshold}% da cota de ${metric.label}`;
+
+    const message =
+      `${usage.toLocaleString('pt-BR')} de ` +
+      `${metric.limit.toLocaleString('pt-BR')} ${metric.label} gratuitas ` +
+      `utilizadas hoje (${percentage.toFixed(1)}%).`;
+
+    batch.set(
+      notificationRef,
+      {
+        recipient_user_id: userId,
+        type: 'firestore_free_tier',
+        source: 'google-cloud-monitoring',
+        metric: metric.key,
+        title,
+        message,
+        severity: freeTierSeverity(threshold),
+        quota_percentage: percentage,
+        quota_threshold: threshold,
+        quota_usage: usage,
+        quota_limit: metric.limit,
+        quota_day: dayKey,
+        read: false,
+        created_at: FieldValue.serverTimestamp(),
+      },
+      {
+        merge: false,
+      }
+    );
+  }
+
+  await batch.commit();
+}
+
+async function handleFreeTierMonitor(_req, res) {
+  try {
+    const { dayKey, start, end } = getPacificDayWindow();
+    const recipients = await findRecipients();
+
+    if (!recipients.length) {
+      console.warn('free-tier-monitor: nenhum destinatário encontrado');
+
+      return json(res, 200, {
+        ok: true,
+        recipients: 0,
+      });
+    }
+
+    const results = [];
+
+    for (const metric of FREE_TIER_METRICS) {
+      const usage = await readMetricUsage(metric.metricType, start, end);
+
+      const percentage = (usage / metric.limit) * 100;
+      const reached = thresholdReached(percentage);
+
+      const stateRef = db.collection('system_monitor_state').doc(`${dayKey}-${metric.key}`);
+
+      const stateSnapshot = await stateRef.get();
+      const previousThreshold = Number(stateSnapshot.data()?.highest_threshold || 0);
+
+      if (reached && reached > previousThreshold) {
+        const thresholdsToNotify = FREE_TIER_THRESHOLDS.filter(
+          (threshold) => threshold > previousThreshold && threshold <= reached
+        );
+
+        for (const threshold of thresholdsToNotify) {
+          await sendFreeTierNotifications({
+            metric,
+            usage,
+            percentage,
+            threshold,
+            dayKey,
+            recipients,
+          });
+        }
+
+        await stateRef.set(
+          {
+            metric: metric.key,
+            day: dayKey,
+            highest_threshold: reached,
+            usage,
+            percentage,
+            updated_at: FieldValue.serverTimestamp(),
+          },
+          {
+            merge: true,
+          }
+        );
+      } else {
+        await stateRef.set(
+          {
+            metric: metric.key,
+            day: dayKey,
+            highest_threshold: previousThreshold,
+            usage,
+            percentage,
+            updated_at: FieldValue.serverTimestamp(),
+          },
+          {
+            merge: true,
+          }
+        );
+      }
+
+      results.push({
+        metric: metric.key,
+        usage,
+        limit: metric.limit,
+        percentage: Number(percentage.toFixed(2)),
+        highestThreshold: reached || 0,
+      });
+    }
+
+    console.log('free-tier-monitor', {
+      dayKey,
+      results,
+    });
+
+    return json(res, 200, {
+      ok: true,
+      day: dayKey,
+      results,
+    });
+  } catch (error) {
+    console.error('free-tier-monitor', error);
+
+    return json(res, 500, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     return json(res, 200, {
@@ -186,6 +419,10 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url === '/billing/budget-alert') {
     return handleBudgetAlert(req, res);
+  }
+
+  if (req.method === 'POST' && req.url === '/monitor/free-tier') {
+    return handleFreeTierMonitor(req, res);
   }
 
   return json(res, 404, {
