@@ -5,7 +5,10 @@ const port = Number(process.env.PORT || 8080);
 const db = new Firestore();
 
 function json(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+  });
+
   res.end(JSON.stringify(body));
 }
 
@@ -34,12 +37,14 @@ function decodePubSub(body) {
 async function findRecipients() {
   const recipients = new Map();
 
+  // Ryan recebe os alertas independentemente do setor.
   const ryan = await db.collection('users').where('username', '==', 'ryan').get();
 
   ryan.forEach((doc) => {
     recipients.set(doc.id, doc.data());
   });
 
+  // Todos os usuários do setor TI também recebem.
   const ti = await db.collection('users').where('sectors', 'array-contains', 'ti').get();
 
   ti.forEach((doc) => {
@@ -54,7 +59,38 @@ function severityFromPercentage(percentage) {
   if (percentage >= 0.9) return 'critical';
   if (percentage >= 0.75) return 'warning';
   if (percentage >= 0.5) return 'attention';
+
   return 'info';
+}
+
+function titleFromPercentage(percentage) {
+  if (percentage >= 100) {
+    return 'Limite de orçamento atingido';
+  }
+
+  if (percentage <= 1) {
+    return 'JapanFlow começou a gerar custo';
+  }
+
+  return `Orçamento Google em ${percentage}%`;
+}
+
+function messageFromPercentage(percentage, cost, budgetAmount) {
+  if (percentage <= 1) {
+    return (
+      'O Google Cloud começou a registrar cobrança no JapanFlow. ' +
+      `Uso aproximado: R$ ${cost.toFixed(2)} de R$ ${budgetAmount.toFixed(2)}.`
+    );
+  }
+
+  if (percentage >= 100) {
+    return (
+      `O orçamento operacional de R$ ${budgetAmount.toFixed(2)} foi atingido. ` +
+      `Custo aproximado atual: R$ ${cost.toFixed(2)}.`
+    );
+  }
+
+  return `Uso aproximado: R$ ${cost.toFixed(2)} de R$ ${budgetAmount.toFixed(2)}.`;
 }
 
 async function handleBudgetAlert(req, res) {
@@ -67,6 +103,8 @@ async function handleBudgetAlert(req, res) {
     const budgetAmount = Number(budget.budgetAmount || 100);
     const percentage = Math.round(threshold * 100);
 
+    // Mensagens do Billing que não representam um threshold configurado
+    // são reconhecidas sem gerar notificação interna.
     if (!percentage) {
       return json(res, 204, {});
     }
@@ -75,7 +113,12 @@ async function handleBudgetAlert(req, res) {
 
     if (!recipients.length) {
       console.warn('budget-alert: nenhum destinatário encontrado');
-      return json(res, 200, { ok: true, recipients: 0 });
+
+      return json(res, 200, {
+        ok: true,
+        percentage,
+        recipients: 0,
+      });
     }
 
     const batch = db.batch();
@@ -85,17 +128,26 @@ async function handleBudgetAlert(req, res) {
 
       batch.set(ref, {
         recipient_user_id: userId,
+
         type: 'billing_budget',
         source: 'google-cloud',
-        title:
-          percentage >= 100 ? 'Limite de orçamento atingido' : `Orçamento Google em ${percentage}%`,
-        message: `Uso aproximado: R$ ${cost.toFixed(2)} de R$ ${budgetAmount.toFixed(2)}.`,
+
+        title: titleFromPercentage(percentage),
+
+        message: messageFromPercentage(percentage, cost, budgetAmount),
+
         severity: severityFromPercentage(threshold),
+
         budget_percentage: percentage,
         cost_amount: cost,
         budget_amount: budgetAmount,
+
         currency: budget.currencyCode || 'BRL',
+
+        budget_name: budget.budgetDisplayName || 'JapanFlow',
+
         read: false,
+
         created_at: FieldValue.serverTimestamp(),
       });
     }
@@ -104,6 +156,7 @@ async function handleBudgetAlert(req, res) {
 
     console.log('budget-alert', {
       percentage,
+      threshold,
       cost,
       budgetAmount,
       recipients: recipients.length,
