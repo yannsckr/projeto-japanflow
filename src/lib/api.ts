@@ -6,6 +6,11 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.
   ''
 );
 
+export const WEB_API_BASE_URL = (import.meta.env.VITE_WEB_API_BASE_URL || API_BASE_URL).replace(
+  /\/+$/,
+  ''
+);
+
 const REQUEST_TIMEOUT_MS = 45_000;
 const STORAGE_TIMEOUT_MS = 60_000;
 
@@ -59,6 +64,33 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('A IA/API demorou demais para responder. Tente novamente.');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function webPostJson<T>(path: string, body: unknown): Promise<T> {
+  const controller = new AbortController();
+
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${WEB_API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: await getAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    return await parseApiResponse<T>(response);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('A API demorou demais para responder. Tente novamente.');
     }
 
     throw error;
@@ -183,20 +215,24 @@ export async function listAllStorageFilesApi(
 }
 
 export async function adminCreateUserApi(input: CreateUserInput): Promise<{ user: User }> {
-  return postJson<{ user: User }>('/admin/users/create', input);
+  return webPostJson<{ user: User }>('/admin/users/create', input);
 }
 
-export async function adminUpdateUserApi(input: {
+export async function adminUpdateUserApi(input: { userId: string; username?: string }): Promise<{
+  ok: boolean;
   userId: string;
   username?: string;
-}): Promise<{ ok: boolean; userId: string; username?: string; authEmail?: string }> {
-  return postJson('/admin/users/update', input);
+  authEmail?: string;
+}> {
+  return webPostJson('/admin/users/update', input);
 }
 
-export async function adminDeleteUserApi(input: {
+export async function adminDeleteUserApi(input: { userId: string }): Promise<{
+  ok: boolean;
   userId: string;
-}): Promise<{ ok: boolean; userId: string; authDeleted: boolean }> {
-  return postJson('/admin/users/delete', input);
+  authDeleted: boolean;
+}> {
+  return webPostJson('/admin/users/delete', input);
 }
 
 export interface ParsedCalendarEvent {

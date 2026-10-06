@@ -7,7 +7,11 @@ interface PushNotificationPayload {
   body: string;
 }
 
-const apiBaseUrl = () => String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+const apiBaseUrl = () =>
+  String(import.meta.env.VITE_WEB_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || '').replace(
+    /\/+$/,
+    ''
+  );
 
 async function authenticatedPost(path: string, payload: unknown) {
   // O App pode renderizar antes do Firebase Auth terminar de restaurar a sessão.

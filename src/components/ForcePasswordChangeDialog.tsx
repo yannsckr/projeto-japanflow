@@ -14,7 +14,11 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { KeyRound, Loader2 } from 'lucide-react';
 
-const apiBaseUrl = () => String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+const apiBaseUrl = () =>
+  String(import.meta.env.VITE_WEB_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || '').replace(
+    /\/+$/,
+    ''
+  );
 
 async function authenticatedPost(path: string, body: unknown = {}) {
   const firebaseUser = auth.currentUser;
