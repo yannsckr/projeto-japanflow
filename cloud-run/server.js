@@ -409,6 +409,232 @@ async function handleFreeTierMonitor(_req, res) {
   }
 }
 
+function saoPauloClock() {
+  const now = DateTime.now().setZone('America/Sao_Paulo');
+
+  return {
+    date: now.toFormat('yyyy-LL-dd'),
+    time: now.toFormat('HH:mm'),
+    dayOfWeek: now.weekday % 7,
+  };
+}
+
+function timestampLocalDate(value) {
+  if (!value) return null;
+
+  let date;
+
+  if (typeof value?.toDate === 'function') {
+    date = value.toDate();
+  } else if (value instanceof Date) {
+    date = value;
+  } else {
+    date = new Date(value);
+  }
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return DateTime.fromJSDate(date).setZone('America/Sao_Paulo').toFormat('yyyy-LL-dd');
+}
+
+function scheduledTaskDocumentId(scheduleId, localDate) {
+  const safeScheduleId = String(scheduleId).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  return `scheduled_${safeScheduleId}_${localDate}`;
+}
+
+function isScheduleDueToday(schedule, clock) {
+  if (schedule.active === false) {
+    return false;
+  }
+
+  const recurrence = schedule.recurrence === 'specific_days' ? 'specific_days' : 'daily';
+
+  const daysOfWeek = Array.isArray(schedule.days_of_week) ? schedule.days_of_week.map(Number) : [];
+
+  if (recurrence === 'specific_days' && !daysOfWeek.includes(clock.dayOfWeek)) {
+    return false;
+  }
+
+  const scheduleTime = String(schedule.schedule_time || '08:00');
+
+  if (!/^\d{2}:\d{2}$/.test(scheduleTime)) {
+    return false;
+  }
+
+  if (clock.time < scheduleTime) {
+    return false;
+  }
+
+  if (schedule.last_occurrence_key === clock.date) {
+    return false;
+  }
+
+  return timestampLocalDate(schedule.last_created_at) !== clock.date;
+}
+
+async function createScheduledTaskOccurrence(scheduleId, schedule, localDate) {
+  const taskId = scheduledTaskDocumentId(scheduleId, localDate);
+
+  const taskRef = db.collection('tasks').doc(taskId);
+  const scheduleRef = db.collection('scheduled_tasks').doc(scheduleId);
+
+  const notificationRef = db.collection('notifications').doc(taskId);
+
+  const existingTask = await taskRef.get();
+
+  let created = false;
+
+  if (!existingTask.exists) {
+    const now = new Date();
+
+    await taskRef.create({
+      title: String(schedule.title || ''),
+      description: String(schedule.description || ''),
+      status: 'todo',
+      priority: ['high', 'medium', 'low'].includes(schedule.priority)
+        ? schedule.priority
+        : 'medium',
+
+      assignee_id: schedule.assign_mode === 'employee' ? String(schedule.assignee_id || '') : '',
+
+      created_by: String(schedule.created_by || ''),
+      deadline: localDate,
+
+      sector: schedule.assign_mode === 'sector' ? schedule.sector || null : null,
+
+      status_history: [
+        {
+          status: 'todo',
+          enteredAt: now.toISOString(),
+        },
+      ],
+
+      image_url: null,
+      image_urls: [],
+      response: null,
+
+      scheduled_task_id: scheduleId,
+      scheduled_occurrence: localDate,
+
+      created_at: now,
+      updated_at: now,
+    });
+
+    created = true;
+  }
+
+  if (schedule.assign_mode === 'employee' && schedule.assignee_id) {
+    await notificationRef.set(
+      {
+        user_id: String(schedule.assignee_id),
+        message: `Nova tarefa atribuída: ${String(schedule.title || '')}`,
+        type: 'task_created',
+        read: false,
+
+        task_id: taskId,
+        scheduled_task_id: scheduleId,
+
+        created_at: FieldValue.serverTimestamp(),
+      },
+      {
+        merge: true,
+      }
+    );
+  }
+
+  await scheduleRef.set(
+    {
+      last_created_at: FieldValue.serverTimestamp(),
+      last_occurrence_key: localDate,
+      updated_at: FieldValue.serverTimestamp(),
+    },
+    {
+      merge: true,
+    }
+  );
+
+  console.log('scheduled-task occurrence', {
+    scheduleId,
+    taskId,
+    localDate,
+    result: created ? 'created' : 'already-exists',
+  });
+
+  return created ? 'created' : 'already-exists';
+}
+
+async function processScheduledTasks() {
+  const schedulesSnapshot = await db.collection('scheduled_tasks').get();
+
+  const clock = saoPauloClock();
+
+  const summary = {
+    checked: schedulesSnapshot.size,
+    due: 0,
+    created: 0,
+    alreadyCreated: 0,
+    skipped: 0,
+    failed: 0,
+  };
+
+  for (const scheduleDocument of schedulesSnapshot.docs) {
+    const schedule = scheduleDocument.data();
+
+    if (!isScheduleDueToday(schedule, clock)) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    summary.due += 1;
+
+    try {
+      const result = await createScheduledTaskOccurrence(scheduleDocument.id, schedule, clock.date);
+
+      if (result === 'created') {
+        summary.created += 1;
+      } else {
+        summary.alreadyCreated += 1;
+      }
+    } catch (error) {
+      summary.failed += 1;
+
+      console.error(`scheduled-task ${scheduleDocument.id}`, error);
+    }
+  }
+
+  console.log('scheduled-tasks summary', {
+    ...summary,
+    localDate: clock.date,
+    localTime: clock.time,
+  });
+
+  return {
+    ...summary,
+    localDate: clock.date,
+    localTime: clock.time,
+  };
+}
+
+async function handleScheduledTasks(_req, res) {
+  try {
+    const summary = await processScheduledTasks();
+
+    return json(res, 200, {
+      ok: true,
+      ...summary,
+    });
+  } catch (error) {
+    console.error('scheduled-tasks', error);
+
+    return json(res, 500, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     return json(res, 200, {
@@ -423,6 +649,10 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url === '/monitor/free-tier') {
     return handleFreeTierMonitor(req, res);
+  }
+
+  if (req.method === 'POST' && req.url === '/jobs/scheduled-tasks') {
+    return handleScheduledTasks(req, res);
   }
 
   return json(res, 404, {
