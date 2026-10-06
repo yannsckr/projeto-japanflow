@@ -171,7 +171,7 @@ const FREE_TIER_METRICS = [
   {
     key: 'reads',
     label: 'leituras',
-    metricType: 'firestore.googleapis.com/document/read_count',
+    metricType: 'firestore.googleapis.com/document/read_ops_count',
     limit: 50000,
   },
   {
