@@ -1,36 +1,20 @@
 import { defineConfig, devices } from '@playwright/test';
 import { loadEnv } from 'vite';
 
-const qaEnv = loadEnv(
-  'qa',
-  process.cwd(),
-  ''
-);
+const qaEnv = loadEnv('qa', process.cwd(), '');
 
-for (const [key, value] of Object.entries(
-  qaEnv
-)) {
+for (const [key, value] of Object.entries(qaEnv)) {
   if (key.startsWith('QA_')) {
     process.env[key] = value;
   }
 }
 
-if (
-  qaEnv.VITE_FIREBASE_PROJECT_ID ===
-  'japanflow-erp'
-) {
-  throw new Error(
-    'BLOQUEADO: QA não pode utilizar o Firebase de produção japanflow-erp.'
-  );
+if (qaEnv.VITE_FIREBASE_PROJECT_ID === 'japanflow-erp') {
+  throw new Error('BLOQUEADO: QA não pode utilizar o Firebase de produção japanflow-erp.');
 }
 
-if (
-  qaEnv.VITE_USE_FIREBASE_EMULATORS !==
-  'true'
-) {
-  throw new Error(
-    'BLOQUEADO: QA deve executar com Firebase Emulator.'
-  );
+if (qaEnv.VITE_USE_FIREBASE_EMULATORS !== 'true') {
+  throw new Error('BLOQUEADO: QA deve executar com Firebase Emulator.');
 }
 
 const baseURL = process.env.QA_BASE_URL || 'http://127.0.0.1:8080';
