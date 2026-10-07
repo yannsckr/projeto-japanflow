@@ -9,6 +9,8 @@ import {
   query,
   Timestamp,
   updateDoc,
+  where,
+  limit,
 } from 'firebase/firestore';
 import { Notification } from '@/types';
 
@@ -37,7 +39,7 @@ const rowToNotif = (row: NotifRow): Notification => ({
   timestamp: toIso(row.created_at),
 });
 
-export const useNotifications = (enabled = true) => {
+export const useNotifications = (enabled = true, userId?: string) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
@@ -46,9 +48,16 @@ export const useNotifications = (enabled = true) => {
       return;
     }
 
+    if (!userId) {
+      setNotifications([]);
+      return;
+    }
+
     const notificationsQuery = query(
       collection(db, 'notifications'),
-      orderBy('created_at', 'desc')
+      where('user_id', '==', userId),
+      orderBy('created_at', 'desc'),
+      limit(50)
     );
 
     const unsubscribe = onSnapshot(
@@ -69,7 +78,7 @@ export const useNotifications = (enabled = true) => {
     );
 
     return () => unsubscribe();
-  }, [enabled]);
+  }, [enabled, userId]);
 
   const addNotification = useCallback(
     async (userId: string, message: string, type: Notification['type']) => {

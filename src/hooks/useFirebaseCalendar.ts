@@ -8,6 +8,7 @@ import {
   deleteDoc,
   query,
   orderBy,
+  limit,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { CalendarEvent } from '@/types';
@@ -19,7 +20,7 @@ export function useFirebaseCalendar(enabled: boolean = true) {
     if (!enabled) return;
 
     const calendarCol = collection(db, 'calendar_events');
-    const q = query(calendarCol, orderBy('startDate', 'asc'));
+    const q = query(calendarCol, orderBy('startDate', 'desc'), limit(200));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: CalendarEvent[] = snapshot.docs.map((docSnap) => ({

@@ -10,6 +10,9 @@ import {
   doc,
   getDoc,
   Timestamp,
+  where,
+  limit,
+  or,
 } from 'firebase/firestore';
 import { useApp } from '@/contexts/AppContext';
 import { ChatMessage } from '@/types';
@@ -119,9 +122,12 @@ export const useChat = () => {
   }, []);
 
   const getMessagesForChat = useCallback((currentUserId: string, otherUserId: string) => {
-    // Escuta a coleção em tempo real e filtra o par no cliente.
-    // Isso evita dependência de índice composto e mantém mensagens novas instantâneas.
-    const chatQuery = query(collection(db, 'messages'), orderBy('timestamp', 'asc'));
+    const chatQuery = query(
+      collection(db, 'messages'),
+      or(where('senderId', '==', currentUserId), where('receiverId', '==', currentUserId)),
+      orderBy('timestamp', 'desc'),
+      limit(100)
+    );
 
     return onSnapshot(
       chatQuery,
@@ -164,9 +170,12 @@ export const useChat = () => {
           }
         });
 
+        chatMessages.sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+
         setMessages(chatMessages);
 
-        // Ao visualizar a conversa, sincroniza o campo read usado pelo badge global.
         for (const messageId of unreadIncomingIds) {
           void updateDoc(doc(db, 'messages', messageId), { read: true }).catch((error) =>
             console.warn('Falha ao marcar mensagem como lida:', error)

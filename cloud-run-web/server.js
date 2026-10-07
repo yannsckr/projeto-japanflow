@@ -5,9 +5,29 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 
+const projectId =
+  process.env.FIREBASE_PROJECT_ID ||
+  process.env.GOOGLE_CLOUD_PROJECT ||
+  'japanflow-erp';
+
+const usingFirebaseEmulator =
+  Boolean(
+    process.env
+      .FIRESTORE_EMULATOR_HOST
+  ) ||
+  Boolean(
+    process.env
+      .FIREBASE_AUTH_EMULATOR_HOST
+  );
+
 initializeApp({
-  credential: applicationDefault(),
-  projectId: 'japanflow-erp',
+  projectId,
+  ...(usingFirebaseEmulator
+    ? {}
+    : {
+        credential:
+          applicationDefault(),
+      }),
 });
 
 const port = Number(process.env.PORT || 8080);

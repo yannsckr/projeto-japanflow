@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { collection, doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  Timestamp,
+  query,
+  where,
+  limit,
+} from 'firebase/firestore';
 
 import { db } from '@/lib/firebase';
 
@@ -27,8 +36,21 @@ export function useGroupUnread(
   const [readStatuses, setReadStatuses] = useState<any[]>([]);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
+    if (!currentUserId || accessibleGroupIds.length === 0) {
+      setMessages([]);
+      return;
+    }
+
+    const groupIds = accessibleGroupIds.slice(0, 30);
+
+    const messagesQuery = query(
       collection(db, 'group_messages'),
+      where('group_id', 'in', groupIds),
+      limit(300)
+    );
+
+    const unsubscribe = onSnapshot(
+      messagesQuery,
       (snapshot) => {
         setMessages(
           snapshot.docs.map((messageDoc) => {
@@ -48,11 +70,22 @@ export function useGroupUnread(
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUserId, accessibleGroupIds.join('|')]);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
+    if (!currentUserId) {
+      setReadStatuses([]);
+      return;
+    }
+
+    const readStatusQuery = query(
       collection(db, 'chat_read_status'),
+      where('user_id', '==', currentUserId),
+      limit(100)
+    );
+
+    const unsubscribe = onSnapshot(
+      readStatusQuery,
       (snapshot) => {
         setReadStatuses(
           snapshot.docs.map((statusDoc) => ({
@@ -65,7 +98,7 @@ export function useGroupUnread(
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUserId]);
 
   const unreadByGroup = useMemo(() => {
     const result: Record<string, number> = {};

@@ -9,6 +9,10 @@ import {
   onSnapshot,
   Timestamp,
   updateDoc,
+  query,
+  where,
+  orderBy,
+  limit,
 } from 'firebase/firestore';
 import { sendPushToUser } from './usePushNotifications';
 
@@ -54,14 +58,18 @@ export function useGroupChat(groupId: string | null) {
       return;
     }
 
-    // Listener sem where + orderBy combinados: evita depender de índice composto
-    // e mantém a conversa do grupo atualizada imediatamente.
-    const unsubscribe = onSnapshot(
+    const groupMessagesQuery = query(
       collection(db, 'group_messages'),
+      where('group_id', '==', groupId),
+      orderBy('created_at', 'desc'),
+      limit(100)
+    );
+
+    const unsubscribe = onSnapshot(
+      groupMessagesQuery,
       (snapshot) => {
         const next = snapshot.docs
           .map((messageDoc) => mapMessage(messageDoc.id, messageDoc.data()))
-          .filter((message) => message.group_id === groupId)
           .sort(
             (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
           );
@@ -101,23 +109,31 @@ export function useGroupChat(groupId: string | null) {
 
       try {
         const groupSnapshot = await getDoc(doc(db, 'custom_groups', groupId));
+
         if (!groupSnapshot.exists()) return;
 
         const participants = Array.isArray(groupSnapshot.data().participants)
           ? groupSnapshot.data().participants
           : [];
+
         if (participants.length === 0) return;
 
-        // A migração atual usa app_users.
         const usersSnapshot = await getDocs(collection(db, 'app_users'));
+
         const matchingUsers = usersSnapshot.docs
-          .map((userDoc) => ({ id: userDoc.id, ...userDoc.data() }))
+          .map((userDoc) => ({
+            id: userDoc.id,
+            ...userDoc.data(),
+          }))
           .filter(
             (user: any) => participants.includes(user.id) || participants.includes(user.username)
           );
 
         for (const user of matchingUsers as any[]) {
-          if (user.username === senderUsername || user.active === false) continue;
+          if (user.username === senderUsername || user.active === false) {
+            continue;
+          }
+
           void sendPushToUser(
             user.id,
             'Nova mensagem de grupo',
@@ -148,5 +164,10 @@ export function useGroupChat(groupId: string | null) {
     });
   }, []);
 
-  return { messages, sendMessage, editMessage, deleteMessage };
+  return {
+    messages,
+    sendMessage,
+    editMessage,
+    deleteMessage,
+  };
 }

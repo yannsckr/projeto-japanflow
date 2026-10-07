@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { collection, doc, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+  where,
+  limit,
+} from 'firebase/firestore';
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
 export type SystemNotification = {
@@ -29,7 +38,8 @@ export function useSystemNotifications() {
     const notificationsQuery = query(
       collection(db, 'system_notifications'),
       where('recipient_user_id', '==', authenticatedUser.id),
-      orderBy('created_at', 'desc')
+      orderBy('created_at', 'desc'),
+      limit(50)
     );
     return onSnapshot(
       notificationsQuery,

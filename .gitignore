@@ -55,3 +55,4 @@ auth-users.json
 *admin*.json
 .dev.vars
 .firebase/
+.env.qa

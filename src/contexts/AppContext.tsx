@@ -232,7 +232,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
   const firebaseCalendar = useFirebaseCalendar(dataEnabled);
   const calendarEvents = firebaseCalendar.events;
-  const firebaseNotifications = useFirebaseNotifications(dataEnabled);
+  const firebaseNotifications = useFirebaseNotifications(dataEnabled, authenticatedUser?.id);
   const notifications = firebaseNotifications.notifications;
   const prevNotifCount = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
