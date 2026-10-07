@@ -19,6 +19,7 @@ import {
   CalendarEvent,
   Sector,
 } from '@/types';
+import { CostGuardMode, useCostGuard } from '@/hooks/useCostGuard';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { useFirebaseTasks } from '@/hooks/useFirebaseTasks';
@@ -42,6 +43,10 @@ interface AppContextType {
   notifications: Notification[];
   calendarEvents: CalendarEvent[];
   authLoading: boolean;
+  costGuardMode: CostGuardMode;
+  costGuardPercentage: number;
+  isEconomyMode: boolean;
+  isProtectedMode: boolean;
   login: (username: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   addUser: (user: CreateUserInput) => Promise<void>;
@@ -144,6 +149,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
   const dataEnabled = Boolean(authenticatedUser) && !isLoginRoute;
+  const costGuard = useCostGuard(dataEnabled);
+  const isEconomyMode = costGuard.mode === 'economy' || costGuard.mode === 'protected';
+  const isProtectedMode = costGuard.mode === 'protected';
   // Monitorar configurações globais em tempo real no Firestore (app_settings)
   useEffect(() => {
     if (!dataEnabled) return;
@@ -230,7 +238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })),
     [firebaseTasks.tasks]
   );
-  const firebaseCalendar = useFirebaseCalendar(dataEnabled);
+  const firebaseCalendar = useFirebaseCalendar(dataEnabled && !isProtectedMode);
   const calendarEvents = firebaseCalendar.events;
   const firebaseNotifications = useFirebaseNotifications(dataEnabled, authenticatedUser?.id);
   const notifications = firebaseNotifications.notifications;
@@ -513,6 +521,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setNfToCarolEnabled: handleSetNfToCarolEnabled,
         nfBoletoToCarolEnabled,
         setNfBoletoToCarolEnabled: handleSetNfBoletoToCarolEnabled,
+        costGuardMode: costGuard.mode,
+        costGuardPercentage: costGuard.maxPercentage,
+        isEconomyMode,
+        isProtectedMode,
       }}
     >
       {children}

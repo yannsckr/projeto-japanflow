@@ -2,44 +2,15 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function ownLinkPath() {
-      return /databases/$(database)/documents/auth_links/$(request.auth.uid);
-    }
-
-    function hasOwnLink() {
-      return signedIn() && exists(ownLinkPath());
-    }
-
-    function ownLink() {
-      return get(ownLinkPath()).data;
-    }
-
-    function isActive() {
-      return hasOwnLink() && ownLink().active != false;
-    }
-
-    function currentUserPath() {
-      return /databases/$(database)/documents/users/$(ownLink().user_id);
-    }
-
-    function isTiMaster() {
-      return isActive()
-        && exists(currentUserPath())
-        && ('sectors' in get(currentUserPath()).data)
-        && get(currentUserPath()).data.sectors.hasAny(['ti']);
-    }
-
-    function isAdmin() {
-      return isActive() && (ownLink().role == 'admin' || isTiMaster());
-    }
-
-    function currentUserId() {
-      return ownLink().user_id;
-    }
+    function signedIn() { return request.auth != null; }
+    function ownLinkPath() { return /databases/$(database)/documents/auth_links/$(request.auth.uid); }
+    function hasOwnLink() { return signedIn() && exists(ownLinkPath()); }
+    function ownLink() { return get(ownLinkPath()).data; }
+    function isActive() { return hasOwnLink() && ownLink().active != false; }
+    function currentUserPath() { return /databases/$(database)/documents/users/$(ownLink().user_id); }
+    function isTiMaster() { return isActive() && exists(currentUserPath()) && ('sectors' in get(currentUserPath()).data) && get(currentUserPath()).data.sectors.hasAny(['ti']); }
+    function isAdmin() { return isActive() && (ownLink().role == 'admin' || isTiMaster()); }
+    function currentUserId() { return ownLink().user_id; }
 
     match /auth_links/{uid} {
       allow read: if isActive() && (request.auth.uid == uid || isAdmin());
@@ -48,62 +19,31 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isActive();
-
       allow create, delete: if isAdmin();
-
-      allow update: if isAdmin() || (
-        isActive() &&
-        currentUserId() == userId &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly([
-            'name',
-            'avatar',
-            'backgroundColor',
-            'updated_at'
-          ])
-      );
+      allow update: if isAdmin() || (isActive() && currentUserId() == userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','avatar','backgroundColor','updated_at']));
     }
 
-    match /user_feature_permissions/{docId} {
-      allow read: if isActive();
-      allow write: if isAdmin();
-    }
-
-    match /user_tab_permissions/{docId} {
-      allow read: if isActive();
-      allow write: if isAdmin();
-    }
-
-    match /task_permissions/{docId} {
-      allow read: if isActive();
-      allow write: if isAdmin();
-    }
-
-    match /app_settings/{docId} {
-      allow read: if isActive();
-      allow write: if isAdmin();
-    }
-
-    match /freight_destinations/{docId} {
-      allow read: if isActive();
-      allow write: if isAdmin();
-    }
+    match /user_feature_permissions/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
+    match /user_tab_permissions/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
+    match /task_permissions/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
+    match /app_settings/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
+    match /freight_destinations/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
 
     match /system_notifications/{notificationId} {
-      allow read: if isActive()
-        && resource.data.recipient_user_id == currentUserId();
-
-      allow update: if isActive()
-        && resource.data.recipient_user_id == currentUserId()
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['read']);
-
+      allow read: if isActive() && resource.data.recipient_user_id == currentUserId();
+      allow update: if isActive() && resource.data.recipient_user_id == currentUserId() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow create, delete: if false;
     }
 
-    // Regra transitória do v1:
-    // dados operacionais continuam disponíveis para usuários ativos.
-    // Identidade, permissões e configurações ficam protegidas acima.
+    match /system_runtime/{docId} {
+      allow read: if isActive();
+      allow create, update, delete: if false;
+    }
+
+    match /system_monitor_state/{docId} {
+      allow read, write: if false;
+    }
+
     match /{collection}/{document=**} {
       allow read, write: if isActive()
         && collection != 'users'
@@ -113,7 +53,9 @@ service cloud.firestore {
         && collection != 'task_permissions'
         && collection != 'app_settings'
         && collection != 'freight_destinations'
-        && collection != 'system_notifications';
+        && collection != 'system_notifications'
+        && collection != 'system_runtime'
+        && collection != 'system_monitor_state';
     }
   }
 }
