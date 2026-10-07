@@ -1,16 +1,9 @@
 import { useEffect, useState } from 'react';
-import {
-  doc,
-  onSnapshot,
-} from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 import { db } from '@/lib/firebase';
 
-export type CostGuardMode =
-  | 'normal'
-  | 'warning'
-  | 'economy'
-  | 'protected';
+export type CostGuardMode = 'normal' | 'warning' | 'economy' | 'protected';
 
 export interface CostGuardState {
   mode: CostGuardMode;
@@ -28,13 +21,8 @@ const DEFAULT_STATE: CostGuardState = {
   deletesPercentage: 0,
 };
 
-export function useCostGuard(
-  enabled = true
-) {
-  const [state, setState] =
-    useState<CostGuardState>(
-      DEFAULT_STATE
-    );
+export function useCostGuard(enabled = true) {
+  const [state, setState] = useState<CostGuardState>(DEFAULT_STATE);
 
   useEffect(() => {
     if (!enabled) {
@@ -42,11 +30,7 @@ export function useCostGuard(
       return;
     }
 
-    const guardRef = doc(
-      db,
-      'system_runtime',
-      'firestore_guard'
-    );
+    const guardRef = doc(db, 'system_runtime', 'firestore_guard');
 
     return onSnapshot(
       guardRef,
@@ -58,37 +42,23 @@ export function useCostGuard(
 
         const data = snapshot.data();
 
-        const rawMode =
-          String(data.mode || 'normal');
+        const rawMode = String(data.mode || 'normal');
 
         const mode: CostGuardMode =
-          rawMode === 'warning' ||
-          rawMode === 'economy' ||
-          rawMode === 'protected'
+          rawMode === 'warning' || rawMode === 'economy' || rawMode === 'protected'
             ? rawMode
             : 'normal';
 
         setState({
           mode,
-          maxPercentage: Number(
-            data.max_percentage || 0
-          ),
-          readsPercentage: Number(
-            data.reads_percentage || 0
-          ),
-          writesPercentage: Number(
-            data.writes_percentage || 0
-          ),
-          deletesPercentage: Number(
-            data.deletes_percentage || 0
-          ),
+          maxPercentage: Number(data.max_percentage || 0),
+          readsPercentage: Number(data.reads_percentage || 0),
+          writesPercentage: Number(data.writes_percentage || 0),
+          deletesPercentage: Number(data.deletes_percentage || 0),
         });
       },
       (error) => {
-        console.warn(
-          'Não foi possível carregar o Cost Guard:',
-          error
-        );
+        console.warn('Não foi possível carregar o Cost Guard:', error);
 
         setState(DEFAULT_STATE);
       }
