@@ -1,5 +1,5 @@
 import http from 'node:http';
-
+import { handleCalendarAi } from './calendar-ai.js';
 import crypto from 'node:crypto';
 import { handleGeminiImage } from './gemini.js';
 
@@ -863,6 +863,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && req.url === '/push/send') {
       return sendPushToUser(req, res, caller);
+    }
+
+    if (req.method === 'POST' && req.url === '/parse-calendar-events') {
+      const body = await readBody(req);
+      const result = await handleCalendarAi(body);
+      return json(req, res, result.status, result.body);
     }
 
     return json(req, res, 404, {
