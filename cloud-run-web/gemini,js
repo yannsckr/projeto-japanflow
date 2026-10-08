@@ -1,0 +1,191 @@
+
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const MAX_BASE64_LENGTH = 10_000_000;
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+]);
+
+const PROMPTS = {
+  '/parse-inventory-label': `Você analisa etiquetas de peças automotivas da JAPAN.
+Extraia:
+- type: PRIMEIRAS DUAS PALAVRAS da descrição;
+- code: número abaixo do código de barras, sem zeros à esquerda.
+Ignore L: e F:.
+Responda SOMENTE JSON: {"type":"...","code":"..."}`,
+  '/parse-purchase-order': `Extraia pedido/orçamento/nota e responda SOMENTE JSON:
+{
+  "supplier":{"razaoSocial":"","cnpj":"","celular":"","endereco":"","cep":"","municipioUf":"","email":"","contato":"","obs":""},
+  "items":[{"nome":"","valor":0,"quantidade":1,"marca":"","aplicacao":"","codigo":""}]
+}
+codigo = Cód. Fabricante/Part Number, nunca código interno.
+marca = Fabricante; nome = Descrição; valor = V. Custo Unit.; quantidade = Qtd. Compra.
+valor e quantidade numéricos.`,
+  '/transcribe-image': `Extraia APENAS:
+Nome / Razão Social
+CPF / CNPJ
+CEP
+Tipo de Logradouro
+Nome do Logradouro
+Número
+Complemento
+Bairro
+UF
+Município
+Formato: "Campo: valor", um por linha.
+Omita campos ausentes. Se nenhum existir: "Nenhum dado de envio encontrado na imagem."`,
+};
+
+function errorResponse(status, message) {
+  return { status, body: { error: message } };
+}
+
+function cleanJsonText(raw) {
+  return String(raw)
+    .replace(/```json\s*/gi, '')
+    .replace(/```/g, '')
+    .trim();
+}
+
+function parseGeminiJson(raw) {
+  const cleaned = cleanJsonText(raw);
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const extracted = cleaned.match(/\{[\s\S]*\}/)?.[0];
+    if (!extracted) throw new Error('A IA não retornou JSON válido');
+    return JSON.parse(extracted);
+  }
+}
+
+function parseBase64(value, fallbackMimeType) {
+  const input = String(value || '').trim();
+  const match = input.match(/^data:([^;,]+);base64,(.+)$/s);
+  const mimeType = match?.[1] || fallbackMimeType;
+  const data = match?.[2] || input;
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    throw Object.assign(new Error('Formato não suportado'), { status: 400 });
+  }
+  if (!data || data.length > MAX_BASE64_LENGTH) {
+    throw Object.assign(new Error('Documento vazio ou muito grande'), { status: 413 });
+  }
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(data) || data.length % 4 === 1) {
+    throw Object.assign(new Error('Base64 inválido'), { status: 400 });
+  }
+  return { mimeType, data };
+}
+
+async function callGemini(prompt, inlineData, jsonMode = false) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY não configurada');
+  const models = [
+    ...new Set([
+      process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+    ]),
+  ];
+  let lastError = 'Gemini indisponível';
+  for (const model of models) {
+    try {
+      const response = await fetch(
+        `${GEMINI_API_URL}/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            contents: [{
+              role: 'user',
+              parts: [{ text: prompt }, { inlineData }],
+            }],
+            generationConfig: {
+              temperature: 0.1,
+              ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+            },
+          }),
+          signal: AbortSignal.timeout(30_000),
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const text = (data.candidates?.[0]?.content?.parts || [])
+          .map((part) => part.text || '')
+          .join('\n')
+          .trim();
+        if (!text) throw new Error('Gemini retornou uma resposta vazia');
+        return { text, model };
+      }
+      lastError = `Gemini retornou HTTP ${response.status}`;
+      console.error('gemini-request', { model, status: response.status });
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      console.error('gemini-request', { model, error: lastError });
+    }
+  }
+  throw new Error(lastError);
+}
+
+export async function handleGeminiImage(path, body) {
+  if (!Object.hasOwn(PROMPTS, path)) {
+    return errorResponse(404, 'Rota de IA desconhecida');
+  }
+  const isPurchaseOrder = path === '/parse-purchase-order';
+  const field = isPurchaseOrder ? 'fileBase64' : 'imageBase64';
+  if (typeof body?.[field] !== 'string' || !body[field].trim()) {
+    return errorResponse(400, `${field} obrigatório`);
+  }
+  let inlineData;
+  try {
+    inlineData = parseBase64(
+      body[field],
+      body.mimeType || (isPurchaseOrder ? 'image/png' : 'image/jpeg')
+    );
+  } catch (error) {
+    return errorResponse(error.status || 400, error.message);
+  }
+  try {
+    const isTranscription = path === '/transcribe-image';
+    const instruction = PROMPTS[path];
+    const prompt = isTranscription
+      ? `${instruction}\n\nExtraia os dados de envio.`
+      : isPurchaseOrder
+        ? `${instruction}\n\nExtraia fornecedor e itens deste documento.`
+        : instruction;
+    const result = await callGemini(prompt, inlineData, !isTranscription);
+    if (isTranscription) {
+      return {
+        status: 200,
+        body: {
+          text: result.text || 'Nenhum texto encontrado.',
+          meta: { model: result.model },
+        },
+      };
+    }
+    const parsed = parseGeminiJson(result.text);
+    if (isPurchaseOrder) {
+      return {
+        status: 200,
+        body: { ...parsed, meta: { model: result.model } },
+      };
+    }
+    return {
+      status: 200,
+      body: {
+        type: String(parsed.type || '').trim().toUpperCase(),
+        code: String(parsed.code || '').trim().replace(/^0+/, ''),
+        meta: { model: result.model },
+      },
+    };
+  } catch (error) {
+    console.error('gemini-image', {
+      path,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return errorResponse(502, 'Não foi possível interpretar o documento com IA.');
+  }
+}
