@@ -37,14 +37,14 @@
       ]
     },
 
-        {
+    {
       "collectionGroup": "scheduled_tasks",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "active", "order": "ASCENDING" },
         { "fieldPath": "next_run_at", "order": "ASCENDING" }
       ]
-        },
+    },
 
     {
       "collectionGroup": "group_messages",

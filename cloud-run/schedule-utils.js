@@ -10,7 +10,7 @@ export function calculateNextRunAt(schedule, now = DateTime.now()) {
 
   const recurrence = schedule.recurrence === 'specific_days' ? 'specific_days' : 'daily';
   const days = Array.isArray(schedule.days_of_week)
-    ? schedule.days_of_week.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6)
+    ? schedule.days_of_week.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
     : [];
   if (recurrence === 'specific_days' && days.length === 0) return null;
 

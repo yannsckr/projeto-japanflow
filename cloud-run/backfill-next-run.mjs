@@ -19,7 +19,9 @@ if (process.env.FIRESTORE_EMULATOR_HOST && projectId === 'japanflow-erp') {
 }
 const db = new Firestore({ projectId });
 const snapshot = await db.collection('scheduled_tasks').get();
-console.log(`${apply ? 'APLICANDO' : 'PREVISUALIZAÇÃO'}: ${snapshot.size} agendamentos em ${projectId}`);
+console.log(
+  `${apply ? 'APLICANDO' : 'PREVISUALIZAÇÃO'}: ${snapshot.size} agendamentos em ${projectId}`
+);
 let changed = 0;
 let skipped = 0;
 for (const record of snapshot.docs) {
@@ -28,7 +30,10 @@ for (const record of snapshot.docs) {
   const expectedMs = nextDate?.getTime() ?? null;
   const actualValue = data.next_run_at;
   const actualMs = actualValue?.toDate?.()?.getTime() ?? null;
-  if (expectedMs === actualMs) { skipped++; continue; }
+  if (expectedMs === actualMs) {
+    skipped++;
+    continue;
+  }
   const display = nextDate ? nextDate.toISOString() : 'null (inativo/inválido)';
   console.log(`${record.id}: ${display}`);
   if (apply) {
