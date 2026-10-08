@@ -1,12 +1,6 @@
-
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_BASE64_LENGTH = 10_000_000;
-const ALLOWED_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/pdf',
-]);
+const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
 
 const PROMPTS = {
   '/parse-inventory-label': `Você analisa etiquetas de peças automotivas da JAPAN.
@@ -99,10 +93,12 @@ async function callGemini(prompt, inlineData, jsonMode = false) {
             'x-goog-api-key': apiKey,
           },
           body: JSON.stringify({
-            contents: [{
-              role: 'user',
-              parts: [{ text: prompt }, { inlineData }],
-            }],
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: prompt }, { inlineData }],
+              },
+            ],
             generationConfig: {
               temperature: 0.1,
               ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
@@ -176,8 +172,12 @@ export async function handleGeminiImage(path, body) {
     return {
       status: 200,
       body: {
-        type: String(parsed.type || '').trim().toUpperCase(),
-        code: String(parsed.code || '').trim().replace(/^0+/, ''),
+        type: String(parsed.type || '')
+          .trim()
+          .toUpperCase(),
+        code: String(parsed.code || '')
+          .trim()
+          .replace(/^0+/, ''),
         meta: { model: result.model },
       },
     };
