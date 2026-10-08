@@ -1,9 +1,14 @@
 import http from 'node:http';
-import { handleGeminiImage } from './gemini.js';
+
 import crypto from 'node:crypto';
+import { handleGeminiImage } from './gemini.js';
+
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
+
 import { getAuth } from 'firebase-admin/auth';
+
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
+
 import { getMessaging } from 'firebase-admin/messaging';
 
 const projectId =
@@ -14,6 +19,7 @@ const usingFirebaseEmulator =
 
 initializeApp({
   projectId,
+
   ...(usingFirebaseEmulator
     ? {}
     : {
@@ -24,17 +30,26 @@ initializeApp({
 const port = Number(process.env.PORT || 8080);
 
 const auth = getAuth();
+
 const db = getFirestore();
+
 const messaging = getMessaging();
 
 const allowedOrigins = new Set([
   'http://localhost:8080',
+
   'http://127.0.0.1:8080',
+
   'http://localhost:8081',
+
   'http://127.0.0.1:8081',
+
   'http://localhost:5173',
+
   'http://127.0.0.1:5173',
+
   'https://japanflow-erp.web.app',
+
   'https://japanflow.com.br',
 ]);
 
@@ -44,8 +59,11 @@ function corsHeaders(req) {
   return {
     'Access-Control-Allow-Origin':
       origin && allowedOrigins.has(origin) ? origin : 'https://japanflow.com.br',
+
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+
     Vary: 'Origin',
   };
 }
@@ -53,6 +71,7 @@ function corsHeaders(req) {
 function json(req, res, status, body) {
   res.writeHead(status, {
     ...corsHeaders(req),
+
     'Content-Type': 'application/json; charset=utf-8',
   });
 
@@ -82,9 +101,13 @@ function bearerToken(req) {
 function normalizeUsername(value) {
   return String(value || '')
     .trim()
+
     .toLowerCase()
+
     .normalize('NFD')
+
     .replace(/[\u0300-\u036f]/g, '')
+
     .replace(/[^a-z0-9._-]/g, '.');
 }
 
@@ -137,8 +160,11 @@ async function authenticate(req) {
 
   return {
     uid: decoded.uid,
+
     userId: link.user_id,
+
     role: link.role === 'admin' || isTi ? 'admin' : 'employee',
+
     profile,
   };
 }
@@ -155,7 +181,9 @@ async function adminCreateUser(req, res, caller) {
   const body = await readBody(req);
 
   const name = String(body.name || '').trim();
+
   const username = normalizeUsername(body.username);
+
   const password = String(body.password || '');
 
   const role = body.role === 'admin' ? 'admin' : 'employee';
@@ -179,7 +207,9 @@ async function adminCreateUser(req, res, caller) {
   try {
     firebaseUser = await auth.createUser({
       email: authEmail,
+
       password,
+
       disabled: false,
     });
   } catch (error) {
@@ -203,24 +233,39 @@ async function adminCreateUser(req, res, caller) {
 
     batch.set(db.collection('users').doc(userId), {
       name,
+
       username,
+
       role,
+
       sectors,
+
       function: userFunction || null,
+
       avatar: null,
+
       backgroundColor: null,
+
       auth_uid: firebaseUser.uid,
+
       auth_email: authEmail,
+
       active: true,
+
       created_at: now,
+
       updated_at: now,
     });
 
     batch.set(db.collection('auth_links').doc(firebaseUser.uid), {
       user_id: userId,
+
       role,
+
       active: true,
+
       created_at: now,
+
       updated_at: now,
     });
 
@@ -229,13 +274,21 @@ async function adminCreateUser(req, res, caller) {
     return json(req, res, 200, {
       user: {
         id: userId,
+
         name,
+
         username,
+
         role,
+
         sectors,
+
         function: userFunction || undefined,
+
         authUid: firebaseUser.uid,
+
         authEmail,
+
         active: true,
       },
     });
@@ -299,20 +352,27 @@ async function adminUpdateUser(req, res, caller) {
 
   await userRef.update({
     username: requestedUsername,
+
     auth_email: authEmail,
+
     updated_at: FieldValue.serverTimestamp(),
   });
 
   console.log('admin-update-user', {
     targetUserId: userId,
+
     username: requestedUsername,
+
     updatedBy: caller.userId,
   });
 
   return json(req, res, 200, {
     ok: true,
+
     userId,
+
     username: requestedUsername,
+
     authEmail,
   });
 }
@@ -354,18 +414,24 @@ async function adminDeleteUser(req, res, caller) {
 
   batch.update(userRef, {
     active: false,
+
     deleted_at: FieldValue.serverTimestamp(),
+
     deleted_by: caller.userId,
+
     updated_at: FieldValue.serverTimestamp(),
   });
 
   if (authUid) {
     batch.set(
       db.collection('auth_links').doc(authUid),
+
       {
         active: false,
+
         updated_at: FieldValue.serverTimestamp(),
       },
+
       { merge: true }
     );
   }
@@ -377,6 +443,7 @@ async function adminDeleteUser(req, res, caller) {
   if (authUid) {
     try {
       await auth.deleteUser(authUid);
+
       authDeleted = true;
     } catch (error) {
       if (error?.code !== 'auth/user-not-found') {
@@ -392,13 +459,17 @@ async function adminDeleteUser(req, res, caller) {
 
   console.log('admin-delete-user', {
     targetUserId: userId,
+
     deletedBy: caller.userId,
+
     authDeleted,
   });
 
   return json(req, res, 200, {
     ok: true,
+
     userId,
+
     authDeleted,
   });
 }
@@ -444,19 +515,25 @@ async function adminResetUserAccess(req, res, caller) {
 
   await userRef.update({
     access_reset_at: FieldValue.serverTimestamp(),
+
     access_reset_by: caller.userId,
+
     must_change_password: true,
+
     updated_at: FieldValue.serverTimestamp(),
   });
 
   console.log('admin-reset-access', {
     targetUserId: userId,
+
     resetBy: caller.userId,
   });
 
   return json(req, res, 200, {
     ok: true,
+
     userId,
+
     temporaryPassword,
   });
 }
@@ -478,7 +555,9 @@ async function passwordResetStatus(req, res, caller) {
 async function completePasswordReset(req, res, caller) {
   await db.collection('users').doc(caller.userId).update({
     must_change_password: false,
+
     password_changed_at: FieldValue.serverTimestamp(),
+
     updated_at: FieldValue.serverTimestamp(),
   });
 
@@ -498,6 +577,7 @@ async function sha256Hex(value) {
 function safeDocumentPart(value) {
   return String(value)
     .replace(/[^a-zA-Z0-9_-]/g, '_')
+
     .slice(0, 80);
 }
 
@@ -508,10 +588,12 @@ async function registerPushSubscription(req, res, caller) {
 
   const platform = String(body.platform || 'web')
     .trim()
+
     .slice(0, 40);
 
   const userAgent = String(body.userAgent || '')
     .trim()
+
     .slice(0, 500);
 
   if (!token || token.length < 20 || token.length > 4096) {
@@ -527,13 +609,20 @@ async function registerPushSubscription(req, res, caller) {
   await db.collection('push_subscriptions').doc(documentId).set(
     {
       user_id: caller.userId,
+
       token,
+
       platform,
+
       user_agent: userAgent,
+
       active: true,
+
       updated_at: FieldValue.serverTimestamp(),
+
       created_at: FieldValue.serverTimestamp(),
     },
+
     {
       merge: true,
     }
@@ -541,20 +630,27 @@ async function registerPushSubscription(req, res, caller) {
 
   return json(req, res, 200, {
     ok: true,
+
     subscriptionId: documentId,
+
     userId: caller.userId,
   });
 }
 
 async function listPushSubscriptions(userId) {
   const snapshot = await db
+
     .collection('push_subscriptions')
+
     .where('user_id', '==', userId)
+
     .where('active', '==', true)
+
     .get();
 
   return snapshot.docs.map((doc) => ({
     id: doc.id,
+
     ...doc.data(),
   }));
 }
@@ -566,10 +662,12 @@ async function sendPushToUser(req, res, caller) {
 
   const title = String(body.title || '')
     .trim()
+
     .slice(0, 120);
 
   const messageBody = String(body.body || '')
     .trim()
+
     .slice(0, 500);
 
   const requestedUrl = String(body.url || '/').trim();
@@ -592,31 +690,44 @@ async function sendPushToUser(req, res, caller) {
   if (!subscriptions.length) {
     return json(req, res, 200, {
       ok: true,
+
       userId,
+
       found: 0,
+
       sent: 0,
+
       failed: 0,
+
       deactivated: 0,
     });
   }
 
   let sent = 0;
+
   let failed = 0;
+
   let deactivated = 0;
 
   for (const subscription of subscriptions) {
     try {
       await messaging.send({
         token: subscription.token,
+
         data: {
           title,
+
           body: messageBody,
+
           url,
+
           tag,
         },
+
         webpush: {
           headers: {
             Urgency: 'high',
+
             TTL: '86400',
           },
         },
@@ -635,6 +746,7 @@ async function sendPushToUser(req, res, caller) {
       if (invalidToken) {
         await db.collection('push_subscriptions').doc(subscription.id).update({
           active: false,
+
           updated_at: FieldValue.serverTimestamp(),
         });
 
@@ -643,8 +755,11 @@ async function sendPushToUser(req, res, caller) {
 
       console.warn('push-send FCM', {
         targetUserId: userId,
+
         callerUserId: caller.userId,
+
         subscriptionId: subscription.id,
+
         code,
       });
     }
@@ -652,19 +767,29 @@ async function sendPushToUser(req, res, caller) {
 
   console.log('push-send summary', {
     targetUserId: userId,
+
     callerUserId: caller.userId,
+
     found: subscriptions.length,
+
     sent,
+
     failed,
+
     deactivated,
   });
 
   return json(req, res, 200, {
     ok: failed === 0,
+
     userId,
+
     found: subscriptions.length,
+
     sent,
+
     failed,
+
     deactivated,
   });
 }
@@ -680,6 +805,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
       return json(req, res, 200, {
         ok: true,
+
         service: 'japanflow-web-api',
       });
     }
@@ -689,12 +815,23 @@ const server = http.createServer(async (req, res) => {
 
       return json(req, res, 200, {
         ok: true,
+
         userId: caller.userId,
+
         role: caller.role,
       });
     }
 
     const caller = await authenticate(req);
+
+    if (
+      req.method === 'POST' &&
+      ['/parse-inventory-label', '/parse-purchase-order', '/transcribe-image'].includes(req.url)
+    ) {
+      const body = await readBody(req);
+      const result = await handleGeminiImage(req.url, body);
+      return json(req, res, result.status, result.body);
+    }
 
     if (req.method === 'POST' && req.url === '/admin/users/create') {
       return adminCreateUser(req, res, caller);
@@ -743,19 +880,6 @@ const server = http.createServer(async (req, res) => {
     });
   }
 });
-
-const imageAiRoutes = new Set([
-  '/parse-inventory-label',
-  '/parse-purchase-order',
-  '/transcribe-image',
-]);
-
-if (req.method === 'POST' && imageAiRoutes.has(req.url)) {
-  const body = await readBody(req);
-  const result = await handleGeminiImage(req.url, body);
-
-  return json(req, res, result.status, result.body);
-}
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`JapanFlow Web API running on port ${port}`);
