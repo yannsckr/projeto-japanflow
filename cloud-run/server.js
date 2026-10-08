@@ -2,6 +2,7 @@ import http from 'node:http';
 import { Firestore, FieldValue } from '@google-cloud/firestore';
 import monitoring from '@google-cloud/monitoring';
 import { DateTime } from 'luxon';
+import { calculateNextRunAt } from './schedule-utils.js';
 const port = Number(process.env.PORT || 8080);
 const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || 'japanflow-erp';
 const db = new Firestore();
@@ -468,6 +469,7 @@ async function createScheduledTaskOccurrence(scheduleId, schedule, localDate) {
     {
       last_created_at: FieldValue.serverTimestamp(),
       last_occurrence_key: localDate,
+      next_run_at: calculateNextRunAt({ ...schedule, last_occurrence_key: localDate }),
       updated_at: FieldValue.serverTimestamp(),
     },
     {
@@ -483,7 +485,12 @@ async function createScheduledTaskOccurrence(scheduleId, schedule, localDate) {
   return created ? 'created' : 'already-exists';
 }
 async function processScheduledTasks() {
-  const schedulesSnapshot = await db.collection('scheduled_tasks').get();
+  // Ative SÓ depois de backfill da produção e deploy do frontend.
+  const optimized = process.env.NEXT_RUN_QUERY_ENABLED === 'true';
+  const now = new Date();
+  const schedulesSnapshot = optimized
+    ? await db.collection('scheduled_tasks').where('next_run_at', '<=', now).limit(200).get()
+    : await db.collection('scheduled_tasks').get();
   const clock = saoPauloClock();
   const summary = {
     checked: schedulesSnapshot.size,
@@ -533,10 +540,9 @@ async function currentCostGuardMode() {
 async function handleScheduledTasks(_req, res) {
   try {
     const guardMode = await currentCostGuardMode();
-    if (guardMode === 'protected') {
-      console.warn('scheduled-tasks skipped by Cost Guard');
-      return json(res, 200, { ok: true, skippedByCostGuard: true, guardMode });
-    }
+    // Tarefas essenciais continuam mesmo em protected; consulta otimizada reduz leituras.
+    if (guardMode === 'protected')
+      console.warn('Cost Guard protected: scheduler essencial mantido');
     const summary = await processScheduledTasks();
     return json(res, 200, { ok: true, guardMode, ...summary });
   } catch (error) {

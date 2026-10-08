@@ -14,6 +14,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { DateTime } from 'luxon';
 
 import {
   Dialog,
@@ -54,6 +55,7 @@ interface ScheduledTask {
   created_by: string;
   created_at: string;
   last_created_at: string | null;
+  last_occurrence_key?: string | null;
 }
 
 const DAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -69,6 +71,31 @@ const toIso = (value: any): string | null => {
     return value;
   }
 
+  return null;
+};
+
+// Usa horário civil de São Paulo; Dom=0 ... Sáb=6.
+// Não retoma uma ocorrência de um dia já marcado como criado.
+const nextRunAtForForm = (schedule: {
+  schedule_time: string;
+  recurrence: string;
+  days_of_week: number[];
+  active?: boolean;
+  last_occurrence_key?: string | null;
+}): Timestamp | null => {
+  if (schedule.active === false) return null;
+  if (!/^([01]\d|2[0-3]):[0-5]$/.test(schedule.schedule_time)) return null;
+  if (schedule.recurrence === 'specific_days' && !schedule.days_of_week.length) return null;
+  const now = DateTime.now().setZone('America/Sao_Paulo');
+  const [hour, minute] = schedule.schedule_time.split(':').map(Number);
+  for (let offset = 0; offset <= 7; offset++) {
+    const day = now.startOf('day').plus({ days: offset });
+    if (schedule.recurrence === 'specific_days' && !schedule.days_of_week.includes(day.weekday % 7))
+      continue;
+    if (day.toFormat('yyyy-LL-dd') === schedule.last_occurrence_key) continue;
+    const run = day.set({ hour, minute });
+    if (run.isValid) return Timestamp.fromDate(run.toJSDate());
+  }
   return null;
 };
 
@@ -121,6 +148,7 @@ const ScheduledTasksManager = () => {
             created_at: toIso(data.created_at) || new Date().toISOString(),
 
             last_created_at: toIso(data.last_created_at),
+            last_occurrence_key: data.last_occurrence_key || null,
           };
         });
 
@@ -184,14 +212,25 @@ const ScheduledTasksManager = () => {
       updated_at: Timestamp.now(),
     };
 
+    const existing = schedules.find((item) => item.id === editingId);
+    const nextRunAt = nextRunAtForForm({
+      ...payload,
+      active: existing?.active ?? true,
+      last_occurrence_key: existing?.last_occurrence_key ?? null,
+    });
+
     try {
       if (editingId) {
-        await updateDoc(doc(db, 'scheduled_tasks', editingId), payload);
+        await updateDoc(doc(db, 'scheduled_tasks', editingId), {
+          ...payload,
+          next_run_at: nextRunAt,
+        });
 
         toast.success('Agendamento atualizado');
       } else {
         await addDoc(collection(db, 'scheduled_tasks'), {
           ...payload,
+          next_run_at: nextRunAt,
 
           active: true,
 
@@ -249,8 +288,11 @@ const ScheduledTasksManager = () => {
 
   const handleToggle = async (id: string, active: boolean) => {
     try {
+      const schedule = schedules.find((item) => item.id === id);
+      if (!schedule) throw new Error('Agendamento não encontrado');
       await updateDoc(doc(db, 'scheduled_tasks', id), {
         active: !active,
+        next_run_at: nextRunAtForForm({ ...schedule, active: !active }),
         updated_at: Timestamp.now(),
       });
     } catch (error) {
