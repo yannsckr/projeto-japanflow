@@ -7,28 +7,38 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  orderBy,
   limit,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { CalendarEvent } from '@/types';
+import type { CalendarEvent } from '@/types';
 
 export function useFirebaseCalendar(enabled: boolean = true) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setEvents([]);
+      return;
+    }
 
     const calendarCol = collection(db, 'calendar_events');
-    const q = query(calendarCol, orderBy('startDate', 'desc'), limit(200));
+    const q = query(calendarCol, limit(200));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: CalendarEvent[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as CalendarEvent[];
-      setEvents(list);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: CalendarEvent[] = snapshot.docs.map((docSnap) => ({
+          ...docSnap.data(),
+          id: docSnap.id,
+        })) as CalendarEvent[];
+
+        setEvents(list);
+      },
+      (error) => {
+        console.error('Erro ao carregar eventos do calendário:', error);
+        setEvents([]);
+      }
+    );
 
     return () => unsubscribe();
   }, [enabled]);
@@ -36,14 +46,17 @@ export function useFirebaseCalendar(enabled: boolean = true) {
   const addEvent = useCallback(async (event: Omit<CalendarEvent, 'id' | 'createdAt'>) => {
     try {
       const docRef = doc(collection(db, 'calendar_events'));
+
       const newEvent: CalendarEvent = {
         ...event,
         id: docRef.id,
         createdAt: new Date().toISOString(),
       };
+
       await setDoc(docRef, newEvent);
-    } catch (err) {
-      console.error('Erro ao adicionar evento:', err);
+    } catch (error) {
+      console.error('Erro ao adicionar evento:', error);
+      throw error;
     }
   }, []);
 
@@ -55,8 +68,9 @@ export function useFirebaseCalendar(enabled: boolean = true) {
       try {
         const docRef = doc(db, 'calendar_events', eventId);
         await updateDoc(docRef, updates);
-      } catch (err) {
-        console.error('Erro ao atualizar evento:', err);
+      } catch (error) {
+        console.error('Erro ao atualizar evento:', error);
+        throw error;
       }
     },
     []
@@ -65,22 +79,46 @@ export function useFirebaseCalendar(enabled: boolean = true) {
   const deleteEvent = useCallback(async (eventId: string) => {
     try {
       await deleteDoc(doc(db, 'calendar_events', eventId));
-    } catch (err) {
-      console.error('Erro ao deletar evento:', err);
+    } catch (error) {
+      console.error('Erro ao deletar evento:', error);
+      throw error;
     }
   }, []);
 
   const getEventsForUser = useCallback(
-    (userId: string) => {
-      return events.filter(
-        (e: any) =>
-          e.userId === userId ||
-          e.createdBy === userId ||
-          (e.participants && e.participants.includes(userId))
-      );
+    (userId: string): CalendarEvent[] => {
+      return events.filter((event) => {
+        const eventWithUsers = event as CalendarEvent & {
+          participants?: string[];
+          targetUsers?: string[];
+          userId?: string;
+          createdBy?: string;
+        };
+
+        const participants = Array.isArray(eventWithUsers.participants)
+          ? eventWithUsers.participants
+          : [];
+
+        const targetUsers = Array.isArray(eventWithUsers.targetUsers)
+          ? eventWithUsers.targetUsers
+          : [];
+
+        return (
+          eventWithUsers.userId === userId ||
+          eventWithUsers.createdBy === userId ||
+          participants.includes(userId) ||
+          targetUsers.includes(userId)
+        );
+      });
     },
     [events]
   );
 
-  return { events, addEvent, updateEvent, deleteEvent, getEventsForUser };
+  return {
+    events,
+    addEvent,
+    updateEvent,
+    deleteEvent,
+    getEventsForUser,
+  };
 }
