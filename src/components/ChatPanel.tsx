@@ -99,8 +99,8 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
   };
 
   const sendImage = async (file: File) => {
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Imagem muito grande (máx 10MB)');
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Imagem muito grande (máx. 15 MB)');
       return;
     }
 
@@ -134,7 +134,7 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
     e.target.value = '';
     if (!file) return;
 
-    if (type === 'image') {
+    if (type === 'image' || file.type.startsWith('image/')) {
       void sendImage(file);
       return;
     }
