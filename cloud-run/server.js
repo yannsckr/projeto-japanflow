@@ -7,12 +7,14 @@ const port = Number(process.env.PORT || 8080);
 const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || 'japanflow-erp';
 const db = new Firestore();
 const monitoringClient = new monitoring.MetricServiceClient();
+
 function json(res, status, body) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
   });
   res.end(JSON.stringify(body));
 }
+
 async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) {
@@ -21,6 +23,7 @@ async function readBody(req) {
   if (!chunks.length) return {};
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
+
 function decodePubSub(body) {
   const encoded = body?.message?.data;
   if (!encoded) {
@@ -28,6 +31,7 @@ function decodePubSub(body) {
   }
   return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
 }
+
 async function findRecipients() {
   const recipients = new Map();
   const ryan = await db.collection('users').where('username', '==', 'ryan').get();
@@ -40,12 +44,14 @@ async function findRecipients() {
   });
   return [...recipients.entries()];
 }
+
 function severityFromPercentage(percentage) {
   if (percentage >= 0.9) return 'critical';
   if (percentage >= 0.75) return 'warning';
   if (percentage >= 0.5) return 'attention';
   return 'info';
 }
+
 function billingTitle(percentage) {
   if (percentage >= 100) {
     return 'Limite de orçamento atingido';
@@ -55,6 +61,7 @@ function billingTitle(percentage) {
   }
   return `Orçamento Google em ${percentage}%`;
 }
+
 function billingMessage(percentage, cost, budgetAmount) {
   if (percentage <= 1) {
     return (
@@ -70,6 +77,7 @@ function billingMessage(percentage, cost, budgetAmount) {
   }
   return `Uso aproximado: R$ ${cost.toFixed(2)} de R$ ${budgetAmount.toFixed(2)}.`;
 }
+
 async function handleBudgetAlert(req, res) {
   try {
     const envelope = await readBody(req);
@@ -129,6 +137,7 @@ async function handleBudgetAlert(req, res) {
     });
   }
 }
+
 const FREE_TIER_METRICS = [
   {
     key: 'reads',
@@ -149,13 +158,16 @@ const FREE_TIER_METRICS = [
     limit: 20000,
   },
 ];
+
 const FREE_TIER_THRESHOLDS = [70, 85, 95, 100];
+
 function costGuardMode(percentage) {
   if (percentage >= 95) return 'protected';
   if (percentage >= 85) return 'economy';
   if (percentage >= 70) return 'warning';
   return 'normal';
 }
+
 function getPacificDayWindow() {
   const now = DateTime.now().setZone('America/Los_Angeles');
   const start = now.startOf('day');
@@ -165,6 +177,7 @@ function getPacificDayWindow() {
     end: now.toUTC(),
   };
 }
+
 function pointNumericValue(point) {
   const value = point?.value;
   if (!value) return 0;
@@ -176,6 +189,7 @@ function pointNumericValue(point) {
   }
   return 0;
 }
+
 async function readMetricUsage(metricType, start, end) {
   const name = monitoringClient.projectPath(projectId);
   const [timeSeries] = await monitoringClient.listTimeSeries({
@@ -199,15 +213,18 @@ async function readMetricUsage(metricType, start, end) {
   }
   return total;
 }
+
 function freeTierSeverity(percentage) {
   if (percentage >= 90) return 'critical';
   if (percentage >= 75) return 'warning';
   if (percentage >= 50) return 'attention';
   return 'info';
 }
+
 function thresholdReached(percentage) {
   return [...FREE_TIER_THRESHOLDS].reverse().find((threshold) => percentage >= threshold);
 }
+
 async function sendFreeTierNotifications({
   metric,
   usage,
@@ -253,6 +270,7 @@ async function sendFreeTierNotifications({
   }
   await batch.commit();
 }
+
 async function handleFreeTierMonitor(_req, res) {
   try {
     const { dayKey, start, end } = getPacificDayWindow();
@@ -365,6 +383,7 @@ async function handleFreeTierMonitor(_req, res) {
     });
   }
 }
+
 function saoPauloClock() {
   const now = DateTime.now().setZone('America/Sao_Paulo');
   return {
@@ -373,6 +392,7 @@ function saoPauloClock() {
     dayOfWeek: now.weekday % 7,
   };
 }
+
 function timestampLocalDate(value) {
   if (!value) return null;
   let date;
@@ -388,10 +408,12 @@ function timestampLocalDate(value) {
   }
   return DateTime.fromJSDate(date).setZone('America/Sao_Paulo').toFormat('yyyy-LL-dd');
 }
+
 function scheduledTaskDocumentId(scheduleId, localDate) {
   const safeScheduleId = String(scheduleId).replace(/[^a-zA-Z0-9_-]/g, '_');
   return `scheduled_${safeScheduleId}_${localDate}`;
 }
+
 function isScheduleDueToday(schedule, clock) {
   if (schedule.active === false) {
     return false;
@@ -413,6 +435,7 @@ function isScheduleDueToday(schedule, clock) {
   }
   return timestampLocalDate(schedule.last_created_at) !== clock.date;
 }
+
 async function createScheduledTaskOccurrence(scheduleId, schedule, localDate) {
   const taskId = scheduledTaskDocumentId(scheduleId, localDate);
   const taskRef = db.collection('tasks').doc(taskId);
@@ -484,6 +507,7 @@ async function createScheduledTaskOccurrence(scheduleId, schedule, localDate) {
   });
   return created ? 'created' : 'already-exists';
 }
+
 async function processScheduledTasks() {
   // Ative SÓ depois de backfill da produção e deploy do frontend.
   const optimized = process.env.NEXT_RUN_QUERY_ENABLED === 'true';
@@ -530,6 +554,7 @@ async function processScheduledTasks() {
     localTime: clock.time,
   };
 }
+
 async function currentCostGuardMode() {
   const snapshot = await db.collection('system_runtime').doc('firestore_guard').get();
   if (!snapshot.exists) {
@@ -537,6 +562,7 @@ async function currentCostGuardMode() {
   }
   return String(snapshot.data()?.mode || 'normal');
 }
+
 async function handleScheduledTasks(_req, res) {
   try {
     const guardMode = await currentCostGuardMode();
@@ -550,6 +576,7 @@ async function handleScheduledTasks(_req, res) {
     return json(res, 500, { error: error instanceof Error ? error.message : String(error) });
   }
 }
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     return json(res, 200, {
@@ -570,6 +597,7 @@ const server = http.createServer(async (req, res) => {
     error: 'Not found',
   });
 });
+
 server.listen(port, '0.0.0.0', () => {
   console.log(`JapanFlow API running on port ${port}`);
 });

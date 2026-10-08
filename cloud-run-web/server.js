@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { handleGeminiImage } from './gemini.js';
 import crypto from 'node:crypto';
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -742,6 +743,19 @@ const server = http.createServer(async (req, res) => {
     });
   }
 });
+
+const imageAiRoutes = new Set([
+  '/parse-inventory-label',
+  '/parse-purchase-order',
+  '/transcribe-image',
+]);
+
+if (req.method === 'POST' && imageAiRoutes.has(req.url)) {
+  const body = await readBody(req);
+  const result = await handleGeminiImage(req.url, body);
+
+  return json(req, res, result.status, result.body);
+}
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`JapanFlow Web API running on port ${port}`);

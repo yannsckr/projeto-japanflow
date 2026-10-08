@@ -281,16 +281,16 @@ export const parseScheduleApi = (input: {
 }) => postJson<{ weeks: unknown[] }>('/parse-schedule', input);
 
 export const parseInventoryLabelApi = (input: { imageBase64: string; mimeType?: string }) =>
-  postJson<{ type: string; code: string }>('/parse-inventory-label', input);
+  webPostJson<{ type: string; code: string }>('/parse-inventory-label', input);
 
 export const parsePurchaseOrderApi = (input: { fileBase64: string; mimeType?: string }) =>
-  postJson<{ supplier?: Record<string, unknown>; items?: unknown[] }>(
-    '/parse-purchase-order',
-    input
-  );
+  webPostJson<{
+    supplier?: Record<string, unknown>;
+    items?: unknown[];
+  }>('/parse-purchase-order', input);
 
 export const transcribeImageApi = (input: { imageBase64: string; mimeType?: string }) =>
-  postJson<{ text: string }>('/transcribe-image', input);
+  webPostJson<{ text: string }>('/transcribe-image', input);
 
 export const freightCalcApi = (input: { address: string }) =>
   postJson<{
