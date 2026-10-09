@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { handleFreightCalc } from './freight.js';
 import { handleScheduleAi } from './schedule-ai.js';
 import { handleCalendarAi } from './calendar-ai.js';
 import crypto from 'node:crypto';
@@ -875,6 +876,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/parse-schedule') {
       const body = await readBody(req);
       const result = await handleScheduleAi(body);
+      return json(req, res, result.status, result.body);
+    }
+
+    if (req.method === 'POST' && req.url === '/freight-calc') {
+      const body = await readBody(req);
+      const result = await handleFreightCalc(body, db);
       return json(req, res, result.status, result.body);
     }
 
