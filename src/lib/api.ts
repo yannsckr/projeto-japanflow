@@ -293,7 +293,7 @@ export const transcribeImageApi = (input: { imageBase64: string; mimeType?: stri
   webPostJson<{ text: string }>('/transcribe-image', input);
 
 export const freightCalcApi = (input: { address: string }) =>
-  postJson<{
+  webPostJson<{
     city: string | null;
     state: string | null;
     carrier: string;
