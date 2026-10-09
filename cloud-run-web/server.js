@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { handleScheduleAi } from './schedule-ai.js';
 import { handleCalendarAi } from './calendar-ai.js';
 import crypto from 'node:crypto';
 import { handleGeminiImage } from './gemini.js';
@@ -868,6 +869,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/parse-calendar-events') {
       const body = await readBody(req);
       const result = await handleCalendarAi(body);
+      return json(req, res, result.status, result.body);
+    }
+
+    if (req.method === 'POST' && req.url === '/parse-schedule') {
+      const body = await readBody(req);
+      const result = await handleScheduleAi(body);
       return json(req, res, result.status, result.body);
     }
 
