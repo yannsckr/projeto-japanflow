@@ -267,7 +267,7 @@ export const parseCalendarEventsApi = (input: {
   users: unknown[];
   sectors: unknown[];
 }) =>
-  postJson<{
+  webPostJson<{
     items: ParsedAiItem[];
     events: ParsedCalendarEvent[];
   }>('/parse-calendar-events', input);
@@ -278,7 +278,7 @@ export const parseScheduleApi = (input: {
   text?: string;
   userName?: string;
   referenceWeekStart?: string;
-}) => postJson<{ weeks: unknown[] }>('/parse-schedule', input);
+}) => webPostJson<{ weeks: unknown[] }>('/parse-schedule', input);
 
 export const parseInventoryLabelApi = (input: { imageBase64: string; mimeType?: string }) =>
   webPostJson<{ type: string; code: string }>('/parse-inventory-label', input);
