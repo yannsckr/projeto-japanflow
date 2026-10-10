@@ -1,4 +1,3 @@
-
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {
@@ -81,8 +80,7 @@ try {
   const anonymousFile = anonymous.storage().ref(path);
 
   // 4. Referências dos anexos do chat privado
-  const privatePath =
-    'attachments/chat/private/admin-user/employee-user/security-test.webp';
+  const privatePath = 'attachments/chat/private/admin-user/employee-user/security-test.webp';
 
   const adminPrivate = admin.storage().ref(privatePath);
   const employeePrivate = employee.storage().ref(privatePath);
@@ -124,12 +122,9 @@ try {
 
   await test('Upload executável é bloqueado', async () => {
     await assertFails(
-      employee
-        .storage()
-        .ref('attachments/tasks/test.exe')
-        .putString('arquivo', 'raw', {
-          contentType: 'application/x-msdownload',
-        })
+      employee.storage().ref('attachments/tasks/test.exe').putString('arquivo', 'raw', {
+        contentType: 'application/x-msdownload',
+      })
     );
   });
 
