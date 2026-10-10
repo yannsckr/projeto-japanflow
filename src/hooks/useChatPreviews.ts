@@ -1,7 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
-
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  Timestamp,
+  query,
+  where,
+  or,
+  limit,
+} from 'firebase/firestore';
 export interface ChatPreview {
   partnerUsername: string;
   lastMessageAt: string;
@@ -48,18 +57,35 @@ export function useChatPreviews(currentUsername: string | null) {
   }, []);
 
   useEffect(() => {
-    return onSnapshot(
+    const userId = currentUsername ? usersMap.usernameToId.get(currentUsername) : null;
+
+    if (!userId) {
+      setMessagesSnapshot([]);
+      return;
+    }
+
+    const messagesQuery = query(
       collection(db, 'messages'),
-      (snapshot) =>
+      or(where('senderId', '==', userId), where('receiverId', '==', userId)),
+      limit(100)
+    );
+
+    return onSnapshot(
+      messagesQuery,
+      (snapshot) => {
         setMessagesSnapshot(
           snapshot.docs.map((messageDoc) => ({
             id: messageDoc.id,
             ...messageDoc.data(),
           }))
-        ),
-      (error) => console.error('Erro ao carregar mensagens para previews:', error)
+        );
+      },
+      (error) => {
+        console.error('Erro ao carregar mensagens para previews:', error);
+        setMessagesSnapshot([]);
+      }
     );
-  }, []);
+  }, [currentUsername, usersMap]);
 
   const rebuildPreviews = useCallback(() => {
     if (!currentUsername) {

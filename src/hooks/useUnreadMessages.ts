@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, limit } from 'firebase/firestore';
 
 import { db } from '@/lib/firebase';
 import { useChatPreferences } from '@/hooks/useChatPreferences';
@@ -80,7 +80,8 @@ export function useUnreadMessages(currentUserIdOrUsername: string | null) {
 
     const messagesQuery = query(
       collection(db, 'messages'),
-      where('receiverId', '==', resolvedUserId)
+      where('receiverId', '==', resolvedUserId),
+      limit(100)
     );
 
     const unsubscribe = onSnapshot(
