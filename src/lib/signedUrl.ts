@@ -1,44 +1,87 @@
-// src/lib/signedUrl.ts
-// Compatibilidade entre URLs antigas (Supabase/Firebase) e novos arquivos no R2.
-import { API_BASE_URL, storageFileUrl } from '@/lib/api';
+import { getBlob, ref } from 'firebase/storage';
+import { storage } from '@/lib/firebase';
+import { API_BASE_URL } from '@/lib/api';
 
 const BUCKET_DEFAULT = 'attachments';
+const cachedUrls = new Map<string, string>();
+const pendingUrls = new Map<string, Promise<string>>();
+
+function normalizePath(value: string): string | null {
+  const path = value.replace(/^\/+/, '');
+  if (!path.startsWith('attachments/')) return null;
+  if (path.includes('\0') || path.split('/').includes('..')) return null;
+  return path;
+}
+
+function workerPath(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const worker = new URL(API_BASE_URL);
+    if (url.origin !== worker.origin || !url.pathname.startsWith('/storage/file/')) {
+      return null;
+    }
+
+    const encoded = url.pathname.slice('/storage/file/'.length);
+    return normalizePath(decodeURIComponent(encoded));
+  } catch {
+    return null;
+  }
+}
 
 export function pathFromPublicUrl(publicUrl: string, bucket = BUCKET_DEFAULT): string | null {
   if (!publicUrl) return null;
 
-  // Novas URLs servidas pelo JapanFlow Worker/R2.
-  try {
-    const url = new URL(publicUrl);
-    const workerBase = new URL(API_BASE_URL);
+  const legacyPath = workerPath(publicUrl);
+  if (legacyPath) return legacyPath;
 
-    if (url.origin === workerBase.origin && url.pathname.startsWith('/storage/file/')) {
-      return decodeURIComponent(url.pathname.slice('/storage/file/'.length));
-    }
-  } catch {
-    // Pode ser um path interno.
-  }
-
-  // URLs antigas do Supabase.
   const supabaseMarker = `/storage/v1/object/public/${bucket}/`;
-  const supabaseIdx = publicUrl.indexOf(supabaseMarker);
-  if (supabaseIdx !== -1) {
-    return decodeURIComponent(publicUrl.slice(supabaseIdx + supabaseMarker.length).split('?')[0]);
+  const supabaseIndex = publicUrl.indexOf(supabaseMarker);
+
+  if (supabaseIndex !== -1) {
+    return decodeURIComponent(publicUrl.slice(supabaseIndex + supabaseMarker.length).split('?')[0]);
   }
 
-  // URLs antigas do Firebase Storage.
   try {
     const url = new URL(publicUrl);
-    const marker = '/o/';
-    const idx = url.pathname.indexOf(marker);
-    if (idx !== -1) {
-      return decodeURIComponent(url.pathname.slice(idx + marker.length));
+    const isFirebaseHost =
+      url.hostname === 'firebasestorage.googleapis.com' ||
+      url.hostname === 'storage.googleapis.com';
+
+    if (isFirebaseHost) {
+      const index = url.pathname.indexOf('/o/');
+      if (index !== -1) {
+        return decodeURIComponent(url.pathname.slice(index + 3));
+      }
     }
   } catch {
-    // Não é URL válida.
+    const path = normalizePath(publicUrl);
+    if (path) return path;
   }
 
   return null;
+}
+
+async function authenticatedFileUrl(path: string): Promise<string> {
+  const cached = cachedUrls.get(path);
+  if (cached) return cached;
+
+  const pending = pendingUrls.get(path);
+  if (pending) return pending;
+
+  const operation = (async () => {
+    const blob = await getBlob(ref(storage, path));
+    const objectUrl = URL.createObjectURL(blob);
+    cachedUrls.set(path, objectUrl);
+    return objectUrl;
+  })();
+
+  pendingUrls.set(path, operation);
+
+  try {
+    return await operation;
+  } finally {
+    pendingUrls.delete(path);
+  }
 }
 
 export async function getSignedUrl(
@@ -48,28 +91,24 @@ export async function getSignedUrl(
 ): Promise<string> {
   if (!pathOrPublicUrl) return pathOrPublicUrl;
 
-  // URLs antigas continuam intactas até a migração histórica.
-  if (/^https?:\/\//i.test(pathOrPublicUrl)) {
-    try {
-      const url = new URL(pathOrPublicUrl);
-      const workerBase = new URL(API_BASE_URL);
+  const isHttp = /^https?:\/\//i.test(pathOrPublicUrl);
+  const legacyPath = isHttp ? workerPath(pathOrPublicUrl) : null;
 
-      if (url.origin === workerBase.origin && url.pathname.startsWith('/storage/file/')) {
-        return pathOrPublicUrl;
-      }
-    } catch {
-      return pathOrPublicUrl;
-    }
-
+  if (isHttp && !legacyPath) {
     return pathOrPublicUrl;
   }
 
-  const path = pathOrPublicUrl.replace(/^\/+/, '');
+  const rawPath = legacyPath || pathOrPublicUrl.replace(/^\/+/, '');
+  const path = normalizePath(rawPath.startsWith(`${bucket}/`) ? rawPath : `${bucket}/${rawPath}`);
 
-  // Evita transformar paths de buckets legados diferentes.
-  if (!path.startsWith(`${bucket}/`) && bucket === BUCKET_DEFAULT) {
-    return storageFileUrl(path.startsWith('attachments/') ? path : `attachments/${path}`);
+  if (!path) return pathOrPublicUrl;
+
+  try {
+    return await authenticatedFileUrl(path);
+  } catch (error) {
+    console.warn('[signedUrl] Firebase Storage indisponível:', path, error);
+    return isHttp
+      ? pathOrPublicUrl
+      : `${API_BASE_URL}/storage/file/${path.split('/').map(encodeURIComponent).join('/')}`;
   }
-
-  return storageFileUrl(path);
 }

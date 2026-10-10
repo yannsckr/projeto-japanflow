@@ -1,8 +1,42 @@
+
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+    function signedIn() {
+      return request.auth != null;
+    }
+    function linkPath() {
+      return /databases/(default)/documents/auth_links/$(request.auth.uid);
+    }
+    function activeUser() {
+      return signedIn()
+        && firestore.exists(linkPath())
+        && firestore.get(linkPath()).data.active != false;
+    }
+    function adminUser() {
+      return activeUser()
+        && firestore.get(linkPath()).data.role == 'admin';
+    }
+    function validUpload() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 15 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType == 'application/pdf'
+          || request.resource.contentType == 'application/octet-stream'
+        );
+    }
+   match /attachments/{allPaths=**} {
+  allow read: if activeUser();
+
+    allow create: if activeUser()
+      && resource == null
+      && validUpload();
+
+    allow update: if false;
+
+    allow delete: if adminUser();
     }
   }
 }
