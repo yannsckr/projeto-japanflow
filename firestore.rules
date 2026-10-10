@@ -2,36 +2,108 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function ownLinkPath() { return /databases/$(database)/documents/auth_links/$(request.auth.uid); }
-    function hasOwnLink() { return signedIn() && exists(ownLinkPath()); }
-    function ownLink() { return get(ownLinkPath()).data; }
-    function isActive() { return hasOwnLink() && ownLink().active != false; }
-    function currentUserPath() { return /databases/$(database)/documents/users/$(ownLink().user_id); }
-    function isTiMaster() { return isActive() && exists(currentUserPath()) && ('sectors' in get(currentUserPath()).data) && get(currentUserPath()).data.sectors.hasAny(['ti']); }
-    function isAdmin() { return isActive() && (ownLink().role == 'admin' || isTiMaster()); }
-    function currentUserId() { return ownLink().user_id; }
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownLinkPath() {
+      return /databases/$(database)/documents/auth_links/$(request.auth.uid);
+    }
+
+    function hasOwnLink() {
+      return signedIn() && exists(ownLinkPath());
+    }
+
+    function ownLink() {
+      return get(ownLinkPath()).data;
+    }
+
+    function isActive() {
+      return hasOwnLink() && ownLink().active != false;
+    }
+
+    function currentUserPath() {
+      return /databases/$(database)/documents/users/$(ownLink().user_id);
+    }
+
+    function isTiMaster() {
+      return isActive()
+        && exists(currentUserPath())
+        && ('sectors' in get(currentUserPath()).data)
+        && get(currentUserPath()).data.sectors.hasAny(['ti']);
+    }
+
+    function isAdmin() {
+      return isActive()
+        && (ownLink().role == 'admin' || isTiMaster());
+    }
+
+    function currentUserId() {
+      return ownLink().user_id;
+    }
 
     match /auth_links/{uid} {
-      allow read: if isActive() && (request.auth.uid == uid || isAdmin());
+      allow read: if isActive()
+        && (request.auth.uid == uid || isAdmin());
+
       allow create, update, delete: if isAdmin();
     }
 
     match /users/{userId} {
       allow read: if isActive();
+
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (isActive() && currentUserId() == userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','avatar','backgroundColor','updated_at']));
+
+      allow update: if isAdmin()
+        || (
+          isActive()
+          && currentUserId() == userId
+          && request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'name',
+              'avatar',
+              'backgroundColor',
+              'updated_at'
+            ])
+        );
     }
 
-    match /user_feature_permissions/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
-    match /user_tab_permissions/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
-    match /task_permissions/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
-    match /app_settings/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
-    match /freight_destinations/{docId} { allow read: if isActive(); allow write: if isAdmin(); }
+    match /user_feature_permissions/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /user_tab_permissions/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /task_permissions/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /app_settings/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /freight_destinations/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
 
     match /system_notifications/{notificationId} {
-      allow read: if isActive() && resource.data.recipient_user_id == currentUserId();
-      allow update: if isActive() && resource.data.recipient_user_id == currentUserId() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow read: if isActive()
+        && resource.data.recipient_user_id == currentUserId();
+
+      allow update: if isActive()
+        && resource.data.recipient_user_id == currentUserId()
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly(['read']);
+
       allow create, delete: if false;
     }
 
@@ -44,6 +116,50 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Mensagens privadas: acesso limitado aos participantes.
+    match /messages/{messageId} {
+      function participant(data) {
+        return isActive()
+          && (
+            data.senderId == currentUserId()
+            || data.receiverId == currentUserId()
+          );
+      }
+
+      allow get: if participant(resource.data);
+
+      allow list: if participant(resource.data)
+        && request.query.limit <= 100;
+
+      allow create: if isActive()
+        && request.resource.data.senderId == currentUserId()
+        && request.resource.data.receiverId is string
+        && request.resource.data.receiverId != currentUserId()
+        && request.resource.data.content is string;
+
+      allow update: if participant(resource.data)
+        && request.resource.data.senderId == resource.data.senderId
+        && request.resource.data.receiverId == resource.data.receiverId
+        && (
+          (
+            resource.data.senderId == currentUserId()
+            && request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasOnly(['content', 'edited', 'deleted'])
+          )
+          ||
+          (
+            resource.data.receiverId == currentUserId()
+            && request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasOnly(['read'])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // Demais coleções operacionais do JapanFlow.
     match /{collection}/{document=**} {
       allow read, write: if isActive()
         && collection != 'users'
@@ -55,7 +171,8 @@ service cloud.firestore {
         && collection != 'freight_destinations'
         && collection != 'system_notifications'
         && collection != 'system_runtime'
-        && collection != 'system_monitor_state';
+        && collection != 'system_monitor_state'
+        && collection != 'messages';
     }
   }
 }

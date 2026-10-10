@@ -40,7 +40,7 @@ interface SendMessageInput {
 }
 
 export const useChat = () => {
-  const { currentUser } = useApp();
+  const { authenticatedUser: currentUser } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const sendMessage = useCallback(

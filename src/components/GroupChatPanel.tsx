@@ -16,7 +16,7 @@ interface GroupChatPanelProps {
 }
 
 const GroupChatPanel = ({ groupId, groupName }: GroupChatPanelProps) => {
-  const { currentUser, users } = useApp();
+  const { authenticatedUser: currentUser, users } = useApp();
   const { messages, sendMessage, editMessage } = useGroupChat(groupId);
 
   const [text, setText] = useState('');

@@ -29,7 +29,7 @@ interface ChatPanelProps {
 }
 
 const ChatPanel = ({ otherUser }: ChatPanelProps) => {
-  const { currentUser, users } = useApp();
+  const { authenticatedUser: currentUser, users } = useApp();
   const { messages, sendMessage, editMessage, getMessagesForChat } = useChat();
 
   const [text, setText] = useState('');
