@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { getStorage } from 'firebase-admin/storage';
 import { handleFreightCalc } from './freight.js';
 import { handleScheduleAi } from './schedule-ai.js';
 import { handleCalendarAi } from './calendar-ai.js';
@@ -34,6 +35,10 @@ const port = Number(process.env.PORT || 8080);
 const auth = getAuth();
 
 const db = getFirestore();
+
+const storageBucket = getStorage().bucket(
+  process.env.FIREBASE_STORAGE_BUCKET || 'japanflow-erp.firebasestorage.app'
+);
 
 const messaging = getMessaging();
 
@@ -796,6 +801,103 @@ async function sendPushToUser(req, res, caller) {
   });
 }
 
+function validStoragePath(value) {
+  if (typeof value !== 'string') return false;
+  if (!value.startsWith('attachments/')) return false;
+  if (value.length > 1024 || value.includes('\0')) return false;
+  if (value.split('/').some((part) => !part || part === '.' || part === '..')) {
+    return false;
+  }
+  return true;
+}
+
+function storageObjectInfo(file) {
+  return {
+    path: file.name,
+    size: Number(file.metadata?.size || 0),
+    mimetype: file.metadata?.contentType || null,
+    uploaded: file.metadata?.timeCreated || null,
+  };
+}
+
+async function adminStorageList(req, res, caller) {
+  requireAdmin(caller);
+
+  const url = new URL(req.url, 'http://localhost');
+  const prefix = url.searchParams.get('prefix') || 'attachments/';
+  const cursor = url.searchParams.get('cursor') || undefined;
+
+  if (!prefix.startsWith('attachments/') || prefix.includes('..')) {
+    return json(req, res, 400, { error: 'Prefixo inválido' });
+  }
+
+  const [files, , response] = await storageBucket.getFiles({
+    prefix,
+    maxResults: 100,
+    autoPaginate: false,
+    ...(cursor ? { pageToken: cursor } : {}),
+  });
+
+  const nextCursor = response?.nextPageToken || null;
+
+  return json(req, res, 200, {
+    objects: files.map(storageObjectInfo),
+    truncated: Boolean(nextCursor),
+    cursor: nextCursor,
+  });
+}
+
+async function adminStorageAudit(req, res, caller) {
+  requireAdmin(caller);
+
+  const body = await readBody(req);
+
+  if (!Array.isArray(body.knownPaths) || body.knownPaths.length > 50000) {
+    return json(req, res, 400, { error: 'Lista de caminhos inválida' });
+  }
+
+  if (!body.knownPaths.every((path) => validStoragePath(path))) {
+    return json(req, res, 400, { error: 'Caminho inválido na lista' });
+  }
+
+  const knownPaths = new Set(body.knownPaths);
+  const orphanCandidates = [];
+  let totalFiles = 0;
+  let cursor;
+
+  do {
+    const [files, , response] = await storageBucket.getFiles({
+      prefix: 'attachments/',
+      maxResults: 100,
+      autoPaginate: false,
+      ...(cursor ? { pageToken: cursor } : {}),
+    });
+
+    for (const file of files) {
+      totalFiles++;
+
+      if (!knownPaths.has(file.name)) {
+        orphanCandidates.push({
+          path: file.name,
+          size: Number(file.metadata?.size || 0),
+        });
+      }
+    }
+
+    cursor = response?.nextPageToken || undefined;
+  } while (cursor);
+
+  return json(req, res, 200, {
+    runId: crypto.randomUUID(),
+    totalFiles,
+    knownAssets: totalFiles - orphanCandidates.length,
+    orphans: orphanCandidates.length,
+    orphanBytes: orphanCandidates.reduce((sum, file) => sum + file.size, 0),
+    sample: orphanCandidates.slice(0, 20).map((file) => file.path),
+    orphanFiles: orphanCandidates,
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') {
@@ -825,6 +927,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     const caller = await authenticate(req);
+
+    if (req.method === 'GET' && req.url.startsWith('/admin/storage/list')) {
+      return adminStorageList(req, res, caller);
+    }
+
+    if (req.method === 'POST' && req.url === '/admin/storage/audit') {
+      return adminStorageAudit(req, res, caller);
+    }
 
     if (
       req.method === 'POST' &&

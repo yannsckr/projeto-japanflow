@@ -99,6 +99,23 @@ async function webPostJson<T>(path: string, body: unknown): Promise<T> {
   }
 }
 
+async function webGetJson<T>(path: string): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${WEB_API_BASE_URL}${path}`, {
+      method: 'GET',
+      headers: await getAuthHeaders(),
+      signal: controller.signal,
+    });
+
+    return await parseApiResponse<T>(response);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function encodeStoragePath(path: string): string {
   return path
     .replace(/^\/+/, '')
@@ -193,10 +210,7 @@ export async function listStorageFilesApi(
   const params = new URLSearchParams({ prefix });
   if (cursor) params.set('cursor', cursor);
 
-  const response = await fetch(`${API_BASE_URL}/storage/list?${params.toString()}`, {
-    headers: await getAuthHeaders(),
-  });
-  return parseApiResponse(response);
+  return webGetJson(`/admin/storage/list?${params.toString()}`);
 }
 
 export async function listAllStorageFilesApi(
@@ -334,7 +348,7 @@ export interface StorageAuditResult {
 }
 
 export const storageAuditReportApi = (input: { knownPaths: string[] }) =>
-  postJson<StorageAuditResult>('/storage-audit-report', input);
+  webPostJson<StorageAuditResult>('/admin/storage/audit', input);
 
 export const backfillWebpApi = (input: {
   mode: 'paths';

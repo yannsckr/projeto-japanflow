@@ -145,7 +145,7 @@ const StorageAuditPanel = () => {
             size_bytes: file.size,
             category: 'orphan',
             action: 'reported',
-            storage_provider: 'cloudflare-r2',
+            storage_provider: 'firebase-storage',
             created_at: Timestamp.now(),
           });
         }
