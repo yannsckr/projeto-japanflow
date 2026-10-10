@@ -13,6 +13,7 @@ export interface UploadImageOptions {
   sourceField?: string;
   uploadedBy?: string | null;
   preserve?: boolean;
+  privateAccess?: boolean;
 }
 
 export interface UploadImageResult {
@@ -43,7 +44,9 @@ export async function uploadImage(
     contentType: mime,
   });
 
-  const publicUrl = await getDownloadURL(snapshot.ref);
+  const publicUrl = opts.privateAccess
+  ? storagePath
+  : await getDownloadURL(snapshot.ref);
   const isImage = mime.startsWith('image/');
 
   try {

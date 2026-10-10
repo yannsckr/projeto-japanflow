@@ -19,7 +19,7 @@ export const SafeChatImage = ({ src, alt, className, onClick }: SafeChatImagePro
     setFailed(false);
     setResolvedSrc(src || null);
 
-    if (!src || !src.startsWith('http')) return;
+    if (!src || (!src.startsWith('http') && !src.startsWith('attachments/'))) return;
 
     void getSignedUrl(src)
       .then((url) => {
@@ -88,7 +88,7 @@ export const ChatAvatar = ({ src, name, className }: ChatAvatarProps) => {
     setFailed(false);
     setResolvedSrc(src || null);
 
-    if (!src || !src.startsWith('http')) return;
+    if (!src || (!src.startsWith('http') && !src.startsWith('attachments/'))) return;
 
     void getSignedUrl(src)
       .then((url) => {

@@ -107,11 +107,14 @@ const ChatPanel = ({ otherUser }: ChatPanelProps) => {
     setUploadingImage(true);
 
     try {
+      const participants = [currentUser.id, otherUser.id].sort();
+
       const { publicUrl } = await uploadImage(file, {
-        pathPrefix: 'chat/private',
+        pathPrefix: `chat/private/${participants[0]}/${participants[1]}`,
         sourceTable: 'messages',
         sourceField: 'attachmentUrl',
         uploadedBy: currentUser.id,
+        privateAccess: true,
       });
 
       await sendMessage({

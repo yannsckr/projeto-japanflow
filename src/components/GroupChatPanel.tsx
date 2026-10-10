@@ -62,6 +62,7 @@ const GroupChatPanel = ({ groupId, groupName }: GroupChatPanelProps) => {
         sourceTable: 'group_messages',
         sourceField: 'attachment_url',
         uploadedBy: currentUser.id,
+        privateAccess: true,
       });
 
       await sendMessage(currentUser.username, {
