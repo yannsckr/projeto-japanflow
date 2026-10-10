@@ -44,9 +44,7 @@ export async function uploadImage(
     contentType: mime,
   });
 
-  const publicUrl = opts.privateAccess
-  ? storagePath
-  : await getDownloadURL(snapshot.ref);
+  const publicUrl = opts.privateAccess ? storagePath : await getDownloadURL(snapshot.ref);
   const isImage = mime.startsWith('image/');
 
   try {
