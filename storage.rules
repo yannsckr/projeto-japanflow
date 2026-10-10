@@ -1,22 +1,31 @@
 
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() {
       return request.auth != null;
     }
+
     function linkPath() {
       return /databases/(default)/documents/auth_links/$(request.auth.uid);
     }
+
     function activeUser() {
       return signedIn()
         && firestore.exists(linkPath())
         && firestore.get(linkPath()).data.active != false;
     }
+
+    function currentUserId() {
+      return firestore.get(linkPath()).data.user_id;
+    }
+
     function adminUser() {
       return activeUser()
         && firestore.get(linkPath()).data.role == 'admin';
     }
+
     function validUpload() {
       return request.resource != null
         && request.resource.size > 0
@@ -27,16 +36,51 @@ service firebase.storage {
           || request.resource.contentType == 'application/octet-stream'
         );
     }
-   match /attachments/{allPaths=**} {
-  allow read: if activeUser();
 
-    allow create: if activeUser()
-      && resource == null
-      && validUpload();
+    function isParticipant(a, b) {
+      return activeUser()
+        && (currentUserId() == a || currentUserId() == b);
+    }
 
-    allow update: if false;
+    // Novos anexos privados: acesso apenas aos dois participantes.
+    match /attachments/chat/private/{userA}/{userB}/{filePath=**} {
+      allow read: if isParticipant(userA, userB);
+      allow create: if isParticipant(userA, userB)
+        && resource == null
+        && validUpload();
+      allow update: if false;
+      allow delete: if adminUser();
+    }
 
-    allow delete: if adminUser();
+    // Arquivos históricos sem identificação dos participantes.
+    // Ainda exigem migração de metadados e autorização.
+    match /attachments/chat/private/{fileName} {
+      allow read, write: if false;
+    }
+
+    // Grupos: política temporária, ainda sem isolamento por membros.
+    match /attachments/chat/groups/{groupId}/{filePath=**} {
+      allow read: if activeUser();
+      allow create: if activeUser()
+        && resource == null
+        && validUpload();
+      allow update: if false;
+      allow delete: if adminUser();
+    }
+
+    // Demais anexos operacionais.
+    match /attachments/{folder}/{filePath=**} {
+      allow read: if activeUser() && folder != 'chat';
+      allow create: if activeUser()
+        && folder != 'chat'
+        && resource == null
+        && validUpload();
+      allow update: if false;
+      allow delete: if adminUser() && folder != 'chat';
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
