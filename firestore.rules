@@ -302,20 +302,58 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Criar uma tarefa vinculada exige que o funcionário seja o autor da
+    // garantia manual existente. O frontend cria ficha e tarefa em duas operações,
+    // NÃO no mesmo batch. A Cloud Function usa Admin SDK para tarefas do site.
+    function mayCreateLinkedWarrantyTask() {
+      let claimId = request.resource.data.get('warranty_id', '');
+      let claimPath = /databases/$(database)/documents/warranty_claims/$(claimId);
+      return canSeeWarrantyModule()
+        && claimId is string
+        && claimId.matches('^[A-Za-z0-9_-]{1,180}$')
+        && request.resource.data.get('created_by', '') == currentUserId()
+        && request.resource.data.get('sector', '') == 'garantias'
+        && request.resource.data.get('board_visible', false) == true
+        && request.resource.data.get('assignee_id', '') == 'emp-12'
+        && request.resource.data.get('status', '') == 'todo'
+        && request.resource.data.get('priority', '') == 'high'
+        && !request.resource.data.keys().hasAny([
+          'archived_at', 'archived_by', 'archivedAt', 'archivedBy',
+          'warranty_archived_by_deletion', 'warranty_previous_board_visible'
+        ])
+        && exists(claimPath)
+        && get(claimPath).data.get('requested_by', '') == currentUserId()
+        && get(claimPath).data.get('origin', 'manual') != 'site'
+        && get(claimPath).data.get('deleted_at', null) == null;
+    }
+
     // Operational tasks: active staff may update status; transfer is forbidden to motoboys.
     match /tasks/{taskId} {
-      allow read, create, delete: if isActive();
-      allow update: if isActive() && (
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignee_id', 'assignee_ids', 'assigneeId'])
-        || (
-          isAdmin()
-          || (
-            exists(currentUserPath())
-            && get(currentUserPath()).data.active != false
-            && !(('sectors' in get(currentUserPath()).data) && get(currentUserPath()).data.sectors.hasAny(['motoboys']))
-          )
-        )
+      allow read: if isActive();
+      allow create: if isActive() && (
+        request.resource.data.get('warranty_id', '') == ''
+        || mayCreateLinkedWarrantyTask()
       );
+      // Tarefas ligadas a garantia não podem ser excluídas diretamente.
+      allow delete: if isActive() && resource.data.get('warranty_id', '') == '';
+      allow update: if isActive()
+        && request.resource.data.get('warranty_id', '') == resource.data.get('warranty_id', '')
+        && (resource.data.get('warranty_id', '') == ''
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'archived_at', 'archived_by', 'archivedAt', 'archivedBy',
+            'board_visible', 'warranty_archived_by_deletion', 'warranty_previous_board_visible'
+          ]))
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignee_id', 'assignee_ids', 'assigneeId'])
+          || (
+            isAdmin()
+            || (
+              exists(currentUserPath())
+              && get(currentUserPath()).data.active != false
+              && !(('sectors' in get(currentUserPath()).data) && get(currentUserPath()).data.sectors.hasAny(['motoboys']))
+            )
+          )
+        );
     }
 
     // Comunicados exclusivos do Ryan, com acesso validado no Firestore.
@@ -401,6 +439,71 @@ service cloud.firestore {
     }
 
     // Only Admin SDK may change intake receipts/quota/leases.
+    // Todas as operações de lixeira e tarefas relacionadas são feitas pela
+    // Cloud Function autenticada, nunca diretamente pelo navegador.
+    function warrantyFeatureEnabled() {
+      let permissionId = 'tracking_warranties__' + currentUserId();
+      let perm = /databases/$(database)/documents/user_feature_permissions/$(permissionId);
+      return exists(perm) && get(perm).data.get('enabled', false) == true
+        && get(perm).data.get('user_id', '') == currentUserId()
+        && get(perm).data.get('feature_key', '') == 'tracking_warranties';
+    }
+
+    function canSeeWarrantyModule() {
+      return isActive() && exists(currentUserPath())
+        && get(currentUserPath()).data.get('active', true) != false
+        && (isAdmin()
+          || get(currentUserPath()).data.get('sectors', []).hasAny([
+            'garantias', 'vendas', 'expedicao', 'site'
+          ])
+          || warrantyFeatureEnabled());
+    }
+
+    match /warranty_claims/{claimId} {
+      allow read: if isActive();
+      allow create: if canSeeWarrantyModule()
+        && !claimId.matches('^site_.*')
+        && request.resource.data.get('requested_by', '') == currentUserId()
+        && request.resource.data.get('origin', '') != 'site'
+        && !request.resource.data.keys().hasAny(['deleted_at', 'deleted_by']);
+      // Permite campos normais de edição e status. Marcadores imutáveis e
+      // dados de lixeira não podem ser escritos por nenhum cliente.
+      allow update: if canSeeWarrantyModule()
+        && resource.data.get('deleted_at', null) == null
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'requested_by', 'origin', 'created_at', 'site_protocol',
+          'site_attachments', 'deleted_at', 'deleted_by'
+        ]);
+      allow delete: if false;
+    }
+
+    // As notas do cliente podem ser criadas pela interface; os eventos de
+    // lixeira continuam exclusivos da Cloud Function/ Admin SDK.
+    function mayCreateWarrantyNote() {
+      let claimId = request.resource.data.get('warranty_id', '');
+      let claimPath = /databases/$(database)/documents/warranty_claims/$(claimId);
+      return canSeeWarrantyModule()
+        && request.resource.data.keys().hasOnly([
+          'warranty_id', 'user_id', 'content', 'attachment_url',
+          'attachment_name', 'created_at'
+        ])
+        && request.resource.data.get('user_id', '') == currentUserId()
+        && claimId is string
+        && claimId.matches('^[A-Za-z0-9_-]{1,180}$')
+        && request.resource.data.get('content', '') is string
+        && request.resource.data.get('created_at', null) is timestamp
+        && request.resource.data.get('content', '') != 'Garantia enviada para a lixeira.'
+        && request.resource.data.get('content', '') != 'Garantia restaurada da lixeira.'
+        && exists(claimPath)
+        && get(claimPath).data.get('deleted_at', null) == null;
+    }
+
+    match /warranty_updates/{updateId} {
+      allow read: if isActive();
+      allow create: if mayCreateWarrantyNote();
+      allow update, delete: if false;
+    }
+
     match /site_warranty_receipts/{receiptId} {
       allow read, write: if false;
     }
@@ -472,6 +575,8 @@ service cloud.firestore {
     match /{collection}/{document=**} {
       allow read, write: if isActive()
         && collection != 'site_warranty_receipts'
+        && collection != 'warranty_claims'
+        && collection != 'warranty_updates'
         && collection != 'users'
         && collection != 'auth_links'
         && collection != 'user_feature_permissions'

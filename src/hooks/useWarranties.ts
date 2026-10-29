@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { db } from '@/lib/firebase';
+import app, { db } from '@/lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
-  addDoc,
   collection,
   doc,
   onSnapshot,
   orderBy,
   query,
   Timestamp,
-  updateDoc,
+  writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 
 export interface WarrantyClaim {
@@ -43,7 +44,30 @@ export interface WarrantyClaim {
   siteAttachments?: { path: string; name: string; type: string; size: number; sha256: string }[];
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
+  deletedBy?: string;
 }
+
+export type WarrantyEditableFields = Pick<
+  WarrantyClaim,
+  | 'clientName'
+  | 'supplierName'
+  | 'productBrand'
+  | 'itemName'
+  | 'itemCode'
+  | 'defectDescription'
+  | 'saleDate'
+  | 'invoiceNumber'
+  | 'installationMileage'
+  | 'currentMileage'
+  | 'siteOrder'
+  | 'siteContactChannel'
+  | 'siteContact'
+  | 'siteReceived'
+  | 'siteInstalled'
+  | 'siteVehicle'
+  | 'siteNotes'
+>;
 
 export interface WarrantyUpdate {
   id: string;
@@ -94,6 +118,8 @@ const mapClaim = (id: string, data: any): WarrantyClaim => ({
   siteAttachments: Array.isArray(data.site_attachments) ? data.site_attachments : [],
   createdAt: toIso(data.created_at),
   updatedAt: toIso(data.updated_at),
+  deletedAt: toIso(data.deleted_at),
+  deletedBy: data.deleted_by || '',
 });
 
 const mapUpdate = (id: string, data: any): WarrantyUpdate => ({
@@ -105,6 +131,16 @@ const mapUpdate = (id: string, data: any): WarrantyUpdate => ({
   attachmentName: data.attachment_name || null,
   createdAt: toIso(data.created_at),
 });
+
+const WARRANTY_STATUSES_ALLOWED = new Set([
+  'pendente',
+  'falta_documentacao',
+  'encaminhada',
+  'em_analise',
+  'aprovada',
+  'indeferida',
+  'concluida',
+]);
 
 export const useWarranties = () => {
   const [claims, setClaims] = useState<WarrantyClaim[]>([]);
@@ -156,6 +192,8 @@ export const useWarranties = () => {
     return;
   }, []);
 
+  // Cadastro manual: a garantia e a tarefa são criadas na mesma gravação atômica.
+  // Assim não existe garantia criada sem tarefa quando a segunda escrita falha.
   const createClaim = useCallback(
     async (data: {
       clientName: string;
@@ -175,16 +213,28 @@ export const useWarranties = () => {
       installationMileage?: string | null;
       currentMileage?: string | null;
       productImages?: string[];
-    }) => {
-      await addDoc(collection(db, 'warranty_claims'), {
-        client_name: data.clientName,
-        supplier_name: data.supplierName,
-        product_brand: data.productBrand,
-        item_name: data.itemName,
-        item_code: data.itemCode,
-        defect_description: data.defectDescription,
+    }): Promise<string> => {
+      if (!data.requestedBy || !data.clientName.trim() || !data.itemName.trim()) {
+        throw new Error('Cliente, item e solicitante são obrigatórios');
+      }
+
+      const claimRef = doc(collection(db, 'warranty_claims'));
+      const taskRef = doc(collection(db, 'tasks'));
+      const batch = writeBatch(db);
+      const now = Timestamp.now();
+      const nowIso = now.toDate().toISOString();
+      const deadline = new Date();
+      deadline.setHours(23, 59, 59, 999);
+
+      batch.set(claimRef, {
+        client_name: data.clientName.trim(),
+        supplier_name: data.supplierName.trim(),
+        product_brand: data.productBrand.trim(),
+        item_name: data.itemName.trim(),
+        item_code: data.itemCode.trim(),
+        defect_description: data.defectDescription.trim(),
         sale_date: data.saleDate,
-        invoice_number: data.invoiceNumber,
+        invoice_number: data.invoiceNumber.trim(),
         requested_by: data.requestedBy,
         status: 'pending',
         labor_reimbursement_enabled: data.laborReimbursementEnabled,
@@ -195,17 +245,128 @@ export const useWarranties = () => {
         installation_mileage: data.installationMileage || null,
         current_mileage: data.currentMileage || null,
         product_images: data.productImages || [],
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now(),
+        created_at: now,
+        updated_at: now,
+      });
+
+      batch.set(taskRef, {
+        board_visible: true,
+        warranty_id: claimRef.id,
+        title: `🛡️ Garantia: ${data.clientName.trim()} - ${data.itemName.trim()}`,
+        description: `Novo pedido de garantia\nCliente: ${data.clientName.trim()}\nMarca: ${data.productBrand.trim()}\nItem: ${data.itemName.trim()}\nNF/Pedido: ${data.invoiceNumber.trim()}`,
+        status: 'todo',
+        priority: 'high',
+        assignee_id: 'emp-12',
+        created_by: data.requestedBy,
+        deadline: deadline.toISOString().split('T')[0],
+        sector: 'garantias',
+        status_history: [{ status: 'todo', enteredAt: nowIso }],
+        created_at: now,
+        updated_at: now,
+      });
+
+      await batch.commit();
+      return claimRef.id;
+    },
+    []
+  );
+
+  const updateClaim = useCallback(
+    async (id: string, data: WarrantyEditableFields, editedBy: string) => {
+      if (!id || !editedBy || !data.clientName.trim() || !data.itemName.trim()) {
+        throw new Error('Cliente, item e usuário são obrigatórios');
+      }
+
+      const claimRef = doc(db, 'warranty_claims', id);
+      const historyRef = doc(collection(db, 'warranty_updates'));
+      await runTransaction(db, async (tx) => {
+        const claim = await tx.get(claimRef);
+        if (!claim.exists() || claim.data().deleted_at) {
+          throw new Error('Garantia não encontrada ou excluída');
+        }
+
+        const changes: Record<string, unknown> = {
+          client_name: data.clientName.trim(),
+          supplier_name: data.supplierName.trim(),
+          product_brand: data.productBrand.trim(),
+          item_name: data.itemName.trim(),
+          item_code: data.itemCode.trim(),
+          defect_description: data.defectDescription.trim(),
+          sale_date: data.saleDate,
+          invoice_number: data.invoiceNumber.trim(),
+          installation_mileage: data.installationMileage?.trim() || null,
+          current_mileage: data.currentMileage?.trim() || null,
+          updated_at: Timestamp.now(),
+        };
+
+        // Não cria campos de origem "site" em garantias manuais.
+        if (claim.data().origin === 'site') {
+          Object.assign(changes, {
+            site_order: data.siteOrder?.trim() || '',
+            site_contact_channel: data.siteContactChannel?.trim() || '',
+            site_contact: data.siteContact?.trim() || '',
+            site_received: data.siteReceived || '',
+            site_installed: data.siteInstalled?.trim() || '',
+            site_vehicle: data.siteVehicle?.trim() || '',
+            site_notes: data.siteNotes?.trim() || '',
+          });
+        }
+
+        tx.update(claimRef, changes);
+        tx.set(historyRef, {
+          warranty_id: id,
+          user_id: editedBy,
+          content: 'Ficha da garantia editada.',
+          attachment_url: null,
+          attachment_name: null,
+          created_at: Timestamp.now(),
+        });
       });
     },
     []
   );
 
-  const updateClaimStatus = useCallback(async (id: string, status: string) => {
-    await updateDoc(doc(db, 'warranty_claims', id), {
-      status,
-      updated_at: Timestamp.now(),
+  // Exclusão e restauração só pelo backend autenticado. Nunca confiar em actorId do cliente.
+  const softDeleteClaim = useCallback(async (id: string): Promise<{ archivedTasks: number }> => {
+    const operation = httpsCallable<
+      { warrantyId: string; action: 'delete' | 'restore' },
+      { archivedTasks: number }
+    >(getFunctions(app, 'southamerica-east1'), 'manageWarrantyLifecycle');
+    const result = await operation({ warrantyId: id, action: 'delete' });
+    return result.data;
+  }, []);
+
+  const restoreClaim = useCallback(async (id: string): Promise<{ restoredTasks: number }> => {
+    const operation = httpsCallable<
+      { warrantyId: string; action: 'delete' | 'restore' },
+      { restoredTasks: number }
+    >(getFunctions(app, 'southamerica-east1'), 'manageWarrantyLifecycle');
+    const result = await operation({ warrantyId: id, action: 'restore' });
+    return result.data;
+  }, []);
+
+  const updateClaimStatus = useCallback(async (id: string, status: string, userId?: string) => {
+    if (!WARRANTY_STATUSES_ALLOWED.has(status)) {
+      throw new Error('Status de garantia inválido');
+    }
+    const claimRef = doc(db, 'warranty_claims', id);
+    const historyRef = doc(collection(db, 'warranty_updates'));
+    await runTransaction(db, async (tx) => {
+      const claim = await tx.get(claimRef);
+      if (!claim.exists() || claim.data().deleted_at) {
+        throw new Error('Garantia não encontrada ou excluída');
+      }
+      tx.update(claimRef, { status, updated_at: Timestamp.now() });
+      if (userId) {
+        tx.set(historyRef, {
+          warranty_id: id,
+          user_id: userId,
+          content: `Status alterado para ${status}.`,
+          attachment_url: null,
+          attachment_name: null,
+          created_at: Timestamp.now(),
+        });
+      }
     });
   }, []);
 
@@ -217,13 +378,21 @@ export const useWarranties = () => {
       attachmentUrl?: string | null,
       attachmentName?: string | null
     ) => {
-      await addDoc(collection(db, 'warranty_updates'), {
-        warranty_id: warrantyId,
-        user_id: userId,
-        content,
-        attachment_url: attachmentUrl || null,
-        attachment_name: attachmentName || null,
-        created_at: Timestamp.now(),
+      const claimRef = doc(db, 'warranty_claims', warrantyId);
+      const updateRef = doc(collection(db, 'warranty_updates'));
+      await runTransaction(db, async (tx) => {
+        const claim = await tx.get(claimRef);
+        if (!claim.exists() || claim.data().deleted_at) {
+          throw new Error('Garantia não encontrada ou excluída');
+        }
+        tx.set(updateRef, {
+          warranty_id: warrantyId,
+          user_id: userId,
+          content,
+          attachment_url: attachmentUrl || null,
+          attachment_name: attachmentName || null,
+          created_at: Timestamp.now(),
+        });
       });
     },
     []
@@ -235,8 +404,11 @@ export const useWarranties = () => {
     claimsError,
     updatesError,
     createClaim,
+    updateClaim,
     updateClaimStatus,
     addUpdate,
     fetchUpdates,
+    softDeleteClaim,
+    restoreClaim,
   };
 };

@@ -1,8 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { useWarranties, WarrantyClaim, WarrantyUpdate } from '@/hooks/useWarranties';
-import { db } from '@/lib/firebase';
-import { addDoc, collection, Timestamp } from 'firebase/firestore';
+import { useWarranties } from '@/hooks/useWarranties';
+import type { WarrantyClaim, WarrantyEditableFields } from '@/hooks/useWarranties';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,14 +13,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import WarrantyEditForm from '@/components/WarrantyEditForm';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Plus, Search, X, Paperclip, FileText } from 'lucide-react';
+import { Plus, Search, X, Trash2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { uploadImage } from '@/lib/uploadImage';
-import SignedLink from '@/components/SignedLink';
-import WarrantySiteDetails from '@/components/WarrantySiteDetails';
+import WarrantyAttachmentViewer from '@/components/WarrantyAttachmentViewer';
+import ConfirmActionDialog from '@/components/ConfirmActionDialog';
+import { useFeaturePermissions } from '@/hooks/useFeaturePermissions';
+import { canAccessWarrantyModule, canTrashWarranty } from '@/lib/warrantyPermissions';
 
 const WARRANTY_STATUSES = [
   { value: 'pendente', label: 'Pendente' },
@@ -78,13 +80,52 @@ const uploadFile = async (
   }
 };
 
+// Miniatura local: cria a URL só uma vez por arquivo e a libera ao desmontar.
+function LocalProductImage({ file, index }: { file: File; index: number }) {
+  const [previewUrl, setPreviewUrl] = useState('');
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  if (!previewUrl) return <div className="h-16 w-full rounded bg-muted" />;
+  return (
+    <img
+      src={previewUrl}
+      alt={`Imagem ${index + 1} do produto`}
+      className="w-full h-16 object-cover rounded"
+    />
+  );
+}
+
 const WarrantiesPanel = () => {
   const { currentUser, users } = useApp();
-  const { claims, updates, claimsError, updatesError, createClaim, updateClaimStatus, addUpdate } =
-    useWarranties();
+  const { hasFeature } = useFeaturePermissions();
+  const warrantyFeature = hasFeature(currentUser?.id, 'tracking_warranties');
+  const canAccessModule = canAccessWarrantyModule(currentUser, warrantyFeature);
+  const canTrashClaim = useCallback(
+    (claim: Pick<WarrantyClaim, 'requestedBy' | 'origin'>) =>
+      canTrashWarranty(currentUser, claim, warrantyFeature),
+    [currentUser, warrantyFeature]
+  );
+  const {
+    claims,
+    updates,
+    claimsError,
+    updatesError,
+    createClaim,
+    updateClaim,
+    updateClaimStatus,
+    addUpdate,
+    softDeleteClaim,
+    restoreClaim,
+  } = useWarranties();
 
   const [showCreate, setShowCreate] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState<WarrantyClaim | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [search, setSearch] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -97,6 +138,10 @@ const WarrantiesPanel = () => {
   const [identityDocFile, setIdentityDocFile] = useState<File | null>(null);
   const [productImageFiles, setProductImageFiles] = useState<File[]>([]);
   const [creating, setCreating] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<WarrantyClaim | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const MAX_PRODUCT_IMAGES = 4;
 
@@ -119,6 +164,7 @@ const WarrantiesPanel = () => {
   const [updateContent, setUpdateContent] = useState('');
   const [updateFile, setUpdateFile] = useState<File | null>(null);
   const [posting, setPosting] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
 
   const getName = useCallback(
     (id: string) => (id === 'site' ? 'Site' : users.find((u) => u.id === id)?.name || id),
@@ -127,17 +173,24 @@ const WarrantiesPanel = () => {
 
   const filteredClaims = useMemo(() => {
     return claims.filter((c) => {
+      if (c.deletedAt) return false;
       const matchSearch =
         !search ||
         [c.clientName, c.supplierName, c.itemName, getName(c.requestedBy)].some((v) =>
-          v.toLowerCase().includes(search.toLowerCase())
+          (v || '').toLowerCase().includes(search.toLowerCase())
         );
-      const matchDate =
-        !filterDate || new Date(c.createdAt).toISOString().split('T')[0] === filterDate;
+      const matchDate = !filterDate || c.createdAt?.slice(0, 10) === filterDate;
       const matchStatus = filterStatus === 'all' || c.status === filterStatus;
       return matchSearch && matchDate && matchStatus;
     });
   }, [claims, search, filterDate, filterStatus, getName]);
+
+  const trashedClaims = useMemo(
+    () => claims.filter((claim) => Boolean(claim.deletedAt) && canTrashClaim(claim)),
+    [claims, canTrashClaim]
+  );
+
+  const displayedClaims = showTrash ? trashedClaims : filteredClaims;
 
   const claimUpdates = useMemo(() => {
     if (!selectedClaim) return [];
@@ -145,6 +198,70 @@ const WarrantiesPanel = () => {
   }, [updates, selectedClaim]);
 
   if (!currentUser) return null;
+
+  const handleSaveEdit = async (fields: WarrantyEditableFields) => {
+    if (!selectedClaim || !currentUser) return;
+
+    setSavingEdit(true);
+    try {
+      await updateClaim(selectedClaim.id, fields, currentUser.id);
+      setSelectedClaim((previous) => (previous ? { ...previous, ...fields } : null));
+      setEditing(false);
+      toast.success('Garantia atualizada com sucesso');
+    } catch (error) {
+      console.error('[Garantias] Erro ao editar:', error);
+      toast.error('Não foi possível salvar as alterações');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteClaim = async () => {
+    if (!deleteTarget || !currentUser || !canTrashClaim(deleteTarget)) {
+      toast.error('Você só pode excluir suas próprias garantias.');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const result = await softDeleteClaim(deleteTarget.id);
+      toast.success('Garantia enviada para a lixeira');
+
+      if (result.archivedTasks === 0 && deleteTarget.origin !== 'site') {
+        toast.warning(
+          'Nenhuma tarefa vinculada foi arquivada. ' +
+            'Verifique se existe uma tarefa manual antiga no quadro.'
+        );
+      }
+
+      setDeleteTarget(null);
+      setSelectedClaim(null);
+      setEditing(false);
+    } catch (error) {
+      console.error('[Garantias] Falha ao excluir:', error);
+      toast.error('Não foi possível excluir a garantia');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleRestoreClaim = async (claim: WarrantyClaim) => {
+    if (!currentUser || !canTrashClaim(claim)) {
+      toast.error('Você só pode restaurar suas próprias garantias.');
+      return;
+    }
+
+    setRestoringId(claim.id);
+    try {
+      await restoreClaim(claim.id);
+      toast.success('Garantia restaurada com sucesso');
+    } catch (error) {
+      console.error('[Garantias] Falha ao restaurar:', error);
+      toast.error('Não foi possível restaurar a garantia');
+    } finally {
+      setRestoringId(null);
+    }
+  };
 
   const handleCreate = async () => {
     if (
@@ -193,10 +310,16 @@ const WarrantiesPanel = () => {
           currentUser.id
         );
 
+      if (laborFile && !laborFileUrl) throw new Error('Falha no anexo de ressarcimento');
+      if (vehicleDocFile && !vehicleDocUrl) throw new Error('Falha no documento do veículo');
+      if (identityDocFile && !identityDocUrl) throw new Error('Falha no documento de identidade');
+
       const productImageUrls: string[] = [];
       for (const f of productImageFiles.slice(0, MAX_PRODUCT_IMAGES)) {
         const url = await uploadFile(f, 'warranties/product', 'product_images', currentUser.id);
-        if (url) productImageUrls.push(url);
+        if (!url)
+          throw new Error(`Não foi possível enviar a imagem ${productImageUrls.length + 1}`);
+        productImageUrls.push(url);
       }
 
       await createClaim({
@@ -218,24 +341,7 @@ const WarrantiesPanel = () => {
         currentMileage: form.currentMileage?.trim() || null,
         productImages: productImageUrls,
       });
-      // Create task for William (emp-12)
-      const now = new Date().toISOString();
-      const deadline = new Date();
-      deadline.setHours(23, 59, 59, 999);
-      await addDoc(collection(db, 'tasks'), {
-        board_visible: true,
-        title: `🛡️ Garantia: ${form.clientName.trim()} - ${form.itemName.trim()}`,
-        description: `Novo pedido de garantia\nCliente: ${form.clientName.trim()}\nMarca: ${form.productBrand.trim()}\nItem: ${form.itemName.trim()}\nNF/Pedido: ${form.invoiceNumber.trim()}`,
-        status: 'todo',
-        priority: 'high',
-        assignee_id: 'emp-12',
-        created_by: currentUser.id,
-        deadline: deadline.toISOString().split('T')[0],
-        sector: 'garantias',
-        status_history: [{ status: 'todo', enteredAt: now }],
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now(),
-      });
+      // A tarefa é criada na mesma operação atômica da garantia pelo useWarranties.
       toast.success('Pedido de garantia criado');
       setShowCreate(false);
       setForm({});
@@ -270,6 +376,7 @@ const WarrantiesPanel = () => {
           selectedClaim.id,
           'warranty_updates'
         );
+        if (!fileUrl) throw new Error('Falha ao enviar o anexo da atualização');
         fileName = updateFile.name;
       }
       await addUpdate(selectedClaim.id, currentUser.id, updateContent.trim(), fileUrl, fileName);
@@ -284,10 +391,18 @@ const WarrantiesPanel = () => {
   };
 
   const handleStatusChange = async (newStatus: string) => {
-    if (!selectedClaim) return;
-    await updateClaimStatus(selectedClaim.id, newStatus);
-    setSelectedClaim((prev) => (prev ? { ...prev, status: newStatus } : null));
-    toast.success('Status atualizado');
+    if (!selectedClaim || savingStatus) return;
+    setSavingStatus(true);
+    try {
+      await updateClaimStatus(selectedClaim.id, newStatus, currentUser.id);
+      setSelectedClaim((prev) => (prev ? { ...prev, status: newStatus } : null));
+      toast.success('Status atualizado');
+    } catch (error) {
+      console.error('[Garantias] Erro ao mudar status:', error);
+      toast.error('Não foi possível atualizar o status');
+    } finally {
+      setSavingStatus(false);
+    }
   };
 
   const acceptedFileTypes = '.pdf,.jpeg,.jpg,.png';
@@ -315,6 +430,19 @@ const WarrantiesPanel = () => {
           <Plus className="w-3 h-3 mr-1" />
           Novo Pedido de Garantia
         </Button>
+        {canAccessModule && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setShowTrash((value) => !value);
+              setSelectedClaim(null);
+            }}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {showTrash ? 'Voltar às garantias' : `Lixeira (${trashedClaims.length})`}
+          </Button>
+        )}
       </div>
 
       {/* Filtros */}
@@ -359,18 +487,43 @@ const WarrantiesPanel = () => {
         </Select>
       </div>
 
+      {showTrash && (
+        <p className="text-xs text-muted-foreground">
+          Garantias excluídas podem ser restauradas sem perder documentos ou histórico.
+        </p>
+      )}
+
       {/* Lista */}
-      {!claimsError && filteredClaims.length === 0 ? (
+      {!claimsError && displayedClaims.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">
-          Nenhum pedido de garantia encontrado
+          {showTrash ? 'A lixeira está vazia' : 'Nenhum pedido de garantia encontrado'}
         </p>
       ) : claimsError ? null : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-          {filteredClaims.map((c) => (
+          {displayedClaims.map((c) => (
             <div
               key={c.id}
-              onClick={() => setSelectedClaim(c)}
-              className="bg-card border border-border rounded-lg p-3 cursor-pointer hover:bg-secondary/30 transition-colors"
+              onClick={() => {
+                if (!showTrash) {
+                  setEditing(false);
+                  setSelectedClaim(c);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (!showTrash && (event.key === 'Enter' || event.key === ' ')) {
+                  event.preventDefault();
+                  setEditing(false);
+                  setSelectedClaim(c);
+                }
+              }}
+              role={showTrash ? undefined : 'button'}
+              tabIndex={showTrash ? undefined : 0}
+              className={cn(
+                'bg-card border border-border rounded-lg p-3 transition-colors',
+                showTrash
+                  ? 'cursor-default'
+                  : 'cursor-pointer hover:bg-secondary/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary'
+              )}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
@@ -381,8 +534,13 @@ const WarrantiesPanel = () => {
                   <p className="text-xs text-muted-foreground">Fornecedor: {c.supplierName}</p>
                   <p className="text-xs text-muted-foreground">Item: {c.itemName}</p>
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    {new Date(c.createdAt).toLocaleDateString('pt-BR')}
+                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString('pt-BR') : 'Sem data'}
                   </p>
+                  {showTrash && c.deletedAt && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Excluída: {new Date(c.deletedAt).toLocaleString('pt-BR')}
+                    </p>
+                  )}
                 </div>
                 <span
                   className={cn(
@@ -393,6 +551,23 @@ const WarrantiesPanel = () => {
                   {getStatusLabel(c.status)}
                 </span>
               </div>
+
+              {showTrash && canTrashClaim(c) && (
+                <div className="mt-3 border-t border-border pt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={restoringId === c.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleRestoreClaim(c);
+                    }}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    {restoringId === c.id ? 'Restaurando...' : 'Restaurar garantia'}
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -511,11 +686,7 @@ const WarrantiesPanel = () => {
                   <div className="grid grid-cols-4 gap-2">
                     {productImageFiles.map((f, i) => (
                       <div key={i} className="relative">
-                        <img
-                          src={URL.createObjectURL(f)}
-                          alt={`Imagem ${i + 1} do produto`}
-                          className="w-full h-16 object-cover rounded"
-                        />
+                        <LocalProductImage file={f} index={i} />
                         <button
                           type="button"
                           onClick={() =>
@@ -617,207 +788,318 @@ const WarrantiesPanel = () => {
       <Dialog
         open={!!selectedClaim}
         onOpenChange={(open) => {
-          if (!open) setSelectedClaim(null);
+          if (!open && !savingEdit) {
+            setEditing(false);
+            setSelectedClaim(null);
+          }
         }}
       >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedClaim && (
             <>
               <DialogHeader>
-                <DialogTitle>Detalhes da Garantia</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                {/* Info */}
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-xs text-muted-foreground">Cliente</span>
-                    <p className="font-medium">{selectedClaim.clientName}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Fornecedor</span>
-                    <p className="font-medium">{selectedClaim.supplierName}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Marca</span>
-                    <p>{selectedClaim.productBrand}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Item</span>
-                    <p>{selectedClaim.itemName}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Código</span>
-                    <p>{selectedClaim.itemCode || '-'}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Data da Venda</span>
-                    <p>
-                      {selectedClaim.saleDate
-                        ? new Date(selectedClaim.saleDate + 'T12:00:00').toLocaleDateString('pt-BR')
-                        : '-'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Nº Nota/Pedido</span>
-                    <p>{selectedClaim.invoiceNumber || '-'}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Solicitante</span>
-                    <p>{getName(selectedClaim.requestedBy)}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-xs text-muted-foreground">Defeito</span>
-                    <p>{selectedClaim.defectDescription || '-'}</p>
-                  </div>
-                  {selectedClaim.installationMileage && (
-                    <div>
-                      <span className="text-xs text-muted-foreground">Km Instalação</span>
-                      <p>{selectedClaim.installationMileage}</p>
-                    </div>
-                  )}
-                  {selectedClaim.currentMileage && (
-                    <div>
-                      <span className="text-xs text-muted-foreground">Km Atual</span>
-                      <p>{selectedClaim.currentMileage}</p>
-                    </div>
-                  )}
-                </div>
-
-                <WarrantySiteDetails claim={selectedClaim} />
-
-                {selectedClaim.productImages?.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Imagens do Produto</p>
-                    <div className="grid grid-cols-4 gap-2">
-                      {selectedClaim.productImages.map((url, i) => (
-                        <SignedLink key={i} url={url}>
-                          <img
-                            src={url}
-                            alt={`Imagem ${i + 1} do produto em garantia`}
-                            className="w-full h-20 object-cover rounded border border-border"
-                          />
-                        </SignedLink>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Documentos */}
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">Documentos</p>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedClaim.laborReimbursementEnabled &&
-                      selectedClaim.laborReimbursementFileUrl && (
-                        <SignedLink
-                          url={selectedClaim.laborReimbursementFileUrl}
-                          className="flex items-center gap-1 text-xs text-primary hover:underline"
-                        >
-                          <FileText className="w-3 h-3" />
-                          NF Ressarcimento
-                        </SignedLink>
-                      )}
-                    {selectedClaim.vehicleDocumentUrl && (
-                      <SignedLink
-                        url={selectedClaim.vehicleDocumentUrl}
-                        className="flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <FileText className="w-3 h-3" />
-                        Doc. Veículo
-                      </SignedLink>
-                    )}
-                    {selectedClaim.identityDocumentUrl && (
-                      <SignedLink
-                        url={selectedClaim.identityDocumentUrl}
-                        className="flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <FileText className="w-3 h-3" />
-                        Doc. Identidade
-                      </SignedLink>
-                    )}
-                  </div>
-                  {selectedClaim.laborReimbursementEnabled && selectedClaim.bankDetails && (
-                    <div className="mt-1">
-                      <span className="text-xs text-muted-foreground">Dados Bancários:</span>
-                      <p className="text-sm">{selectedClaim.bankDetails}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Status */}
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs">Status:</Label>
-                  <Select value={selectedClaim.status} onValueChange={handleStatusChange}>
-                    <SelectTrigger className="h-8 w-48 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {WARRANTY_STATUSES.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Atualizações */}
-                <div className="border-t border-border pt-3">
-                  <p className="text-xs font-medium mb-2">Atualizações ({claimUpdates.length})</p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {claimUpdates.map((u) => (
-                      <div key={u.id} className="bg-secondary/30 rounded-lg p-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium">{getName(u.userId)}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {new Date(u.createdAt).toLocaleString('pt-BR')}
-                          </p>
-                        </div>
-                        {u.content && <p className="text-sm mt-1">{u.content}</p>}
-                        {u.attachmentUrl && (
-                          <SignedLink
-                            url={u.attachmentUrl}
-                            className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-                          >
-                            <Paperclip className="w-3 h-3" />
-                            {u.attachmentName || 'Anexo'}
-                          </SignedLink>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Nova Atualização */}
-                  <div className="mt-3 space-y-2">
-                    <Textarea
-                      placeholder="Adicionar atualização..."
-                      value={updateContent}
-                      onChange={(e) => setUpdateContent(e.target.value)}
-                      className="text-sm"
-                      rows={2}
-                    />
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="file"
-                        accept={acceptedFileTypes}
-                        onChange={(e) => setUpdateFile(e.target.files?.[0] || null)}
-                        className="h-8 text-xs flex-1"
-                      />
-                      <Button
-                        size="sm"
-                        onClick={handlePostUpdate}
-                        disabled={posting}
-                        className="h-8"
-                      >
-                        {posting ? '...' : 'Enviar'}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <DialogTitle>{editing ? 'Editar Garantia' : 'Detalhes da Garantia'}</DialogTitle>
+                  {!editing && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                        Editar
                       </Button>
+                      {canTrashClaim(selectedClaim) && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => {
+                            setDeleteTarget(selectedClaim);
+                            setSelectedClaim(null);
+                            setEditing(false);
+                          }}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Excluir
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </DialogHeader>
+
+              {editing ? (
+                <WarrantyEditForm
+                  key={selectedClaim.id}
+                  claim={selectedClaim}
+                  saving={savingEdit}
+                  onSave={handleSaveEdit}
+                  onCancel={() => setEditing(false)}
+                />
+              ) : (
+                <div className="space-y-4">
+                  {/* Info */}
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-xs text-muted-foreground">Cliente</span>
+                      <p className="font-medium">{selectedClaim.clientName}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Fornecedor</span>
+                      <p className="font-medium">{selectedClaim.supplierName}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Marca</span>
+                      <p>{selectedClaim.productBrand}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Item</span>
+                      <p>{selectedClaim.itemName}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Código</span>
+                      <p>{selectedClaim.itemCode || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Data da Venda</span>
+                      <p>
+                        {selectedClaim.saleDate
+                          ? new Date(selectedClaim.saleDate + 'T12:00:00').toLocaleDateString(
+                              'pt-BR'
+                            )
+                          : '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Nº Nota/Pedido</span>
+                      <p>{selectedClaim.invoiceNumber || selectedClaim.siteOrder || '-'}</p>
+                    </div>
+
+                    {selectedClaim.origin === 'site' &&
+                      (
+                        [
+                          ['Protocolo', selectedClaim.siteProtocol || ''],
+                          [
+                            'Pedido informado no site',
+                            selectedClaim.siteOrder &&
+                            selectedClaim.siteOrder !== selectedClaim.invoiceNumber
+                              ? selectedClaim.siteOrder
+                              : '',
+                          ],
+                          ['Canal de contato', selectedClaim.siteContactChannel || ''],
+                          ['Contato', selectedClaim.siteContact || ''],
+                          [
+                            'Recebimento da peça',
+                            selectedClaim.siteReceived
+                              ? selectedClaim.siteReceived.split('-').reverse().join('/')
+                              : '',
+                          ],
+                          ['Peça instalada?', selectedClaim.siteInstalled || ''],
+                          ['Veículo', selectedClaim.siteVehicle || ''],
+                          ['Observações', selectedClaim.siteNotes || ''],
+                        ] as [string, string][]
+                      )
+                        .filter(([, value]) => Boolean(value))
+                        .map(([label, value]) => (
+                          <div
+                            key={label}
+                            className={label === 'Observações' ? 'col-span-2 min-w-0' : 'min-w-0'}
+                          >
+                            <span className="text-xs text-muted-foreground">{label}</span>
+                            <p className="whitespace-pre-wrap break-words">{value}</p>
+                          </div>
+                        ))}
+
+                    <div>
+                      <span className="text-xs text-muted-foreground">Solicitante</span>
+                      <p>{getName(selectedClaim.requestedBy)}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-xs text-muted-foreground">Defeito</span>
+                      <p>{selectedClaim.defectDescription || '-'}</p>
+                    </div>
+                    {selectedClaim.installationMileage && (
+                      <div>
+                        <span className="text-xs text-muted-foreground">Km Instalação</span>
+                        <p>{selectedClaim.installationMileage}</p>
+                      </div>
+                    )}
+                    {selectedClaim.currentMileage && (
+                      <div>
+                        <span className="text-xs text-muted-foreground">Km Atual</span>
+                        <p>{selectedClaim.currentMileage}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Documentos e anexos */}
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-muted-foreground">Documentos e anexos</p>
+
+                    {selectedClaim.productImages?.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">Imagens do produto</p>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {selectedClaim.productImages.map((url, i) => (
+                            <WarrantyAttachmentViewer
+                              key={url + i}
+                              source={url}
+                              name={`Imagem do produto ${i + 1}`}
+                              variant="thumbnail"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedClaim.siteAttachments?.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">Anexos recebidos pelo site</p>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {selectedClaim.siteAttachments.map((file) => (
+                            <WarrantyAttachmentViewer
+                              key={file.path}
+                              source={file.path}
+                              name={file.name}
+                              mimeType={file.type}
+                              variant={file.type.startsWith('image/') ? 'thumbnail' : 'row'}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      {selectedClaim.laborReimbursementEnabled &&
+                        selectedClaim.laborReimbursementFileUrl && (
+                          <WarrantyAttachmentViewer
+                            source={selectedClaim.laborReimbursementFileUrl}
+                            name="NF Ressarcimento"
+                          />
+                        )}
+
+                      {selectedClaim.vehicleDocumentUrl && (
+                        <WarrantyAttachmentViewer
+                          source={selectedClaim.vehicleDocumentUrl}
+                          name="Documento do veículo"
+                        />
+                      )}
+
+                      {selectedClaim.identityDocumentUrl && (
+                        <WarrantyAttachmentViewer
+                          source={selectedClaim.identityDocumentUrl}
+                          name="Documento de identidade"
+                        />
+                      )}
+                    </div>
+
+                    {selectedClaim.laborReimbursementEnabled && selectedClaim.bankDetails && (
+                      <div>
+                        <span className="text-xs text-muted-foreground">Dados Bancários:</span>
+                        <p className="text-sm">{selectedClaim.bankDetails}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Status:</Label>
+                    <Select
+                      value={selectedClaim.status}
+                      onValueChange={handleStatusChange}
+                      disabled={savingStatus}
+                    >
+                      <SelectTrigger className="h-8 w-48 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WARRANTY_STATUSES.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Atualizações */}
+                  <div className="border-t border-border pt-3">
+                    <p className="text-xs font-medium mb-2">Atualizações ({claimUpdates.length})</p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {claimUpdates.map((u) => (
+                        <div key={u.id} className="bg-secondary/30 rounded-lg p-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-medium">{getName(u.userId)}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {new Date(u.createdAt).toLocaleString('pt-BR')}
+                            </p>
+                          </div>
+                          {u.content && <p className="text-sm mt-1">{u.content}</p>}
+                          {u.attachmentUrl && (
+                            <WarrantyAttachmentViewer
+                              source={u.attachmentUrl}
+                              name={u.attachmentName || 'Anexo da atualização'}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Nova Atualização */}
+                    <div className="mt-3 space-y-2">
+                      <Textarea
+                        placeholder="Adicionar atualização..."
+                        value={updateContent}
+                        onChange={(e) => setUpdateContent(e.target.value)}
+                        className="text-sm"
+                        rows={2}
+                      />
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="file"
+                          accept={acceptedFileTypes}
+                          onChange={(e) => setUpdateFile(e.target.files?.[0] || null)}
+                          className="h-8 text-xs flex-1"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handlePostUpdate}
+                          disabled={posting}
+                          className="h-8"
+                        >
+                          {posting ? '...' : 'Enviar'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+        title="Excluir pedido de garantia?"
+        description={
+          <>
+            A garantia de <strong>{deleteTarget?.clientName || 'este cliente'}</strong> será enviada
+            para a lixeira.
+            <p className="mt-2">
+              Os documentos, os anexos e o histórico serão preservados. A tarefa vinculada será
+              arquivada quando houver identificação segura.
+            </p>
+            <p className="mt-2">Você poderá restaurar esta garantia depois.</p>
+          </>
+        }
+        confirmLabel="Excluir garantia"
+        cancelLabel="Cancelar"
+        destructive
+        loading={deleting}
+        onConfirm={handleDeleteClaim}
+      />
     </div>
   );
 };
