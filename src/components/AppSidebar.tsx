@@ -17,6 +17,7 @@ import {
   Settings2,
   Users,
   Wrench,
+  Cog,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import JapanFlowIcon, { JapanFlowIconName } from '@/components/JapanFlowIcon';
@@ -59,6 +60,7 @@ const primaryPaths = new Set([
   '/board',
   '/admin/monitor',
   '/chat',
+  '/referencias',
   '/corporate',
   '/departmental',
 ]);
@@ -168,6 +170,8 @@ const AppSidebar = ({
   const admins = users.filter(
     (user) => user.role === 'admin' && user.active !== false && user.id !== currentUser.id
   );
+  const canUseReferences =
+    currentUser.active !== false && currentUser.sectors?.includes('vendas' as Sector);
   const baseItems: NavItem[] = isAdmin
     ? [
         { icon: 'meu-quadro', label: 'Meu Quadro', path: '/admin' },
@@ -182,6 +186,14 @@ const AppSidebar = ({
         { icon: 'corporativo', label: 'Corporativo', path: '/corporate' },
         { icon: 'departamental', label: 'Departamental', path: '/departmental' },
       ];
+  if (canUseReferences) {
+    const afterChat = baseItems.findIndex((item) => item.path === '/chat');
+    baseItems.splice(afterChat + 1, 0, {
+      icon: 'departamental',
+      label: 'Referências',
+      path: '/referencias',
+    });
+  }
   const defaultFinancial = isAdmin || isFinanceiro;
   const defaultCorridas = isAdmin || isMotoboy || isFinanceiro || isPatricia;
   const defaultTracking = true;
@@ -273,7 +285,11 @@ const AppSidebar = ({
       aria-current={isActive(item.path) ? 'page' : undefined}
       aria-label={collapsed ? item.label : undefined}
     >
-      <JapanFlowIcon name={item.icon} className="h-[22px] w-[22px]" />
+      {item.path === '/referencias' ? (
+        <Cog className="h-[22px] w-[22px]" />
+      ) : (
+        <JapanFlowIcon name={item.icon} className="h-[22px] w-[22px]" />
+      )}
       {!collapsed && <span className="truncate">{item.label}</span>}
       {item.path === '/chat' && totalUnread > 0 && !isActive('/chat') && (
         <span

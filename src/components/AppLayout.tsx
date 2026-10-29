@@ -48,6 +48,7 @@ const pageTitles: Record<string, string> = {
   '/backlog': 'TI',
   '/board': 'Meu Quadro',
   '/chat': 'Chat',
+  '/referencias': 'Referências',
   '/corporate': 'Corporativo',
   '/departmental': 'Departamental',
   '/departmental/motoboys/mapa': 'Mapa de motoboys',

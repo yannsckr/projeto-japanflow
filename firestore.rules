@@ -571,6 +571,32 @@ service cloud.firestore {
       allow delete: if motoboyOwnSession(userId) || canViewMotoboyGps();
     }
 
+    function canUseSalesReferences() {
+      return isActive() && exists(currentUserPath())
+        && get(currentUserPath()).data.active != false
+        && ('sectors' in get(currentUserPath()).data)
+        && get(currentUserPath()).data.sectors.hasAny(['vendas']);
+    }
+
+    match /part_references/{referenceId} {
+      allow get, list: if canUseSalesReferences();
+      allow create: if canUseSalesReferences()
+        && request.resource.data.keys().hasOnly(['name','description','vehicle_brand','vehicles','manufacturer','part_type','year_start','year_end','photos','created_by','created_at','updated_at'])
+        && request.resource.data.keys().hasAll(['name','description','vehicle_brand','vehicles','manufacturer','part_type','year_start','year_end','photos','created_by','created_at','updated_at'])
+        && request.resource.data.created_by == currentUserId()
+        && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 140
+        && request.resource.data.description is string && request.resource.data.description.size() <= 3000
+        && request.resource.data.part_type is string && request.resource.data.part_type.size() >= 1 && request.resource.data.part_type.size() <= 100
+        && request.resource.data.manufacturer is string && request.resource.data.manufacturer.size() >= 1 && request.resource.data.manufacturer.size() <= 120
+        && request.resource.data.vehicle_brand in ['Mitsubishi','Toyota','Honda','Suzuki','Subaru']
+        && request.resource.data.vehicles is list && request.resource.data.vehicles.size() >= 1 && request.resource.data.vehicles.size() <= 30
+        && request.resource.data.year_start is int && request.resource.data.year_end is int
+        && request.resource.data.year_start >= 1950 && request.resource.data.year_start <= request.resource.data.year_end && request.resource.data.year_end <= 2100
+        && request.resource.data.photos is list && request.resource.data.photos.size() >= 1 && request.resource.data.photos.size() <= 6
+        && request.resource.data.created_at == request.time && request.resource.data.updated_at == request.time;
+      allow update, delete: if false;
+    }
+
     // Colecoes operacionais nao cobertas pelas regras especificas.
     match /{collection}/{document=**} {
       allow read, write: if isActive()
@@ -594,6 +620,7 @@ service cloud.firestore {
         && collection != 'messages'
         && collection != 'motoboy_live_locations'
         && collection != 'motoboy_live_sessions'
+        && collection != 'part_references'
         && collection != 'tasks'
         && collection != 'ryan_announcements'
         && collection != 'ryan_announcement_acks'

@@ -11,6 +11,7 @@ const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const AdminMonitorPage = lazy(() => import('@/pages/AdminMonitorPage'));
 const EmployeeBoardPage = lazy(() => import('@/pages/EmployeeBoardPage'));
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
+const ReferencesPage = lazy(() => import('@/pages/ReferencesPage'));
 const CorporateToolsPage = lazy(() => import('@/pages/CorporateToolsPage'));
 const DepartmentalPage = lazy(() => import('@/pages/DepartmentalPage'));
 const MotoboyTrackingPage = lazy(() => import('@/pages/MotoboyTrackingPage'));
@@ -53,6 +54,7 @@ const App = () => (
                 <Route path="/admin/employee/:employeeId" element={<EmployeeBoardPage />} />
                 <Route path="/board" element={<EmployeeBoardPage />} />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route path="/referencias" element={<ReferencesPage />} />
                 <Route path="/corporate" element={<CorporateToolsPage />} />
                 <Route path="/departmental" element={<DepartmentalPage />} />
                 <Route path="/departmental/motoboys/mapa" element={<MotoboyTrackingPage />} />

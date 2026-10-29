@@ -141,6 +141,23 @@ service firebase.storage {
         && folder != 'chat';
     }
 
+    // Fotos internas do catálogo: acesso exclusivo a funcionários de Vendas.
+    function salesAccess() {
+      return activeUser()
+        && firestore.exists(/databases/(default)/documents/users/$(currentUserId()))
+        && firestore.get(/databases/(default)/documents/users/$(currentUserId())).data.active != false
+        && firestore.get(/databases/(default)/documents/users/$(currentUserId())).data.sectors.hasAny(['vendas']);
+    }
+
+    match /sales_references/{userId}/{fileName} {
+      allow read: if salesAccess();
+      allow create: if salesAccess() && currentUserId() == userId
+        && resource == null && request.resource != null
+        && request.resource.size > 0 && request.resource.size <= 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow update, delete: if false;
+    }
+
     // ========================================
     // BLOQUEIO PADRÃO
     // ========================================
