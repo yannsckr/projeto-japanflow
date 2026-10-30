@@ -613,11 +613,17 @@ export default function ReferencesPage() {
                   }}
                   className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border bg-card p-3 shadow-sm transition hover:border-primary hover:shadow-md"
                 >
-                  <img
-                    className="h-12 w-20 object-contain"
-                    src={`/brands/${b.toLowerCase()}.svg`}
-                    alt={`Logo ${b}`}
-                  />
+                  <span
+                    className="flex h-14 w-28 shrink-0 items-center justify-center"
+                    aria-hidden="true"
+                  >
+                    <img
+                      className="block h-full w-full object-contain"
+                      src={`/${b.toLowerCase()}.svg`}
+                      alt=""
+                      loading="lazy"
+                    />
+                  </span>
                   <span className="font-semibold">{b}</span>
                 </button>
               ))}
