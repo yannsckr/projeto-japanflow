@@ -1,3 +1,4 @@
+
 name: CI
 
 on:
@@ -15,6 +16,7 @@ jobs:
     name: Lint, Format, Typecheck, Test & Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,16 +31,16 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: bun run lint
+        run: npm run lint
 
       - name: Format check
-        run: bun run format:check
+        run: npm run format:check
 
       - name: Typecheck
-        run: bunx tsc -p tsconfig.app.json --noEmit
+        run: npx tsc -p tsconfig.app.json --noEmit
 
       - name: Tests
-        run: bunx vitest run --reporter=default
+        run: npm run test -- --reporter=default
 
       - name: Build
-        run: bun run build
+        run: npm run build
