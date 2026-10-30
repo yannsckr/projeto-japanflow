@@ -578,6 +578,38 @@ service cloud.firestore {
         && get(currentUserPath()).data.sectors.hasAny(['vendas']);
     }
 
+    // R3D.3: modelos 3D compartilhados entre funcionários de Vendas.
+    match /reference_3d_models/{modelId} {
+      allow get, list: if canUseSalesReferences();
+      allow create: if canUseSalesReferences()
+        && request.resource.data.keys().hasOnly(['name','brand','path','map','created_by','created_at','model_file_name'])
+        && request.resource.data.keys().hasAll(['name','brand','path','map','created_by','created_at','model_file_name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
+        && request.resource.data.get('model_file_name', '') is string
+        && request.resource.data.get('model_file_name', '').size() <= 160
+        && request.resource.data.brand in ['Mitsubishi','Toyota','Honda','Suzuki','Subaru']
+        && request.resource.data.created_by == currentUserId()
+        && request.resource.data.path is string
+        && request.resource.data.path.matches('^reference_3d/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+[.]glb$')
+        && request.resource.data.path.matches('^reference_3d/' + currentUserId() + '/.*')
+        && request.resource.data.map is map
+        && request.resource.data.map.keys().size() <= 1000
+        && request.resource.data.created_at == request.time;
+      // R3D.4-7 update: somente autor ativo de Vendas; identidade, modelo, marca e caminho imutáveis.
+      allow update: if canUseSalesReferences()
+        && resource.data.created_by == currentUserId()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','map','updated_at'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.map is map
+        && request.resource.data.map.keys().size() <= 1000
+        && request.resource.data.updated_at == request.time;
+      allow delete: if canUseSalesReferences()
+        && resource.data.created_by == currentUserId();
+    }
+
     match /part_references/{referenceId} {
       allow get, list: if canUseSalesReferences();
       allow create: if canUseSalesReferences()
@@ -653,6 +685,7 @@ service cloud.firestore {
         && collection != 'motoboy_live_sessions'
         && collection != 'motoboy_telemetry'
         && collection != 'motoboy_daily_reports'
+        && collection != 'reference_3d_models'
         && collection != 'part_references'
         && collection != 'tasks'
         && collection != 'ryan_announcements'

@@ -22,6 +22,7 @@ import { db, storage } from '@/lib/firebase';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Reference3DExplorer } from '@/components/references/Reference3DExplorer';
 
 const BRANDS = ['Mitsubishi', 'Toyota', 'Honda', 'Suzuki', 'Subaru'] as const;
 type Brand = (typeof BRANDS)[number];
@@ -665,12 +666,30 @@ export default function ReferencesPage() {
               Adicionar peça
             </Button>
           </div>
+          <Reference3DExplorer
+            brand={brand}
+            references={items.map((item) => ({
+              id: item.id,
+              name: item.name,
+              partType: item.partType,
+              description: item.description,
+            }))}
+            onChooseReference={(id) => {
+              setSelected(id);
+              document
+                .getElementById('reference-catalog-grid')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          />
           {error && (
             <p role="alert" className="text-destructive">
               {error}
             </p>
           )}
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div
+            id="reference-catalog-grid"
+            className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
+          >
             <div className="space-y-4">
               {cards}
               {!loading && !error && visible.length === 0 && (

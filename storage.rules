@@ -149,6 +149,18 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/users/$(currentUserId())).data.sectors.hasAny(['vendas']);
     }
 
+    // R3D.3: uploads de conjuntos GLB; leitura só para Vendas.
+    match /reference_3d/{userId}/{fileName} {
+      allow read: if salesAccess();
+      allow create: if salesAccess() && currentUserId() == userId
+        && resource == null && request.resource != null
+        && fileName.matches('^[A-Za-z0-9_-]+[.]glb$')
+        && request.resource.size > 0 && request.resource.size <= 30 * 1024 * 1024
+        && request.resource.contentType == 'model/gltf-binary';
+      allow update: if false;
+      allow delete: if salesAccess() && currentUserId() == userId;
+    }
+
     match /sales_references/{userId}/{fileName} {
       allow read: if salesAccess();
       allow create: if salesAccess() && currentUserId() == userId
