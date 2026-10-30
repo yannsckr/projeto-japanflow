@@ -1,3 +1,4 @@
+import { MotoboyTelemetryPanel, MotoboyDailyReportPanel } from '@/components/MotoboyTelemetryPanel';
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Link, Navigate } from 'react-router-dom';
@@ -19,7 +20,7 @@ type Session = {
 
 const MAX_AGE_MS = 120_000;
 
-/** Cada iframe utiliza apenas a coordenada recente do proprio motoboy. */
+/** Mapa mostra a ultima posicao conhecida, mesmo quando a leitura estiver desatualizada. */
 function IndividualMap({ session, name, now }: { session: Session; name: string; now: number }) {
   const valid =
     session.lat !== null &&
@@ -35,13 +36,9 @@ function IndividualMap({ session, name, now }: { session: Session; name: string;
     session.updatedAt > 0 &&
     now - session.updatedAt >= 0 &&
     now - session.updatedAt <= MAX_AGE_MS;
-  const bbox = recent
-    ? [session.lng! - 0.012, session.lat! - 0.008, session.lng! + 0.012, session.lat! + 0.008].join(
-        ','
-      )
-    : '';
-  const url = recent
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${session.lat},${session.lng}`)}`
+  const [mapStyle, setMapStyle] = useState<'roadmap' | 'satellite'>('roadmap');
+  const url = valid
+    ? `https://maps.google.com/maps?q=${encodeURIComponent(`${session.lat},${session.lng}`)}&z=16&t=${mapStyle === 'satellite' ? 'k' : 'm'}&output=embed`
     : '';
   return (
     <article className="min-w-0 overflow-hidden rounded-2xl border bg-card shadow-sm">
@@ -55,25 +52,61 @@ function IndividualMap({ session, name, now }: { session: Session; name: string;
           </p>
         </div>
         <Badge variant={recent ? 'default' : 'secondary'}>
-          {recent ? 'Localização recente' : 'Sinal indisponível'}
+          {recent
+            ? 'Ao vivo (recente)'
+            : valid
+              ? 'Última posição · desatualizada'
+              : 'Sem posição registrada'}
         </Badge>
       </div>
-      {recent ? (
+      {valid && (
+        <div
+          className="flex items-center justify-end gap-2 border-t px-4 py-2"
+          role="group"
+          aria-label={`Estilo do mapa de ${name}`}
+        >
+          <Button
+            size="sm"
+            variant={mapStyle === 'roadmap' ? 'default' : 'outline'}
+            onClick={() => setMapStyle('roadmap')}
+            aria-pressed={mapStyle === 'roadmap'}
+          >
+            Mapa
+          </Button>
+          <Button
+            size="sm"
+            variant={mapStyle === 'satellite' ? 'default' : 'outline'}
+            onClick={() => setMapStyle('satellite')}
+            aria-pressed={mapStyle === 'satellite'}
+          >
+            Satélite
+          </Button>
+        </div>
+      )}
+      {valid ? (
         <iframe
           title={`Mapa individual de ${name}`}
-          className="h-72 w-full border-y sm:h-80"
+          className="h-[420px] w-full border-y md:h-[570px] xl:h-[680px]"
           loading="lazy"
           referrerPolicy="no-referrer"
           src={url}
         />
       ) : (
-        <div className="flex h-72 flex-col items-center justify-center gap-2 border-y bg-muted/30 px-5 text-center text-muted-foreground sm:h-80">
+        <div className="flex h-[420px] flex-col items-center justify-center gap-2 border-y bg-muted/30 px-5 text-center text-muted-foreground md:h-[570px] xl:h-[680px]">
           <MapPin className="h-8 w-8" />
-          <p className="text-sm font-medium">Sem posição recente</p>
+          <p className="text-sm font-medium">Nenhuma coordenada registrada</p>
           <p className="max-w-xs text-xs">
-            A jornada pode estar sem permissão de GPS, com o aparelho offline ou com o navegador
-            suspenso.
+            O motoboy ainda não enviou uma coordenada válida nesta jornada.
           </p>
+        </div>
+      )}
+      {valid && !recent && (
+        <div
+          role="alert"
+          className="border-t border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300"
+        >
+          Mostrando a última posição conhecida, não a localização atual. O aparelho pode estar
+          offline, com o GPS indisponível ou com o navegador suspenso.
         </div>
       )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4 text-xs text-muted-foreground">
@@ -83,7 +116,7 @@ function IndividualMap({ session, name, now }: { session: Session; name: string;
             ? new Date(session.updatedAt).toLocaleString('pt-BR')
             : 'Aguardando primeira posição'}
         </span>
-        {recent && session.accuracy !== null && (
+        {valid && session.accuracy !== null && (
           <span className="flex items-center gap-1">
             <LocateFixed className="h-3.5 w-3.5" /> Precisão aproximada:{' '}
             {Math.round(session.accuracy)} m
@@ -170,8 +203,8 @@ export default function MotoboyTrackingPage() {
         </div>
         <p className="mt-3 flex items-start gap-2 text-xs text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /> Somente a gestão autorizada acessa
-          estes dados. Mapas externos OpenStreetMap recebem as coordenadas de cada posição exibida.
-          O navegador móvel pode suspender atualizações em segundo plano.
+          estes dados. Mapas externos Google Maps recebem as coordenadas de cada posição exibida. O
+          navegador móvel pode suspender atualizações em segundo plano.
         </p>
       </header>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -207,9 +240,20 @@ export default function MotoboyTrackingPage() {
           Nenhum motoboy com jornada registrada no momento.
         </div>
       ) : null}
-      <section className="grid gap-5 lg:grid-cols-2" aria-label="Mapas individuais dos motoboys">
+      <section className="flex flex-col gap-6" aria-label="Mapas individuais dos motoboys">
         {sorted.map((s) => (
           <IndividualMap key={s.id} session={s} name={getName(s.userId)} now={now} />
+        ))}
+      </section>
+      {/* C.2: telemetria de corridas e fechamento diario */}
+      <MotoboyDailyReportPanel getName={getName} />
+      <section className="space-y-5" aria-label="Percursos GPS por motoboy">
+        {sorted.map((session) => (
+          <MotoboyTelemetryPanel
+            key={session.userId}
+            userId={session.userId}
+            name={getName(session.userId)}
+          />
         ))}
       </section>
     </main>

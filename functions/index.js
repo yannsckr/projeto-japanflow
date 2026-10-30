@@ -55,3 +55,5 @@ exports.getChatUnreadCounts = onCall({ region: 'southamerica-east1', enforceAppC
 // Disabled until the site intake gates are approved.
 exports.receiveSiteWarranty = require('./siteWarrantyFirebase.cjs').receiveSiteWarranty;
 exports.manageWarrantyLifecycle = require('./warrantyLifecycle.cjs').manageWarrantyLifecycle;
+
+exports.motoboyDailySummary = require('./motoboyDailySummary').motoboyDailySummary;
