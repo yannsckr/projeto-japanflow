@@ -1,27 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode, DragEvent } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  GripVertical,
-  RotateCcw,
-  Save,
-  X,
-  LayoutGrid,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, RotateCcw, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
 
 type Slot = 'main' | 'side';
 type Item = { id: string; slot: Slot };
-const preferenceDoc = (userId: string) => doc(db, 'user_workspace_preferences', userId);
 export type WorkspaceBlock = { id: string; label: string; content: ReactNode };
 const SCHEMA = 1;
-const initial = (blocks: WorkspaceBlock[]): Item[] =>
-  blocks.map((b) => ({ id: b.id, slot: b.id === 'calendar' ? 'side' : 'main' }));
-function valid(data: unknown, blocks: WorkspaceBlock[]): data is Item[] {
-  if (!Array.isArray(data) || data.length > blocks.length) return false;
+const initial = (signature: string): Item[] =>
+  signature
+    .split('|')
+    .filter(Boolean)
+    .map((id) => ({ id, slot: id === 'calendar' ? 'side' : 'main' }));
+function valid(data: unknown, blocks: Item[]): data is Item[] {
+  if (!Array.isArray(data) || data.length !== blocks.length) return false;
   const ids = blocks.map((b) => b.id);
   return (
     data.every(
@@ -30,7 +22,7 @@ function valid(data: unknown, blocks: WorkspaceBlock[]): data is Item[] {
         typeof item.id === 'string' &&
         ids.includes(item.id) &&
         (item.slot === 'main' || item.slot === 'side')
-    ) && new Set(data.map((x) => x.id)).size === data.length
+    ) && new Set(data.map((x) => x.id)).size === ids.length
   );
 }
 
@@ -45,108 +37,42 @@ export default function CustomizableWorkspace({
 }) {
   const key = `jf:workspace:v${SCHEMA}:${userId}`;
   const signature = blocks.map((block) => block.id).join('|');
-  const defaults = useMemo(() => initial(blocks), [signature]);
+  const defaults = useMemo(() => initial(signature), [signature]);
   const [layout, setLayout] = useState<Item[]>(defaults);
   const [draft, setDraft] = useState<Item[]>(defaults);
   const [editing, setEditing] = useState(false);
-  const editingRef = useRef(false);
-  const [saving, setSaving] = useState(false);
-  const [hidden, setHidden] = useState<string[]>(['summary', 'shortcuts']);
-  const [draftHidden, setDraftHidden] = useState<string[]>(['summary', 'shortcuts']);
-  const [widgetPicker, setWidgetPicker] = useState(false);
   const [open, setOpen] = useState(false);
-  const activeSideCount = (editing ? draft : layout).filter(
-    (item) => item.slot === 'side' && !(editing ? draftHidden : hidden).includes(item.id)
-  ).length;
-  const sideVisible = open && activeSideCount > 0;
   useEffect(() => {
     document.documentElement.style.setProperty(
       '--jf-workspace-side',
-      sideVisible ? 'clamp(320px, 27vw, 390px)' : '0px'
+      open ? 'min(350px, 36vw)' : '0px'
     );
     return () => {
       document.documentElement.style.removeProperty('--jf-workspace-side');
     };
-  }, [sideVisible]);
+  }, [open]);
   const [dragged, setDragged] = useState<string | null>(null);
   useEffect(() => {
-    let cancelled = false;
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(key) || 'null');
-      const next = valid(saved, blocks)
-        ? [
-            ...saved,
-            ...initial(blocks).filter((item) => !saved.some((existing) => existing.id === item.id)),
-          ]
-        : initial(blocks);
+      const next = valid(saved, defaults) ? saved : defaults;
       setLayout(next);
       setDraft(next);
-      const storedHidden = JSON.parse(localStorage.getItem(`${key}:hidden`) || '[]');
-      const safeHidden = Array.isArray(storedHidden)
-        ? storedHidden.filter(
-            (id): id is string => typeof id === 'string' && blocks.some((b) => b.id === id)
-          )
-        : [];
-      // New optional widgets start hidden unless user previously saved an explicit selection.
-      if (!localStorage.getItem(`${key}:hidden`)) safeHidden.push('summary', 'shortcuts');
-      setHidden(safeHidden);
-      setDraftHidden(safeHidden);
     } catch {
-      setLayout(initial(blocks));
-      setDraft(initial(blocks));
+      setLayout(defaults);
+      setDraft(defaults);
     }
-    editingRef.current = false;
     setEditing(false);
-    if (auth.currentUser && userId) {
-      getDoc(preferenceDoc(userId))
-        .then((snapshot) => {
-          if (cancelled || editingRef.current || !snapshot.exists()) return;
-          const data = snapshot.data();
-          const incoming = valid(data.items, blocks)
-            ? [
-                ...data.items,
-                ...initial(blocks).filter(
-                  (item) => !data.items.some((existing: Item) => existing.id === item.id)
-                ),
-              ]
-            : null;
-          const incomingHidden = Array.isArray(data.hidden)
-            ? data.hidden.filter(
-                (id: unknown): id is string =>
-                  typeof id === 'string' && blocks.some((b) => b.id === id)
-              )
-            : [];
-          if (incoming) {
-            setLayout(incoming);
-            setDraft(incoming);
-            const cloudHidden = [...incomingHidden];
-            for (const id of ['summary', 'shortcuts']) {
-              if (!data.items.some((item: Item) => item.id === id) && !cloudHidden.includes(id))
-                cloudHidden.push(id);
-            }
-            setHidden(cloudHidden);
-            setDraftHidden(cloudHidden);
-          }
-        })
-        .catch(() => {
-          /* Continua com preferências locais se a rede estiver indisponível. */
-        });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [key, signature]);
+  }, [key, defaults]);
   useEffect(() => {
     const start = () => {
       setDraft(layout);
-      setDraftHidden(hidden);
-      editingRef.current = true;
       setEditing(true);
       setOpen(true);
     };
     window.addEventListener('jf:workspace:customize', start);
     return () => window.removeEventListener('jf:workspace:customize', start);
-  }, [layout, hidden]);
+  }, [layout]);
   const move = (id: string, slot: Slot, before?: string) => {
     setDraft((old) => {
       const item = old.find((x) => x.id === id);
@@ -167,61 +93,32 @@ export default function CustomizableWorkspace({
     if (id) move(id, slot, before);
     setDragged(null);
   };
-  const save = async () => {
-    if (saving) return;
-    setSaving(true);
+  const save = () => {
     try {
-      // Confirmacao da nuvem antes de sinalizar sucesso evita divergencia silenciosa.
-      if (auth.currentUser && userId) {
-        await setDoc(preferenceDoc(userId), { items: draft, hidden: draftHidden, schema: SCHEMA });
-      }
       localStorage.setItem(key, JSON.stringify(draft));
-      localStorage.setItem(`${key}:hidden`, JSON.stringify(draftHidden));
       setLayout(draft);
-      setHidden(draftHidden);
-      editingRef.current = false;
       setEditing(false);
-      setWidgetPicker(false);
-      toast.success(auth.currentUser ? 'Layout sincronizado.' : 'Layout salvo neste navegador.');
+      toast.success('Layout salvo neste navegador.');
     } catch {
-      // A edicao fica aberta para permitir nova tentativa sem perda de trabalho.
-      toast.error('Falha ao sincronizar. Confira sua conexão e tente salvar novamente.');
-    } finally {
-      setSaving(false);
+      toast.error('Não foi possível salvar o layout neste navegador.');
     }
   };
-  const reset = async () => {
-    if (saving) return;
-    setSaving(true);
+  const reset = () => {
     try {
-      if (auth.currentUser && userId) {
-        await setDoc(preferenceDoc(userId), { items: defaults, hidden: [], schema: SCHEMA });
-      }
       localStorage.removeItem(key);
-      localStorage.removeItem(`${key}:hidden`);
-      setDraft(defaults);
-      setLayout(defaults);
-      setHidden([]);
-      setDraftHidden([]);
-      editingRef.current = false;
-      setEditing(false);
-      setWidgetPicker(false);
-      setOpen(false);
-      toast.success('Layout original restaurado.');
     } catch {
-      toast.error('Não foi possível restaurar o layout. Tente novamente.');
-    } finally {
-      setSaving(false);
+      /* armazenamento indisponível */
     }
+    setDraft(defaults);
+    setLayout(defaults);
+    setEditing(false);
+    setOpen(false);
+    toast.success('Layout original restaurado.');
   };
   const active = editing ? draft : layout;
-  const activeHidden = editing ? draftHidden : hidden;
-  const hasSidebarWidgets = active.some(
-    (item) => item.slot === 'side' && !activeHidden.includes(item.id)
-  );
   const render = (slot: Slot) =>
     active
-      .filter((x) => x.slot === slot && !activeHidden.includes(x.id))
+      .filter((x) => x.slot === slot)
       .map((item) => {
         const block = blocks.find((b) => b.id === item.id);
         if (!block) return null;
@@ -269,21 +166,8 @@ export default function CustomizableWorkspace({
       <div className="flex flex-wrap items-center justify-end gap-2">
         {actions}
         {editing && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-muted"
-            onClick={() => setWidgetPicker((value) => !value)}
-          >
-            <LayoutGrid className="h-4 w-4" /> Adicionar widgets
-          </button>
-        )}
-        {editing && (
           <>
-            <button
-              className="rounded-xl border px-3 py-2 text-sm"
-              onClick={() => void reset()}
-              disabled={saving}
-            >
+            <button className="rounded-xl border px-3 py-2 text-sm" onClick={reset}>
               <RotateCcw className="mr-1 inline h-4 w-4" />
               Restaurar padrão
             </button>
@@ -291,9 +175,6 @@ export default function CustomizableWorkspace({
               className="rounded-xl border px-3 py-2 text-sm"
               onClick={() => {
                 setDraft(layout);
-                setDraftHidden(hidden);
-                setWidgetPicker(false);
-                editingRef.current = false;
                 setEditing(false);
               }}
             >
@@ -302,48 +183,18 @@ export default function CustomizableWorkspace({
             </button>
             <button
               className="rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground"
-              onClick={() => void save()}
-              disabled={saving}
+              onClick={save}
             >
               <Save className="mr-1 inline h-4 w-4" />
-              {saving ? 'Salvando...' : 'Salvar layout'}
+              Salvar layout
             </button>
           </>
         )}
       </div>
-      {editing && widgetPicker && (
-        <section className="rounded-xl border bg-card p-4" aria-label="Biblioteca de widgets">
-          <h3 className="mb-3 font-semibold">Biblioteca de widgets</h3>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {blocks.map((block) => (
-              <label
-                key={block.id}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={!draftHidden.includes(block.id)}
-                  onChange={(event) =>
-                    setDraftHidden((current) =>
-                      event.target.checked
-                        ? current.filter((id) => id !== block.id)
-                        : [...current, block.id]
-                    )
-                  }
-                />
-                {block.label}
-              </label>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Somente widgets disponíveis para sua conta. Clique em Salvar layout para confirmar.
-          </p>
-        </section>
-      )}
       {editing && (
         <p role="status" className="text-xs text-muted-foreground">
           Arraste os blocos para reorganizar. Em telas touch, use “Mover para lateral/quadro” e
-          “Último”. As preferências são sincronizadas quando você está autenticado.
+          “Último”. As preferências ficam neste navegador.
         </p>
       )}
       <div className="min-w-0">
@@ -359,52 +210,37 @@ export default function CustomizableWorkspace({
             </div>
           )}
         </main>
-        {hasSidebarWidgets && (
-          <>
-            <button
-              onClick={() => setOpen((value) => !value)}
-              className={`fixed top-24 z-50 flex h-10 w-9 items-center justify-center rounded-l-xl border border-r-0 bg-card text-foreground shadow-md transition-[right,background-color] duration-300 hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                sideVisible
-                  ? 'right-[min(92vw,390px)] lg:right-[clamp(320px,27vw,390px)]'
-                  : 'right-0'
-              }`}
-              aria-label={sideVisible ? 'Recolher painel lateral' : 'Abrir painel lateral'}
-              aria-expanded={sideVisible}
-              aria-controls="jf-workspace-sidepanel"
-              type="button"
+        <aside
+          className={`fixed inset-y-0 right-0 z-40 flex max-w-[100vw] items-stretch transition-[width] duration-200 ${open ? 'w-[min(350px,90vw)]' : 'w-0'}`}
+          aria-label="Sidebar de widgets"
+        >
+          <button
+            onClick={() => setOpen(!open)}
+            className="absolute right-full top-1/2 z-50 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-l-2xl border border-r-0 bg-card text-foreground shadow-lg transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            aria-label={open ? 'Recolher painel lateral' : 'Abrir painel lateral'}
+            aria-expanded={open}
+            type="button"
+          >
+            {open ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+          </button>
+          {open && (
+            <div
+              className="flex h-[100dvh] w-full min-w-0 flex-col overflow-y-auto overflow-x-hidden border-l bg-card p-3 pt-5 shadow-2xl"
+              onDragOver={(event) => editing && event.preventDefault()}
+              onDrop={(event) => onDrop(event, 'side')}
             >
-              {sideVisible ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
+              <p className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Painel lateral
+              </p>
+              <div className="min-w-0 space-y-3">{render('side')}</div>
+              {editing && (
+                <div className="mt-3 rounded-lg border-2 border-dashed p-4 text-center text-xs text-muted-foreground">
+                  Solte widgets aqui
+                </div>
               )}
-            </button>
-            <aside
-              id="jf-workspace-sidepanel"
-              className={`fixed inset-y-0 right-0 z-40 flex w-[min(92vw,390px)] lg:w-[clamp(320px,27vw,390px)] flex-col overflow-hidden border-l bg-card shadow-xl transition-transform duration-300 ease-in-out ${
-                sideVisible ? 'translate-x-0' : 'translate-x-full pointer-events-none'
-              }`}
-              aria-label="Sidebar de widgets"
-              aria-hidden={!sideVisible}
-            >
-              <div
-                className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-5 pt-5"
-                onDragOver={(event) => editing && event.preventDefault()}
-                onDrop={(event) => onDrop(event, 'side')}
-              >
-                <p className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Painel lateral
-                </p>
-                <div className="min-w-0 space-y-3">{render('side')}</div>
-                {editing && (
-                  <div className="mt-3 rounded-lg border-2 border-dashed p-4 text-center text-xs text-muted-foreground">
-                    Solte widgets aqui
-                  </div>
-                )}
-              </div>
-            </aside>
-          </>
-        )}
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   );
