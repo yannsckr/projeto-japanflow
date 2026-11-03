@@ -161,6 +161,23 @@ service firebase.storage {
       allow delete: if salesAccess() && currentUserId() == userId;
     }
 
+    // REF-DIAGRAMS-V1 - somente admin publica imagens técnicas
+    function canReadDiagramImages() {
+      return activeUser()
+        && firestore.exists(/databases/(default)/documents/users/$(currentUserId()))
+        && firestore.get(/databases/(default)/documents/users/$(currentUserId())).data.active != false
+        && (adminUser() || firestore.get(/databases/(default)/documents/users/$(currentUserId())).data.sectors.hasAny(['vendas']));
+    }
+    match /reference_diagrams/{userId}/{fileName} {
+      allow read: if canReadDiagramImages();
+      allow create: if canReadDiagramImages() && adminUser() && currentUserId() == userId
+        && resource == null && request.resource != null
+        && request.resource.size > 0 && request.resource.size <= 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)')
+        && fileName.matches('^[A-Za-z0-9_-]{1,180}[.](jpg|png|webp)$');
+      allow update, delete: if false;
+    }
+
     match /sales_references/{userId}/{fileName} {
       allow read: if salesAccess();
       allow create: if salesAccess() && currentUserId() == userId

@@ -171,7 +171,7 @@ const AppSidebar = ({
     (user) => user.role === 'admin' && user.active !== false && user.id !== currentUser.id
   );
   const canUseReferences =
-    currentUser.active !== false && currentUser.sectors?.includes('vendas' as Sector);
+    currentUser.active !== false && (isAdmin || currentUser.sectors?.includes('vendas' as Sector));
   const baseItems: NavItem[] = isAdmin
     ? [
         { icon: 'meu-quadro', label: 'Meu Quadro', path: '/admin' },

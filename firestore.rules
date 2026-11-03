@@ -610,6 +610,48 @@ service cloud.firestore {
         && resource.data.created_by == currentUserId();
     }
 
+    // REF-DIAGRAMS-V1 - administração exclusivamente por role admin
+    function canReadDiagrams() {
+      return isActive() && exists(currentUserPath())
+        && get(currentUserPath()).data.active != false
+        && (ownLink().role == 'admin'
+          || (('sectors' in get(currentUserPath()).data)
+            && get(currentUserPath()).data.sectors.hasAny(['vendas'])));
+    }
+
+    function canEditDiagrams() {
+      return isActive() && exists(currentUserPath())
+        && get(currentUserPath()).data.active != false
+        && ownLink().role == 'admin';
+    }
+
+    function validDiagram() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['brand','system','title','vehicle','year_range','image_path','markers','created_by','created_at','updated_at'])
+        && d.keys().hasAll(['brand','system','title','vehicle','year_range','image_path','markers','created_by','created_at','updated_at'])
+        && d.brand in ['Mitsubishi','Toyota','Honda','Suzuki','Subaru']
+        && d.system in ['Suspensão','Câmbio','Motor','Direção','Freios','Transmissão','Arrefecimento','Elétrica','Carroceria','Outros']
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 180
+        && d.vehicle is string && d.vehicle.size() > 0 && d.vehicle.size() <= 180
+        && d.year_range is string && d.year_range.size() <= 80
+        && d.image_path is string && d.image_path.size() <= 350
+        && d.image_path.matches('^reference_diagrams/[A-Za-z0-9_-]{1,180}/[A-Za-z0-9_-]{1,180}[.](jpg|png|webp)$')
+        && d.markers is list && d.markers.size() <= 60;
+    }
+
+    match /reference_diagrams/{diagramId} {
+      allow get, list: if canReadDiagrams();
+      allow create: if canEditDiagrams() && validDiagram()
+        && request.resource.data.created_by == currentUserId()
+        && request.resource.data.created_at == request.time
+        && request.resource.data.updated_at == request.time
+        && request.resource.data.markers.size() == 0;
+      allow update: if canEditDiagrams() && validDiagram()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['markers','updated_at'])
+        && request.resource.data.updated_at == request.time;
+      allow delete: if false;
+    }
+
     match /part_references/{referenceId} {
       allow get, list: if canUseSalesReferences();
       allow create: if canUseSalesReferences()
@@ -687,6 +729,7 @@ service cloud.firestore {
         && collection != 'motoboy_daily_reports'
         && collection != 'reference_3d_models'
         && collection != 'part_references'
+        && collection != 'reference_diagrams'
         && collection != 'tasks'
         && collection != 'ryan_announcements'
         && collection != 'ryan_announcement_acks'
