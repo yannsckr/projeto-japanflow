@@ -18,6 +18,7 @@ export type AlternativePart = {
   id: string;
   name: string;
   manufacturer: string;
+  manufacturers?: string[];
   manufacturerHex?: string;
   model: string;
   compatibleModels?: string[];
@@ -36,6 +37,9 @@ export type ReferenceMarker = {
   labelY?: number;
   label: string;
   parts: AlternativePart[];
+  strokeColor?: string;
+  strokeWidth?: number;
+  notes?: string;
 };
 
 export type ReferenceDiagram = {
@@ -156,6 +160,11 @@ export function asDiagram(id: string, data: Record<string, unknown>): ReferenceD
           ? { labelY: positionPercent(m.labelY) }
           : {}),
         label: safeText(m.label, 100),
+        strokeColor: /^#[0-9a-fA-F]{6}$/.test(String(m.strokeColor ?? ''))
+          ? String(m.strokeColor)
+          : '#f59e0b',
+        strokeWidth: Math.min(10, Math.max(1, Number(m.strokeWidth) || 3)),
+        notes: safeText(m.notes, 1000),
         parts: (Array.isArray(m.parts) ? m.parts : [])
           .filter(
             (p): p is Record<string, unknown> =>
@@ -165,6 +174,11 @@ export function asDiagram(id: string, data: Record<string, unknown>): ReferenceD
             id: safeText(p.id, 90),
             name: safeText(p.name, 140),
             manufacturer: safeText(p.manufacturer, 120),
+            manufacturers: safeList(p.manufacturers, 20, 120).length
+              ? safeList(p.manufacturers, 20, 120)
+              : safeText(p.manufacturer, 120)
+                ? [safeText(p.manufacturer, 120)]
+                : [],
             manufacturerHex: safeText(p.manufacturerHex, 16) || undefined,
             model: safeText(p.model, 140),
             compatibleModels: safeList(p.compatibleModels, 15, 140),

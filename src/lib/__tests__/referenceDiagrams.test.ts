@@ -104,3 +104,57 @@ describe('Referências V3 e compatibilidade', () => {
     expect(Object.keys(result?.markers[0] ?? {})).not.toContain('labelX');
   });
 });
+
+describe('Referências V3.3 — classificações visuais', () => {
+  it('preserva cores, espessura e observações do ponto', () => {
+    const diagram = asDiagram('diag', {
+      brand: 'Mitsubishi',
+      system: 'Suspensão',
+      markers: [
+        {
+          id: 'a',
+          x: 10,
+          y: 25,
+          labelX: 5,
+          labelY: 30,
+          label: 'Bucha estabilizadora',
+          strokeColor: '#1d4ed8',
+          strokeWidth: 5,
+          notes: 'Aplicar no lado esquerdo',
+          parts: [],
+        },
+      ],
+    });
+    expect(diagram?.markers[0].strokeColor).toBe('#1d4ed8');
+    expect(diagram?.markers[0].strokeWidth).toBe(5);
+    expect(diagram?.markers[0].notes).toBe('Aplicar no lado esquerdo');
+  });
+
+  it('interpreta múltiplas marcas e modelos sem quebrar peças antigas', () => {
+    const diagram = asDiagram('diag', {
+      brand: 'Mitsubishi',
+      system: 'Suspensão',
+      markers: [
+        {
+          id: 'a',
+          x: 40,
+          y: 20,
+          label: 'Ponto',
+          parts: [
+            {
+              id: 'p1',
+              name: 'Bucha',
+              manufacturer: 'Axios',
+              manufacturers: ['Axios', 'Nakata'],
+              model: 'Pajero TR4',
+              compatibleModels: ['Pajero TR4', 'ASX'],
+              useTypes: ['Bucha', 'Coxim'],
+            },
+          ],
+        },
+      ],
+    });
+    expect(diagram?.markers[0].parts[0].manufacturers).toEqual(['Axios', 'Nakata']);
+    expect(diagram?.markers[0].parts[0].useTypes).toEqual(['Bucha', 'Coxim']);
+  });
+});

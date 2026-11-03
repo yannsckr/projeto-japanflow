@@ -34,6 +34,9 @@ import {
   X,
   ZoomIn,
   ZoomOut,
+  Maximize2,
+  Minimize2,
+  GripVertical,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, storage } from '@/lib/firebase';
@@ -78,6 +81,7 @@ const newPart = (): AlternativePart => ({
   id: crypto.randomUUID(),
   name: '',
   manufacturer: '',
+  manufacturers: [],
   manufacturerHex: '#1d4ed8',
   model: '',
   compatibleModels: [],
@@ -152,6 +156,7 @@ function matchesSearch(diagram: ReferenceDiagram, queryText: string) {
       ...marker.parts.flatMap((part) => [
         part.name,
         part.manufacturer,
+        ...(part.manufacturers ?? []),
         part.model,
         part.code,
         part.notes,
@@ -167,7 +172,8 @@ function matchesSearch(diagram: ReferenceDiagram, queryText: string) {
 
 function markerMatchesFilters(marker: ReferenceMarker, filters: ReferenceFilters) {
   return marker.parts.some((part) => {
-    const matchesBrand = !filters.partBrand || part.manufacturer === filters.partBrand;
+    const matchesBrand =
+      !filters.partBrand || (part.manufacturers ?? [part.manufacturer]).includes(filters.partBrand);
     const matchesType =
       !filters.partType ||
       (part.useTypes ?? []).includes(filters.partType) ||
@@ -356,7 +362,10 @@ function CompactPartCard({ part }: { part: AlternativePart }) {
               style={{ backgroundColor: part.manufacturerHex || '#111827' }}
             />
             <span className="truncate">
-              <strong>Marca:</strong> {part.manufacturer || '—'}
+              <strong>Marca:</strong>{' '}
+              {(part.manufacturers?.length ? part.manufacturers : [part.manufacturer])
+                .filter(Boolean)
+                .join(', ') || '—'}
             </span>
           </div>
           <p>
@@ -393,6 +402,7 @@ function MarkerInfoPanel({
   onClose,
   onDelete,
   onChangeLabel,
+  onChangeStyle,
   onAddPart,
   onChangePart,
   onRemovePart,
@@ -405,6 +415,7 @@ function MarkerInfoPanel({
   onClose: () => void;
   onDelete: () => void;
   onChangeLabel: (value: string) => void;
+  onChangeStyle: (patch: Partial<ReferenceMarker>) => void;
   onAddPart: () => void;
   onChangePart: (partId: string, patch: Partial<AlternativePart>) => void;
   onRemovePart: (partId: string) => void;
@@ -439,6 +450,42 @@ function MarkerInfoPanel({
         </div>
       </div>
 
+      {editor && (
+        <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl border p-3 text-xs">
+          <label className="font-semibold">
+            Cor do traço
+            <div className="mt-1 flex gap-2">
+              <input
+                type="color"
+                className="h-9 w-11 cursor-pointer"
+                value={marker.strokeColor || '#f59e0b'}
+                onChange={(event) => onChangeStyle({ strokeColor: event.target.value })}
+              />
+              <Input
+                className="h-9 min-w-0"
+                maxLength={7}
+                value={marker.strokeColor || '#f59e0b'}
+                onChange={(event) => {
+                  if (/^#[0-9a-fA-F]{6}$/.test(event.target.value))
+                    onChangeStyle({ strokeColor: event.target.value });
+                }}
+              />
+            </div>
+          </label>
+          <label className="font-semibold">
+            Espessura: {marker.strokeWidth || 3}px
+            <input
+              className="mt-4 w-full"
+              type="range"
+              min={1}
+              max={10}
+              step={1}
+              value={marker.strokeWidth || 3}
+              onChange={(event) => onChangeStyle({ strokeWidth: Number(event.target.value) })}
+            />
+          </label>
+        </div>
+      )}
       <div className="space-y-3">
         {marker.parts.length === 0 && (
           <div className="rounded-xl border border-dashed p-3 text-xs text-muted-foreground">
@@ -465,52 +512,80 @@ function MarkerInfoPanel({
                     onChange={(event) => onChangePart(part.id, { code: event.target.value })}
                   />
                 </label>
-                <label className="text-[11px] font-medium text-muted-foreground">
-                  Marca da peça
-                  <select
-                    className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-sm"
-                    value={part.manufacturer}
-                    onChange={(event) => {
-                      const selectedBrand = adminSettings.partBrands.find(
-                        (item) => item.name === event.target.value
+                <fieldset className="space-y-1 rounded-lg border p-2 text-xs md:col-span-2">
+                  <legend className="px-1 font-semibold">Marcas da peça (múltipla escolha)</legend>
+                  <div className="grid max-h-28 grid-cols-2 gap-1 overflow-y-auto">
+                    {adminSettings.partBrands.map((brand) => {
+                      const picked = (
+                        part.manufacturers?.length ? part.manufacturers : [part.manufacturer]
+                      ).includes(brand.name);
+                      return (
+                        <label
+                          key={brand.id}
+                          className="flex items-center gap-2 rounded-md p-1 hover:bg-muted"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={picked}
+                            onChange={(event) => {
+                              const previous = part.manufacturers?.length
+                                ? part.manufacturers
+                                : [part.manufacturer].filter(Boolean);
+                              const next = event.target.checked
+                                ? Array.from(new Set([...previous, brand.name]))
+                                : previous.filter((name) => name !== brand.name);
+                              onChangePart(part.id, {
+                                manufacturer: next[0] || '',
+                                manufacturers: next,
+                              });
+                            }}
+                          />
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: brand.hex }}
+                          />
+                          {brand.name}
+                        </label>
                       );
-                      onChangePart(part.id, {
-                        manufacturer: event.target.value,
-                        manufacturerHex: selectedBrand?.hex ?? part.manufacturerHex,
-                        useTypes:
-                          selectedBrand && part.useTypes?.length === 0
-                            ? selectedBrand.uses
-                            : part.useTypes,
-                      });
-                    }}
-                  >
-                    <option value="">Selecione</option>
-                    {adminSettings.partBrands.map((brand) => (
-                      <option key={brand.id}>{brand.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-[11px] font-medium text-muted-foreground">
-                  Cor HEX
-                  <Input
-                    className="mt-1 h-8"
-                    value={part.manufacturerHex || '#1d4ed8'}
-                    onChange={(event) =>
-                      onChangePart(part.id, { manufacturerHex: event.target.value })
-                    }
-                  />
-                </label>
-                <label className="text-[11px] font-medium text-muted-foreground md:col-span-2">
-                  Modelos atendidos (separados por vírgula)
-                  <Input
-                    className="mt-1 h-8"
-                    value={part.model}
-                    onChange={(event) => {
-                      const list = sanitizeList(event.target.value);
-                      onChangePart(part.id, { model: event.target.value, compatibleModels: list });
-                    }}
-                  />
-                </label>
+                    })}
+                  </div>
+                </fieldset>
+                <fieldset className="space-y-2 rounded-lg border p-2 text-xs md:col-span-2">
+                  <legend className="px-1 font-semibold">Modelos atendidos (selecione)</legend>
+                  <div className="grid max-h-32 grid-cols-2 gap-2 overflow-y-auto">
+                    {Array.from(
+                      new Set(
+                        [
+                          ...adminSettings.vehicleModels,
+                          ...(part.compatibleModels ?? []),
+                          part.model,
+                        ].filter(Boolean)
+                      )
+                    ).map((model) => {
+                      const selectedModels = part.compatibleModels?.length
+                        ? part.compatibleModels
+                        : [part.model].filter(Boolean);
+                      return (
+                        <label key={model} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedModels.includes(model)}
+                            onChange={(event) => {
+                              const next = event.target.checked
+                                ? Array.from(new Set([...selectedModels, model]))
+                                : selectedModels.filter((item) => item !== model);
+                              onChangePart(part.id, {
+                                compatibleModels: next,
+                                model: next[0] || '',
+                              });
+                            }}
+                          />
+                          {model}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
                 <label className="text-[11px] font-medium text-muted-foreground">
                   Anos compatíveis
                   <Input
@@ -540,16 +615,28 @@ function MarkerInfoPanel({
                     }}
                   />
                 </label>
-                <label className="text-[11px] font-medium text-muted-foreground md:col-span-2">
-                  Usos / tipos (separados por vírgula)
-                  <Input
-                    className="mt-1 h-8"
-                    value={(part.useTypes ?? []).join(', ')}
-                    onChange={(event) =>
-                      onChangePart(part.id, { useTypes: sanitizeList(event.target.value) })
-                    }
-                  />
-                </label>
+                <fieldset className="space-y-2 rounded-lg border p-2 text-xs md:col-span-2">
+                  <legend className="px-1 font-semibold">Usos da peça (múltipla escolha)</legend>
+                  <div className="grid max-h-32 grid-cols-2 gap-2 overflow-y-auto">
+                    {Array.from(
+                      new Set([...adminSettings.pieceTypes, ...(part.useTypes ?? [])])
+                    ).map((useType) => (
+                      <label key={useType} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={(part.useTypes ?? []).includes(useType)}
+                          onChange={(event) => {
+                            const next = event.target.checked
+                              ? Array.from(new Set([...(part.useTypes ?? []), useType]))
+                              : (part.useTypes ?? []).filter((item) => item !== useType);
+                            onChangePart(part.id, { useTypes: next });
+                          }}
+                        />
+                        {useType}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
                 <label className="text-[11px] font-medium text-muted-foreground md:col-span-2">
                   Observações
                   <Input
@@ -576,6 +663,21 @@ function MarkerInfoPanel({
             Adicionar peça
           </Button>
         )}
+        <label className="block text-xs font-semibold">
+          Observação geral do ponto
+          {editor ? (
+            <textarea
+              className="mt-1 min-h-20 w-full resize-y rounded-lg border bg-background p-2 font-normal"
+              maxLength={1000}
+              value={marker.notes || ''}
+              onChange={(event) => onChangeStyle({ notes: event.target.value })}
+            />
+          ) : (
+            <p className="mt-1 whitespace-pre-wrap rounded-lg border bg-muted/30 p-2 font-normal text-muted-foreground">
+              {marker.notes || 'Sem observações.'}
+            </p>
+          )}
+        </label>
       </div>
     </div>
   );
@@ -623,6 +725,11 @@ function ImageCanvas({
     null
   );
   const [panning, setPanning] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
+  const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 });
+  const draggingPanel = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(
+    null
+  );
   const startRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
   useEffect(() => {
@@ -647,6 +754,33 @@ function ImageCanvas({
     observer.observe(frameRef.current);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!fullScreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFullScreen(false);
+    };
+    window.addEventListener('keydown', closeWithEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeWithEscape);
+    };
+  }, [fullScreen]);
+
+  // Native, non-passive listener prevents the page from scrolling while zooming the diagram.
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element) return;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setScale((value) => clamp(value + (event.deltaY < 0 ? 0.12 : -0.12), 1, 6));
+    };
+    element.addEventListener('wheel', handleWheel, { passive: false });
+    return () => element.removeEventListener('wheel', handleWheel);
+  }, [fullScreen, selectedId]);
 
   const fittedWidth = Math.min(
     viewportSize.width,
@@ -731,7 +865,13 @@ function ImageCanvas({
   };
 
   return (
-    <div className="space-y-3">
+    <div
+      className={
+        fullScreen
+          ? 'fixed inset-0 z-[80] flex flex-col gap-3 overflow-hidden bg-white p-3 dark:bg-background'
+          : 'space-y-3'
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card p-3 text-xs text-muted-foreground">
         <div className="flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center gap-1">
@@ -771,22 +911,72 @@ function ImageCanvas({
           >
             <RotateCcw className="mr-2 h-4 w-4" /> Resetar vista
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setFullScreen((value) => !value)}>
+            {fullScreen ? (
+              <Minimize2 className="mr-2 h-4 w-4" />
+            ) : (
+              <Maximize2 className="mr-2 h-4 w-4" />
+            )}
+            {fullScreen ? 'Sair da tela grande' : 'Tela grande'}
+          </Button>
         </div>
       </div>
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start">
+      <div
+        className={`flex min-h-0 min-w-0 flex-col gap-3 lg:flex-row lg:items-start ${fullScreen ? 'flex-1' : ''}`}
+      >
         {selectedMarker && selectedIndex >= 0 && (
           <aside
             aria-label="Detalhes do ponto selecionado"
-            className="order-first w-full shrink-0 self-start lg:w-[320px]"
+            className="order-first w-full shrink-0 self-start lg:w-[395px]"
           >
-            <div className="max-h-[72vh] overflow-y-auto rounded-2xl border bg-white p-2 shadow-sm dark:bg-background">
+            <div
+              className="max-h-[80vh] overflow-y-auto rounded-2xl border bg-white p-2 shadow-lg dark:bg-background"
+              style={{ transform: `translate(${panelOffset.x}px, ${panelOffset.y}px)` }}
+            >
+              <div
+                className="mb-2 flex touch-none cursor-grab items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs font-semibold text-muted-foreground active:cursor-grabbing"
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  draggingPanel.current = {
+                    x: event.clientX,
+                    y: event.clientY,
+                    offsetX: panelOffset.x,
+                    offsetY: panelOffset.y,
+                  };
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  const drag = draggingPanel.current;
+                  if (drag)
+                    setPanelOffset({
+                      x: drag.offsetX + event.clientX - drag.x,
+                      y: drag.offsetY + event.clientY - drag.y,
+                    });
+                }}
+                onPointerUp={() => {
+                  draggingPanel.current = null;
+                }}
+                onPointerCancel={() => {
+                  draggingPanel.current = null;
+                }}
+              >
+                <GripVertical className="h-4 w-4" /> Arrastar painel
+                <button
+                  type="button"
+                  className="ml-auto underline"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => setPanelOffset({ x: 0, y: 0 })}
+                >
+                  Recentrar
+                </button>
+              </div>
               {renderSelectedPanel(selectedMarker, selectedIndex)}
             </div>
           </aside>
         )}
         <div
           ref={frameRef}
-          className="relative h-[72vh] min-h-[540px] min-w-0 flex-1 overflow-hidden rounded-[28px] border bg-white shadow-inner"
+          className={`relative min-w-0 flex-1 overflow-hidden rounded-[28px] border bg-white shadow-inner ${fullScreen ? 'h-full min-h-0' : 'h-[82vh] min-h-[650px]'}`}
         >
           <div
             ref={canvasRef}
@@ -794,10 +984,7 @@ function ImageCanvas({
             onPointerDown={handlePointerDownCanvas}
             onPointerMove={handlePointerMoveCanvas}
             onPointerUp={handlePointerUpCanvas}
-            onWheel={(event) => {
-              event.preventDefault();
-              setScale((value) => clamp(value + (event.deltaY < 0 ? 0.12 : -0.12), 1, 4));
-            }}
+            onDoubleClick={() => setFullScreen((value) => !value)}
             style={{ overflow: 'hidden' }}
           >
             <div
@@ -842,10 +1029,14 @@ function ImageCanvas({
                         key={marker.id}
                         x1={marker.x}
                         y1={marker.y}
-                        x2={labelX}
+                        x2={
+                          labelX -
+                          Math.sign(labelX - marker.x) *
+                            Math.min(1.6, (16 / Math.max(1, fittedWidth)) * 100)
+                        }
                         y2={labelY}
-                        stroke={marker.id === selectedId ? '#2563eb' : '#d97706'}
-                        strokeWidth="1.4"
+                        stroke={marker.strokeColor || '#f59e0b'}
+                        strokeWidth={marker.strokeWidth || 3}
                         vectorEffect="non-scaling-stroke"
                       />
                     );
@@ -871,8 +1062,13 @@ function ImageCanvas({
                     <div key={marker.id}>
                       <button
                         type="button"
-                        style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
-                        className={`absolute z-10 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] bg-transparent p-0 shadow-none outline-offset-4 hover:border-primary focus-visible:outline sm:h-11 sm:w-11 ${selected ? 'border-primary' : 'border-amber-500'}`}
+                        style={{
+                          left: `${marker.x}%`,
+                          top: `${marker.y}%`,
+                          borderColor: marker.strokeColor || '#f59e0b',
+                          borderWidth: marker.strokeWidth || 3,
+                        }}
+                        className={`absolute z-10 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-solid bg-transparent p-0 shadow-none outline-offset-4 focus-visible:outline sm:h-11 sm:w-11 ${selected ? 'ring-2 ring-offset-2' : ''}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           onSelect(marker.id);
@@ -898,8 +1094,13 @@ function ImageCanvas({
                       />
                       <button
                         type="button"
-                        style={{ left: `${labelX}%`, top: `${labelY}%` }}
-                        className={`absolute z-20 min-w-6 -translate-y-1/2 rounded-sm bg-transparent px-1 py-0.5 text-xs font-bold shadow-none outline-offset-2 hover:underline focus-visible:outline ${selected ? 'text-primary' : 'text-amber-700'}`}
+                        style={{
+                          left: `${labelX}%`,
+                          top: `${labelY}%`,
+                          color: marker.strokeColor || '#f59e0b',
+                          transform: 'translate(-50%, -50%)',
+                        }}
+                        className="absolute z-20 flex h-8 min-w-8 items-center justify-center rounded-sm bg-transparent px-1 text-base font-bold leading-none shadow-none outline-offset-2 hover:underline focus-visible:outline"
                         onClick={(event) => {
                           event.stopPropagation();
                           onSelect(marker.id);
@@ -1910,7 +2111,18 @@ export default function ReferenceDiagramCatalogPage() {
                 const id = crypto.randomUUID();
                 setDraftMarkers((current) => [
                   ...current,
-                  { id, x, y, labelX, labelY, label: `Ponto ${current.length + 1}`, parts: [] },
+                  {
+                    id,
+                    x,
+                    y,
+                    labelX,
+                    labelY,
+                    label: `Ponto ${current.length + 1}`,
+                    strokeColor: '#f59e0b',
+                    strokeWidth: 3,
+                    notes: '',
+                    parts: [],
+                  },
                 ]);
                 setMarkerId(id);
                 setPlacing(false);
@@ -1938,6 +2150,9 @@ export default function ReferenceDiagramCatalogPage() {
                   }}
                   onChangeLabel={(value) =>
                     updateMarker(marker.id, (current) => ({ ...current, label: value }))
+                  }
+                  onChangeStyle={(patch) =>
+                    updateMarker(marker.id, (current) => ({ ...current, ...patch }))
                   }
                   onAddPart={() =>
                     updateMarker(marker.id, (current) => ({
@@ -2000,6 +2215,45 @@ export default function ReferenceDiagramCatalogPage() {
               Carregando imagem técnica...
             </div>
           )}
+          <section className="rounded-2xl border bg-card p-4">
+            <h2 className="mb-3 text-sm font-semibold">Legenda dos traços e peças</h2>
+            {markers.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhum ponto adicionado.</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {markers.map((marker, index) => (
+                  <button
+                    key={marker.id}
+                    type="button"
+                    className="flex items-start gap-3 rounded-lg border p-3 text-left hover:bg-muted/30"
+                    onClick={() => setMarkerId(marker.id)}
+                  >
+                    <span
+                      className="mt-1 h-5 w-5 shrink-0 rounded-full border-solid bg-transparent"
+                      style={{
+                        borderColor: marker.strokeColor || '#f59e0b',
+                        borderWidth: marker.strokeWidth || 3,
+                      }}
+                    />
+                    <span className="text-xs">
+                      <strong>
+                        {index + 1}. {marker.label}
+                      </strong>
+                      <br />
+                      {marker.parts
+                        .map((part) => part.name)
+                        .filter(Boolean)
+                        .join(' · ') || 'Sem peças cadastradas'}
+                      <br />
+                      <span className="text-muted-foreground">
+                        {marker.notes || 'Sem observações do ponto'}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
           <section className="rounded-2xl border bg-card p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold">Pontos identificados</h2>
