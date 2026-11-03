@@ -5,19 +5,18 @@ import { Box3, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Download, FileUp, Info, RotateCcw, Upload, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
 const COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#f97316'];
 type Mapping = { group: string; color: string; referenceIds: string[] };
 type MeshInfo = { id: string; name: string };
 type Reference = { id: string; name: string; partType: string; description: string };
 type MapFile = { schema: 'japanflow-r3d2-v1'; modelName: string; meshes: Record<string, Mapping> };
-
 function Model({
   model,
   mappings,
   selected,
   onPick,
   exploded,
+  explodeDistance,
 }: {
   model: Group;
   mappings: Record<string, Mapping>;
@@ -76,7 +75,6 @@ function Model({
     });
     return copy;
   }, [model, mappings, selected, exploded, explodeDistance]);
-
   useEffect(
     () => () => {
       rendered.traverse((o) => {
@@ -87,7 +85,6 @@ function Model({
     },
     [rendered]
   );
-
   return (
     <primitive
       object={rendered}
@@ -99,7 +96,6 @@ function Model({
     />
   );
 }
-
 export function ReferenceGLBMapper({
   references,
   sharedModel,
@@ -144,7 +140,6 @@ export function ReferenceGLBMapper({
     // A abertura depende do ID escolhido, não da URL temporária retornada pelo Storage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sharedModel?.id]);
-
   const load = (file: File, initialMap: Record<string, Mapping> = {}) => {
     if (
       !file.name.toLowerCase().endsWith('.glb') ||
@@ -193,7 +188,6 @@ export function ReferenceGLBMapper({
       }
     );
   };
-
   const update = (patch: Partial<Mapping>) => {
     if (!selected) return;
     setMappings((previous) => ({
@@ -207,7 +201,6 @@ export function ReferenceGLBMapper({
       },
     }));
   };
-
   const exportMap = () => {
     const data: MapFile = { schema: 'japanflow-r3d2-v1', modelName, meshes: mappings };
     const url = URL.createObjectURL(
@@ -219,7 +212,6 @@ export function ReferenceGLBMapper({
     link.click();
     URL.revokeObjectURL(url);
   };
-
   const importMap = async (file: File) => {
     try {
       const data = JSON.parse(await file.text()) as MapFile;
@@ -255,7 +247,6 @@ export function ReferenceGLBMapper({
       setError(e instanceof Error ? e.message : 'JSON inválido.');
     }
   };
-
   return (
     <section
       className="overflow-hidden rounded-2xl border bg-card"
