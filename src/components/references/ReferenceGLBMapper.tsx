@@ -24,6 +24,7 @@ function Model({
   selected: string | null;
   onPick: (id: string) => void;
   exploded: boolean;
+  explodeDistance: number;
 }) {
   const rendered = useMemo(() => {
     const copy = model.clone(true);
@@ -34,6 +35,7 @@ function Model({
     copy.position.sub(center);
     copy.scale.setScalar(3.7 / max);
     let n = 0;
+    copy.updateMatrixWorld(true);
     copy.traverse((o) => {
       if (!(o instanceof Mesh)) return;
       const id = `mesh-${n++}`;
@@ -42,9 +44,20 @@ function Model({
       // Deslocamento baseado no centro mundial atual; não usar como referência CAD.
       if (exploded) {
         const bounds = new Box3().setFromObject(o);
-        const direction = bounds.getCenter(new Vector3()).sub(center);
+        const worldCenter = bounds.getCenter(new Vector3());
+        const direction = worldCenter.sub(center);
         if (direction.lengthSq() < 0.0001) direction.set(n % 2 ? 1 : -1, 0.5, 0.7);
-        o.position.addScaledVector(direction.normalize(), 0.22);
+        // Converter deslocamento mundial para o espaco local do pai da malha.
+        const displacement = direction.normalize().multiplyScalar(explodeDistance * max);
+        const parent = o.parent;
+        if (parent) {
+          parent.updateWorldMatrix(true, false);
+          const origin = parent.localToWorld(new Vector3());
+          const target = parent.worldToLocal(origin.add(displacement));
+          o.position.add(target);
+        } else {
+          o.position.add(displacement);
+        }
       }
       const originals = Array.isArray(o.material) ? o.material : [o.material];
       const mapped = mappings[id];
@@ -62,7 +75,7 @@ function Model({
       o.material = Array.isArray(o.material) ? recolored : recolored[0];
     });
     return copy;
-  }, [model, mappings, selected, exploded]);
+  }, [model, mappings, selected, exploded, explodeDistance]);
 
   useEffect(
     () => () => {
@@ -102,6 +115,7 @@ export function ReferenceGLBMapper({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [exploded, setExploded] = useState(false);
+  const [explodeDistance, setExplodeDistance] = useState(0.22);
   const current = selected ? mappings[selected] : undefined;
   useEffect(() => {
     if (!sharedModel) return;
@@ -132,12 +146,17 @@ export function ReferenceGLBMapper({
   }, [sharedModel?.id]);
 
   const load = (file: File, initialMap: Record<string, Mapping> = {}) => {
-    if (!file.name.toLowerCase().endsWith('.glb') || file.size > 30 * 1024 * 1024) {
+    if (
+      !file.name.toLowerCase().endsWith('.glb') ||
+      file.size === 0 ||
+      file.size > 30 * 1024 * 1024
+    ) {
       setError('Use um arquivo .glb válido com até 30 MB.');
       return;
     }
     setLoading(true);
     setExploded(false);
+    setExplodeDistance(0.22);
     setError('');
     const url = URL.createObjectURL(file);
     new GLTFLoader().load(
@@ -275,8 +294,24 @@ export function ReferenceGLBMapper({
             <Layers className="mr-2 h-4 w-4" />
             {exploded ? 'Reunir conjunto' : 'Inspecionar separação (prévia)'}
           </Button>
+          <label className="flex items-center gap-3 text-xs text-muted-foreground">
+            Separacao
+            <input
+              aria-label="Intensidade da separacao das pecas"
+              type="range"
+              min="0.05"
+              max="0.65"
+              step="0.05"
+              value={explodeDistance}
+              disabled={!exploded}
+              onChange={(e) => setExplodeDistance(Number(e.target.value))}
+            />
+            <span className="w-10 text-right tabular-nums">
+              {Math.round(explodeDistance * 100)}%
+            </span>
+          </label>
           <span className="text-xs text-muted-foreground">
-            Deslocamento visual ilustrativo, não uma sequência OEM de desmontagem.
+            Previa visual. Nao representa uma sequencia OEM de desmontagem.
           </span>
         </div>
       )}
@@ -308,6 +343,7 @@ export function ReferenceGLBMapper({
                   selected={selected}
                   onPick={setSelected}
                   exploded={exploded}
+                  explodeDistance={explodeDistance}
                 />
               </Suspense>
               <OrbitControls makeDefault minDistance={2} maxDistance={18} />

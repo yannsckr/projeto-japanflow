@@ -7,7 +7,7 @@ import {
 } from '@firebase/rules-unit-testing';
 
 const env = await initializeTestEnvironment({
-  projectId: 'demo-japanflow-chat-queries',
+  projectId: 'demo-japanflow-qa',
   firestore: {
     host: '127.0.0.1',
     port: 8085,

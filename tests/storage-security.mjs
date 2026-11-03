@@ -37,7 +37,7 @@ async function test(label, fn) {
 }
 
 try {
-  // 1. Preparar usuários fictícios no Firestore Emulator
+  // 1. Preparar usuÃ¡rios fictÃ­cios no Firestore Emulator
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
 
@@ -66,20 +66,20 @@ try {
     });
   });
 
-  // 2. Criar contextos de autenticação
+  // 2. Criar contextos de autenticaÃ§Ã£o
   const admin = env.authenticatedContext('admin-uid');
   const employee = env.authenticatedContext('employee-uid');
   const inactive = env.authenticatedContext('inactive-uid');
   const outsider = env.authenticatedContext('outsider-uid');
   const anonymous = env.unauthenticatedContext();
 
-  // 3. Referências dos arquivos operacionais
+  // 3. ReferÃªncias dos arquivos operacionais
   const adminFile = admin.storage().ref(path);
   const employeeFile = employee.storage().ref(path);
   const inactiveFile = inactive.storage().ref(path);
   const anonymousFile = anonymous.storage().ref(path);
 
-  // 4. Referências dos anexos do chat privado
+  // 4. ReferÃªncias dos anexos do chat privado
   const privatePath = 'attachments/chat/private/admin-user/employee-user/security-test.webp';
 
   const adminPrivate = admin.storage().ref(privatePath);
@@ -88,7 +88,7 @@ try {
 
   // TESTES: Arquivos operacionais
 
-  await test('Admin cria arquivo válido', async () => {
+  await test('Admin cria arquivo vÃ¡lido', async () => {
     await assertSucceeds(
       adminFile.putString('arquivo de teste', 'raw', {
         contentType: 'image/webp',
@@ -96,31 +96,31 @@ try {
     );
   });
 
-  await test('Funcionário ativo consegue ler arquivo', async () => {
+  await test('FuncionÃ¡rio ativo consegue ler arquivo', async () => {
     await assertSucceeds(employeeFile.getMetadata());
   });
 
-  await test('Usuário inativo não consegue ler', async () => {
+  await test('UsuÃ¡rio inativo nÃ£o consegue ler', async () => {
     await assertFails(inactiveFile.getMetadata());
   });
 
-  await test('Usuário anônimo não consegue ler', async () => {
+  await test('UsuÃ¡rio anÃ´nimo nÃ£o consegue ler', async () => {
     await assertFails(anonymousFile.getMetadata());
   });
 
-  await test('Funcionário não consegue excluir', async () => {
+  await test('FuncionÃ¡rio nÃ£o consegue excluir', async () => {
     await assertFails(employeeFile.delete());
   });
 
-  await test('Funcionário não consegue sobrescrever', async () => {
+  await test('FuncionÃ¡rio nÃ£o consegue sobrescrever', async () => {
     await assertFails(
-      employeeFile.putString('alteração indevida', 'raw', {
+      employeeFile.putString('alteraÃ§Ã£o indevida', 'raw', {
         contentType: 'image/webp',
       })
     );
   });
 
-  await test('Upload executável é bloqueado', async () => {
+  await test('Upload executÃ¡vel Ã© bloqueado', async () => {
     await assertFails(
       employee.storage().ref('attachments/tasks/test.exe').putString('arquivo', 'raw', {
         contentType: 'application/x-msdownload',
@@ -142,11 +142,11 @@ try {
     await assertSucceeds(employeePrivate.getMetadata());
   });
 
-  await test('Terceiro funcionário não pode ler', async () => {
+  await test('Terceiro funcionÃ¡rio nÃ£o pode ler', async () => {
     await assertFails(outsiderPrivate.getMetadata());
   });
 
-  await test('Terceiro funcionário não pode enviar arquivo', async () => {
+  await test('Terceiro funcionÃ¡rio nÃ£o pode enviar arquivo', async () => {
     await assertFails(
       outsider
         .storage()
@@ -157,7 +157,7 @@ try {
     );
   });
 
-  await test('Participante não pode sobrescrever', async () => {
+  await test('Participante nÃ£o pode sobrescrever', async () => {
     await assertFails(
       employeePrivate.putString('sobrescrita', 'raw', {
         contentType: 'image/webp',

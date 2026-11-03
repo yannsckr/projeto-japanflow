@@ -7,7 +7,7 @@ import {
 } from '@firebase/rules-unit-testing';
 
 const env = await initializeTestEnvironment({
-  projectId: 'demo-japanflow-chat-qa',
+  projectId: 'demo-japanflow-qa',
   firestore: {
     host: '127.0.0.1',
     port: 8085,
@@ -72,26 +72,26 @@ try {
     await assertSucceeds(userA.doc(messagePath).get());
   });
 
-  await test('Destinatário pode ler sua mensagem', async () => {
+  await test('DestinatÃ¡rio pode ler sua mensagem', async () => {
     await assertSucceeds(userB.doc(messagePath).get());
   });
 
-  await test('Terceiro funcionário não pode ler', async () => {
+  await test('Terceiro funcionÃ¡rio nÃ£o pode ler', async () => {
     await assertFails(userC.doc(messagePath).get());
   });
 
-  await test('Funcionário inativo não pode ler', async () => {
+  await test('FuncionÃ¡rio inativo nÃ£o pode ler', async () => {
     await assertFails(inactive.doc(messagePath).get());
   });
 
-  await test('Usuário anônimo não pode ler', async () => {
+  await test('UsuÃ¡rio anÃ´nimo nÃ£o pode ler', async () => {
     await assertFails(anonymous.doc(messagePath).get());
   });
 
-  await test('Autor não pode editar conteúdo', async () => {
+  await test('Autor nÃ£o pode editar conteÃºdo', async () => {
     await assertFails(userA.doc(messagePath).update({ content: 'Editada', edited: true }));
   });
-  await test('Destinatário não pode editar conteúdo', async () => {
+  await test('DestinatÃ¡rio nÃ£o pode editar conteÃºdo', async () => {
     await assertFails(userB.doc(messagePath).update({ content: 'Editada' }));
   });
   await test('Autor pode apagar logicamente', async () => {
@@ -99,10 +99,10 @@ try {
       userA.doc(messagePath).update({ content: 'Mensagem apagada', deleted: true })
     );
   });
-  await test('Destinatário não pode marcar como lida sem timestamp', async () => {
+  await test('DestinatÃ¡rio nÃ£o pode marcar como lida sem timestamp', async () => {
     await assertFails(userB.doc(messagePath).update({ read: true }));
   });
-  await test('Destinatário pode marcar como lida com timestamp do servidor', async () => {
+  await test('DestinatÃ¡rio pode marcar como lida com timestamp do servidor', async () => {
     const { default: firebase } = await import('firebase/compat/app');
     await import('firebase/compat/firestore');
     await assertSucceeds(
@@ -111,7 +111,7 @@ try {
         .update({ read: true, read_at: firebase.firestore.FieldValue.serverTimestamp() })
     );
   });
-  await test('Terceiro funcionário não pode editar', async () => {
+  await test('Terceiro funcionÃ¡rio nÃ£o pode editar', async () => {
     await assertFails(
       userC.doc(messagePath).update({
         content: 'Mensagem alterada indevidamente',
@@ -119,7 +119,7 @@ try {
     );
   });
 
-  await test('Remetente não pode falsificar outro remetente', async () => {
+  await test('Remetente nÃ£o pode falsificar outro remetente', async () => {
     await assertFails(
       userA.collection('messages').add({
         senderId: 'user-b',
@@ -132,7 +132,7 @@ try {
   });
 
   console.log(`\nRESULTADO: ${passed} passaram, ${failed} falharam`);
-  assert.equal(failed, 0, 'Permissões do chat precisam de correção');
+  assert.equal(failed, 0, 'PermissÃµes do chat precisam de correÃ§Ã£o');
 } finally {
   await env.cleanup();
 }
