@@ -32,6 +32,8 @@ export type ReferenceMarker = {
   id: string;
   x: number;
   y: number;
+  labelX?: number;
+  labelY?: number;
   label: string;
   parts: AlternativePart[];
 };
@@ -147,6 +149,12 @@ export function asDiagram(id: string, data: Record<string, unknown>): ReferenceD
         id: safeText(m.id, 90),
         x: positionPercent(Number(m.x) || 0),
         y: positionPercent(Number(m.y) || 0),
+        ...(typeof m.labelX === 'number' && Number.isFinite(m.labelX)
+          ? { labelX: positionPercent(m.labelX) }
+          : {}),
+        ...(typeof m.labelY === 'number' && Number.isFinite(m.labelY)
+          ? { labelY: positionPercent(m.labelY) }
+          : {}),
         label: safeText(m.label, 100),
         parts: (Array.isArray(m.parts) ? m.parts : [])
           .filter(

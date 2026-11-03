@@ -411,7 +411,7 @@ function MarkerInfoPanel({
   onUploadPartPhoto: (partId: string, file: File) => void;
 }) {
   return (
-    <div className="w-[290px] max-w-[78vw] rounded-2xl border bg-background/98 p-3 shadow-2xl backdrop-blur">
+    <div className="w-full rounded-xl bg-background p-3">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -592,6 +592,7 @@ function ImageCanvas({
   onSelect,
   onPlace,
   onMoveMarker,
+  onMoveLabel,
   renderSelectedPanel,
 }: {
   url: string;
@@ -602,8 +603,9 @@ function ImageCanvas({
   editor: boolean;
   placing: boolean;
   onSelect: (id: string) => void;
-  onPlace: (x: number, y: number) => void;
+  onPlace: (x: number, y: number, labelX: number, labelY: number) => void;
   onMoveMarker: (id: string, x: number, y: number) => void;
+  onMoveLabel: (id: string, labelX: number, labelY: number) => void;
   renderSelectedPanel: (marker: ReferenceMarker, index: number) => JSX.Element | null;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -614,6 +616,12 @@ function ImageCanvas({
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [draggingMarkerId, setDraggingMarkerId] = useState<string | null>(null);
+  const [draggingLabelId, setDraggingLabelId] = useState<string | null>(null);
+  const [pendingAnchor, setPendingAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [previewEnd, setPreviewEnd] = useState<{ x: number; y: number } | null>(null);
+  const placementStart = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(
+    null
+  );
   const [panning, setPanning] = useState(false);
   const startRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
@@ -621,6 +629,14 @@ function ImageCanvas({
     setScale(1);
     setPan({ x: 0, y: 0 });
   }, [url]);
+
+  useEffect(() => {
+    if (!placing) {
+      setPendingAnchor(null);
+      setPreviewEnd(null);
+      placementStart.current = null;
+    }
+  }, [placing]);
 
   useEffect(() => {
     if (!frameRef.current) return;
@@ -649,16 +665,40 @@ function ImageCanvas({
   };
 
   const handlePointerDownCanvas = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (placing && canEdit && editor) return;
+    if (placing && canEdit && editor) {
+      if (event.button !== 0) return;
+      const point = pointFromClient(event.clientX, event.clientY);
+      if (!point) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      if (pendingAnchor) {
+        onPlace(pendingAnchor.x, pendingAnchor.y, point.x, point.y);
+        setPendingAnchor(null);
+        setPreviewEnd(null);
+        placementStart.current = null;
+      } else {
+        placementStart.current = { ...point, clientX: event.clientX, clientY: event.clientY };
+        setPreviewEnd(point);
+      }
+      return;
+    }
+    if (event.button !== 0) return;
     startRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
     setPanning(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMoveCanvas = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (draggingMarkerId) {
+    if (draggingMarkerId || draggingLabelId) {
       const point = pointFromClient(event.clientX, event.clientY);
-      if (point) onMoveMarker(draggingMarkerId, point.x, point.y);
+      if (!point) return;
+      if (draggingMarkerId) onMoveMarker(draggingMarkerId, point.x, point.y);
+      if (draggingLabelId) onMoveLabel(draggingLabelId, point.x, point.y);
+      return;
+    }
+    if (placing && canEdit && editor && (placementStart.current || pendingAnchor)) {
+      const point = pointFromClient(event.clientX, event.clientY);
+      if (point) setPreviewEnd(point);
       return;
     }
     if (!panning) return;
@@ -667,9 +707,27 @@ function ImageCanvas({
     setPan({ x: startRef.current.panX + dx, y: startRef.current.panY + dy });
   };
 
-  const handlePointerUpCanvas = () => {
+  const handlePointerUpCanvas = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (placing && canEdit && editor && placementStart.current) {
+      const point = pointFromClient(event.clientX, event.clientY);
+      const start = placementStart.current;
+      const moved = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+      if (moved > 8 && point) {
+        onPlace(start.x, start.y, point.x, point.y);
+        setPendingAnchor(null);
+        setPreviewEnd(null);
+      } else {
+        setPendingAnchor({ x: start.x, y: start.y });
+        setPreviewEnd(point ?? { x: start.x, y: start.y });
+      }
+      placementStart.current = null;
+    }
     setDraggingMarkerId(null);
+    setDraggingLabelId(null);
     setPanning(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   return (
@@ -684,7 +742,7 @@ function ImageCanvas({
           </span>
           {editor && (
             <span className="inline-flex items-center gap-1">
-              <CircleDot className="h-4 w-4" /> Arraste o círculo para reposicionar
+              <CircleDot className="h-4 w-4" /> Arraste o círculo ou a numeração para reposicionar
             </span>
           )}
         </div>
@@ -715,138 +773,171 @@ function ImageCanvas({
           </Button>
         </div>
       </div>
-      <div
-        ref={frameRef}
-        className="relative min-h-[72vh] overflow-hidden rounded-[28px] border bg-muted/30 shadow-inner"
-      >
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start">
+        {selectedMarker && selectedIndex >= 0 && (
+          <aside
+            aria-label="Detalhes do ponto selecionado"
+            className="order-first w-full shrink-0 self-start lg:w-[320px]"
+          >
+            <div className="max-h-[72vh] overflow-y-auto rounded-2xl border bg-white p-2 shadow-sm dark:bg-background">
+              {renderSelectedPanel(selectedMarker, selectedIndex)}
+            </div>
+          </aside>
+        )}
         <div
-          ref={canvasRef}
-          className={`absolute inset-0 touch-none ${placing ? 'cursor-crosshair' : panning ? 'cursor-grabbing' : 'cursor-grab'}`}
-          onClick={(event) => {
-            if (!canEdit || !placing || !editor) return;
-            const point = pointFromClient(event.clientX, event.clientY);
-            if (point) onPlace(point.x, point.y);
-          }}
-          onPointerDown={handlePointerDownCanvas}
-          onPointerMove={handlePointerMoveCanvas}
-          onPointerUp={handlePointerUpCanvas}
-          onPointerLeave={handlePointerUpCanvas}
-          onWheel={(event) => {
-            event.preventDefault();
-            setScale((value) => clamp(value + (event.deltaY < 0 ? 0.12 : -0.12), 1, 4));
-          }}
-          style={{ overflow: 'hidden' }}
+          ref={frameRef}
+          className="relative h-[72vh] min-h-[540px] min-w-0 flex-1 overflow-hidden rounded-[28px] border bg-white shadow-inner"
         >
           <div
-            className="absolute origin-center"
-            style={{
-              width: fittedWidth,
-              height: fittedHeight,
-              left: '50%',
-              top: '50%',
-              transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px)) scale(${scale})`,
-              transition: draggingMarkerId || panning ? 'none' : 'transform 120ms ease-out',
+            ref={canvasRef}
+            className={`absolute inset-0 touch-none ${placing ? 'cursor-crosshair' : panning ? 'cursor-grabbing' : 'cursor-grab'}`}
+            onPointerDown={handlePointerDownCanvas}
+            onPointerMove={handlePointerMoveCanvas}
+            onPointerUp={handlePointerUpCanvas}
+            onWheel={(event) => {
+              event.preventDefault();
+              setScale((value) => clamp(value + (event.deltaY < 0 ? 0.12 : -0.12), 1, 4));
             }}
+            style={{ overflow: 'hidden' }}
           >
-            <div ref={imageRef} className="relative h-full w-full">
-              <img
-                src={url}
-                onLoad={(event) =>
-                  setImageSize({
-                    width: event.currentTarget.naturalWidth || 1,
-                    height: event.currentTarget.naturalHeight || 1,
-                  })
-                }
-                alt={`Vista técnica: ${title}`}
-                draggable={false}
-                className="h-full w-full select-none object-contain"
-              />
-              <svg
-                className="pointer-events-none absolute inset-0 h-full w-full"
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-              >
-                {selectedMarker && (
-                  <line
-                    x1={selectedMarker.x}
-                    y1={selectedMarker.y}
-                    x2={selectedMarker.x > 58 ? selectedMarker.x - 20 : selectedMarker.x + 20}
-                    y2={selectedMarker.y - 8}
-                    stroke="currentColor"
-                    strokeWidth=".25"
-                    strokeDasharray="1.2 1.2"
-                    className="text-primary"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                )}
-              </svg>
+            <div
+              className="absolute origin-center"
+              style={{
+                width: fittedWidth,
+                height: fittedHeight,
+                left: '50%',
+                top: '50%',
+                transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px)) scale(${scale})`,
+                transition:
+                  draggingMarkerId || draggingLabelId || panning
+                    ? 'none'
+                    : 'transform 120ms ease-out',
+              }}
+            >
+              <div ref={imageRef} className="relative h-full w-full">
+                <img
+                  src={url}
+                  onLoad={(event) =>
+                    setImageSize({
+                      width: event.currentTarget.naturalWidth || 1,
+                      height: event.currentTarget.naturalHeight || 1,
+                    })
+                  }
+                  alt={`Vista técnica: ${title}`}
+                  draggable={false}
+                  className="h-full w-full select-none object-contain"
+                />
 
-              {markers.map((marker, index) => {
-                const selected = marker.id === selectedId;
-                const alignLeft = marker.x > 70;
-                return (
-                  <div
-                    key={marker.id}
-                    className="absolute"
-                    style={{
-                      left: `${marker.x}%`,
-                      top: `${marker.y}%`,
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-[3px] bg-background/65 text-xs font-bold shadow-md backdrop-blur sm:h-11 sm:w-11 ${selected ? 'border-primary text-primary' : 'border-amber-500 text-foreground'}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelect(marker.id);
-                      }}
-                      onPointerDown={(event) => {
-                        event.stopPropagation();
-                        if (!canEdit || !editor) return;
-                        setDraggingMarkerId(marker.id);
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                      }}
-                      title={marker.label}
-                      aria-label={`Ponto ${index + 1}: ${marker.label}`}
-                    >
-                      {index + 1}
-                    </button>
-                    <div
-                      className={`pointer-events-none absolute top-1/2 z-0 hidden -translate-y-1/2 rounded-full border bg-background/92 px-2 py-1 text-[10px] shadow md:block ${alignLeft ? 'right-[calc(100%+8px)]' : 'left-[calc(100%+8px)]'}`}
-                    >
-                      <span className="font-semibold">{index + 1}</span> · {marker.label}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {selectedMarker && selectedIndex >= 0 && (
-                <div
-                  className="absolute z-20"
-                  onClick={(event) => event.stopPropagation()}
-                  style={{
-                    left:
-                      selectedMarker.x > 60
-                        ? `calc(${selectedMarker.x}% - min(320px, 76vw))`
-                        : `calc(${selectedMarker.x}% + 30px)`,
-                    top: `calc(${clamp(selectedMarker.y - 6, 4, 70)}%)`,
-                    transform: `scale(${1 / scale})`,
-                    transformOrigin: selectedMarker.x > 60 ? 'top right' : 'top left',
-                  }}
+                <svg
+                  className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
                 >
-                  {renderSelectedPanel(selectedMarker, selectedIndex)}
-                </div>
-              )}
+                  {markers.map((marker) => {
+                    const labelX = marker.labelX ?? clamp(marker.x + 9, 0, 100);
+                    const labelY = marker.labelY ?? marker.y;
+                    return (
+                      <line
+                        key={marker.id}
+                        x1={marker.x}
+                        y1={marker.y}
+                        x2={labelX}
+                        y2={labelY}
+                        stroke={marker.id === selectedId ? '#2563eb' : '#d97706'}
+                        strokeWidth="1.4"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    );
+                  })}
+                  {(placementStart.current || pendingAnchor) && previewEnd && (
+                    <line
+                      x1={(placementStart.current ?? pendingAnchor)!.x}
+                      y1={(placementStart.current ?? pendingAnchor)!.y}
+                      x2={previewEnd.x}
+                      y2={previewEnd.y}
+                      stroke="#2563eb"
+                      strokeWidth="1.6"
+                      strokeDasharray="4 3"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )}
+                </svg>
+                {markers.map((marker, index) => {
+                  const selected = marker.id === selectedId;
+                  const labelX = marker.labelX ?? clamp(marker.x + 9, 0, 100);
+                  const labelY = marker.labelY ?? marker.y;
+                  return (
+                    <div key={marker.id}>
+                      <button
+                        type="button"
+                        style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
+                        className={`absolute z-10 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] bg-transparent p-0 shadow-none outline-offset-4 hover:border-primary focus-visible:outline sm:h-11 sm:w-11 ${selected ? 'border-primary' : 'border-amber-500'}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(marker.id);
+                        }}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          if (!canEdit || !editor || placing) return;
+                          setDraggingMarkerId(marker.id);
+                          event.currentTarget.setPointerCapture(event.pointerId);
+                        }}
+                        onPointerMove={(event) => {
+                          if (draggingMarkerId !== marker.id) return;
+                          const point = pointFromClient(event.clientX, event.clientY);
+                          if (point) onMoveMarker(marker.id, point.x, point.y);
+                        }}
+                        onPointerUp={(event) => {
+                          if (event.currentTarget.hasPointerCapture(event.pointerId))
+                            event.currentTarget.releasePointerCapture(event.pointerId);
+                          setDraggingMarkerId(null);
+                        }}
+                        title={`Ponto ${index + 1}: ${marker.label}`}
+                        aria-label={`Selecionar ponto ${index + 1}: ${marker.label}`}
+                      />
+                      <button
+                        type="button"
+                        style={{ left: `${labelX}%`, top: `${labelY}%` }}
+                        className={`absolute z-20 min-w-6 -translate-y-1/2 rounded-sm bg-transparent px-1 py-0.5 text-xs font-bold shadow-none outline-offset-2 hover:underline focus-visible:outline ${selected ? 'text-primary' : 'text-amber-700'}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(marker.id);
+                        }}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          if (!canEdit || !editor || placing) return;
+                          setDraggingLabelId(marker.id);
+                          event.currentTarget.setPointerCapture(event.pointerId);
+                        }}
+                        onPointerMove={(event) => {
+                          if (draggingLabelId !== marker.id) return;
+                          const point = pointFromClient(event.clientX, event.clientY);
+                          if (point) onMoveLabel(marker.id, point.x, point.y);
+                        }}
+                        onPointerUp={(event) => {
+                          if (event.currentTarget.hasPointerCapture(event.pointerId))
+                            event.currentTarget.releasePointerCapture(event.pointerId);
+                          setDraggingLabelId(null);
+                        }}
+                        title={editor ? 'Arraste para mover o número' : marker.label}
+                        aria-label={`Número ${index + 1} — ${marker.label}`}
+                      >
+                        {index + 1}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
+          {canEdit && placing && editor && (
+            <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-background/95 px-4 py-2 text-xs shadow">
+              Clique e arraste na imagem: comece no círculo e solte onde deseja o número. Também é
+              possível clicar duas vezes, uma em cada posição.
+            </div>
+          )}
         </div>
-        {canEdit && placing && editor && (
-          <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-background/95 px-4 py-2 text-xs shadow">
-            Clique em qualquer ponto da imagem para criar o círculo com contorno.
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1814,12 +1905,12 @@ export default function ReferenceDiagramCatalogPage() {
               editor={editor}
               placing={placing}
               onSelect={setMarkerId}
-              onPlace={(x, y) => {
+              onPlace={(x, y, labelX, labelY) => {
                 if (!admin || !editor) return;
                 const id = crypto.randomUUID();
                 setDraftMarkers((current) => [
                   ...current,
-                  { id, x, y, label: `Ponto ${current.length + 1}`, parts: [] },
+                  { id, x, y, labelX, labelY, label: `Ponto ${current.length + 1}`, parts: [] },
                 ]);
                 setMarkerId(id);
                 setPlacing(false);
@@ -1828,6 +1919,10 @@ export default function ReferenceDiagramCatalogPage() {
               onMoveMarker={(id, x, y) => {
                 if (!admin || !editor) return;
                 updateMarker(id, (marker) => ({ ...marker, x, y }));
+              }}
+              onMoveLabel={(id, labelX, labelY) => {
+                if (!admin || !editor) return;
+                updateMarker(id, (marker) => ({ ...marker, labelX, labelY }));
               }}
               renderSelectedPanel={(marker, markerIndex) => (
                 <MarkerInfoPanel

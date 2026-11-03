@@ -84,4 +84,23 @@ describe('Referências V3 e compatibilidade', () => {
     expect(result?.markers[0].parts[0].manufacturerHex).toBe('#112233');
     expect(result?.markers[0].parts[0].compatibleModels).toEqual(['Corolla', 'Yaris']);
   });
+
+  it('preserva linha-guia e posição separada da numeração', () => {
+    const result = asDiagram('v3-2', {
+      brand: 'Mitsubishi',
+      system: 'Suspensão',
+      markers: [{ id: 'p1', x: 14, y: 33, labelX: 81.2, labelY: 70.5, label: 'Ponto', parts: [] }],
+    });
+    expect(result?.markers[0]).toMatchObject({ x: 14, y: 33, labelX: 81.2, labelY: 70.5 });
+  });
+
+  it('mantém diagramas antigos sem adicionar campos indefinidos ao Firestore', () => {
+    const result = asDiagram('antigo', {
+      brand: 'Toyota',
+      system: 'Freios',
+      markers: [{ id: 'p1', x: 25, y: 50, label: 'Freio', parts: [] }],
+    });
+    expect(result?.markers[0].labelX).toBeUndefined();
+    expect(Object.keys(result?.markers[0] ?? {})).not.toContain('labelX');
+  });
 });
