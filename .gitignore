@@ -60,3 +60,5 @@ auth-users.json
 qa/.auth/
 .env.japanflow-erp
 ji-garantia-config.js
+# Arquivos compactados de exportacao
+*.zip
