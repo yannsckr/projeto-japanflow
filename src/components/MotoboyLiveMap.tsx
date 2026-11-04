@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addDoc,
   collection,
@@ -11,8 +11,7 @@ import {
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { measureGpsSegment, type GpsSample } from '@/lib/motoboyTelemetry';
-import { useRef } from 'react';
+import { dayInSaoPaulo, measureGpsSegment, type GpsSample } from '@/lib/motoboyTelemetry';
 import type { MotoboyAssignment } from '@/hooks/useDepartmental';
 
 /** Rastreamento operacional durante a jornada de entregas iniciada pelo motoboy.
@@ -34,7 +33,9 @@ export function MotoboyLocationSharing({
     (ride) => ride.assignedTo === userId && ride.status === 'accepted'
   );
   const hasActiveRides = activeRides.length > 0;
-  const primaryRideId = activeRides[0]?.id ?? null;
+  // Never select an arbitrary ride when multiple deliveries are open.
+  // Continue live location sharing but pause per-ride odometer tracking until unique.
+  const primaryRideId = activeRides.length === 1 ? activeRides[0].id : null;
   const reference = useMemo(() => doc(db, 'motoboy_live_sessions', userId), [userId]);
 
   // Uma jornada iniciada permanece ativa apos a ultima entrega, ate o retorno.
@@ -57,8 +58,8 @@ export function MotoboyLocationSharing({
   }, [reference, userId, hasActiveRides, session]);
 
   useEffect(() => {
-    if (!session) previousSample.current = null;
-  }, [session]);
+    previousSample.current = null;
+  }, [session, primaryRideId]);
 
   useEffect(() => {
     if (!session) return;
@@ -77,14 +78,21 @@ export function MotoboyLocationSharing({
           accuracy: position.coords.accuracy,
           timestamp: position.timestamp || Date.now(),
         };
+        const validFix =
+          [current.lat, current.lng, current.accuracy, current.timestamp].every(Number.isFinite) &&
+          Math.abs(current.lat) <= 90 &&
+          Math.abs(current.lng) <= 180 &&
+          current.accuracy >= 0 &&
+          current.accuracy <= 50;
         const previous = previousSample.current;
         const segment = previous ? measureGpsSegment(previous, current) : null;
-        previousSample.current = current;
+        // Do not let an inaccurate or invalid fix contaminate the next segment.
+        previousSample.current = validFix ? current : null;
         // Atribui o deslocamento a uma unica corrida quando ha multiplas simultaneas.
         // Sem isso o mesmo quilometro seria contado duas ou mais vezes.
         if (
           primaryRideId &&
-          current.accuracy <= 50 &&
+          validFix &&
           (!previous ||
             segment?.accepted === true ||
             (segment?.accepted === false && segment.reason === 'stationary'))
@@ -92,16 +100,19 @@ export function MotoboyLocationSharing({
           void addDoc(collection(db, 'motoboy_telemetry'), {
             user_id: userId,
             ride_id: primaryRideId,
-            day: new Date(current.timestamp).toLocaleDateString('en-CA', {
-              timeZone: 'America/Sao_Paulo',
-            }),
+            day: dayInSaoPaulo(new Date(current.timestamp)),
             lat: current.lat,
             lng: current.lng,
             accuracy: current.accuracy,
             client_at: current.timestamp,
-            meters: segment?.accepted ? segment.meters : 0,
+            // The backend recomputes meters from GPS points; keep this inert and within rules limits.
+            meters: 0,
             recorded_at: serverTimestamp(),
           }).catch(() => setGpsError('Nao foi possivel salvar o percurso.'));
+        }
+        if (!validFix) {
+          setGpsError('Localização imprecisa ou inválida. Aguardando nova leitura GPS.');
+          return;
         }
         void setDoc(
           reference,
@@ -114,9 +125,7 @@ export function MotoboyLocationSharing({
             updated_at: serverTimestamp(),
           },
           { merge: true }
-        )
-          .then(() => setGpsError(null))
-          .catch(() => setGpsError('Falha ao atualizar a localizacao.'));
+        ).catch(() => setGpsError('Falha ao atualizar a localizacao.'));
       },
       () => setGpsError('Permita acesso a localizacao no navegador para acompanhar a jornada.'),
       { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
@@ -126,7 +135,20 @@ export function MotoboyLocationSharing({
 
   // Mantém o rastreamento ativo, sem mostrar banner durante as corridas.
   // Ao terminar as entregas, mantém apenas a confirmação necessária para encerrar a jornada.
-  if (!session || hasActiveRides) return null;
+  if (!session) return null;
+  if (activeRides.length > 1) {
+    return (
+      <p
+        role="status"
+        className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300"
+      >
+        Há várias corridas ativas. O GPS da jornada continua disponível, mas a quilometragem por
+        corrida fica pausada para evitar atribuição incorreta. Conclua uma das corridas para
+        retomar.
+      </p>
+    );
+  }
+  if (hasActiveRides) return null;
   return (
     <div className="rounded-xl border bg-card p-3 text-sm">
       {gpsError && (

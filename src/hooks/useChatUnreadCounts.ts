@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchChatCounts, type ChatCountsResponse } from '@/lib/chatCountersClient';
+import { isChatCountsRefreshDue, shouldRefreshChatCounts } from '@/lib/chatPollingPolicy';
 
 const EMPTY: ChatCountsResponse = { privateTotal: 0, privateByPartner: {}, groupById: {} };
 const BATCH = 20;
@@ -21,6 +22,7 @@ export function useChatUnreadCounts(
   useEffect(() => {
     let cancelled = false;
     let busy = false;
+    let lastStarted = 0;
     const partners = partnersKey.split('|').filter(Boolean);
     const groups = groupsKey.split('|').filter(Boolean);
     if (!userId) {
@@ -29,8 +31,13 @@ export function useChatUnreadCounts(
       setLoading(false);
       return;
     }
-    const fetchAll = async () => {
-      if (busy) return;
+    const fetchAll = async (force = false) => {
+      if (busy || cancelled) return;
+      if (!shouldRefreshChatCounts(document.visibilityState === 'visible', navigator.onLine))
+        return;
+      const now = Date.now();
+      if (!force && !isChatCountsRefreshDue(now, lastStarted)) return;
+      lastStarted = now;
       busy = true;
       setLoading(true);
       try {
@@ -63,11 +70,21 @@ export function useChatUnreadCounts(
         if (!cancelled) setLoading(false);
       }
     };
-    void fetchAll();
+    // Atualiza ao montar e, ao retornar à aba, após ausência de atualizações.
+    // Não existe temporizador executando consultas em abas ocultas.
+    void fetchAll(true);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void fetchAll();
+    };
+    const onOnline = () => void fetchAll();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('online', onOnline);
     const timer = window.setInterval(() => void fetchAll(), 20000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('online', onOnline);
     };
   }, [userId, partnersKey, groupsKey, revision]);
 

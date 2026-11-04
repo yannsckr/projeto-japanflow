@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { db } from '@/lib/firebase';
 import { useChatUnreadCounts } from '@/hooks/useChatUnreadCounts';
 import {
@@ -11,7 +11,10 @@ import {
   where,
   orderBy,
   limit,
+  getDocs,
 } from 'firebase/firestore';
+const DISCOVERY_BATCH = 8;
+
 export interface ChatPreview {
   partnerUsername: string;
   lastMessageAt: string;
@@ -36,8 +39,20 @@ export function useChatPreviews(
     usernameToId: new Map<string, string>(),
   });
   const [messagesSnapshot, setMessagesSnapshot] = useState<any[]>([]);
+  // Conversas fora da janela recente são consultadas apenas quando solicitado.
+  // A descoberta é limitada a 8 contatos por ação, duas leituras limit(1) por contato.
+  const [olderMessages, setOlderMessages] = useState<any[]>([]);
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderHasMore, setOlderHasMore] = useState(true);
+  const discoveryCursor = useRef(0);
+  const discoveryBusy = useRef(false);
+  const discoveryGeneration = useRef(0);
   const userId = currentUsername ? usersMap.usernameToId.get(currentUsername) || null : null;
   const partnerIds = Array.from(usersMap.idToUsername.keys()).filter((id) => id !== userId);
+  const allMessages = useMemo(
+    () => [...messagesSnapshot, ...olderMessages],
+    [messagesSnapshot, olderMessages]
+  );
   const { privateByPartner, refresh: refreshCounts } = useChatUnreadCounts(userId, partnerIds);
 
   useEffect(() => {
@@ -74,6 +89,15 @@ export function useChatPreviews(
 
     return () => unsubscribe();
   }, [directory]);
+
+  useEffect(() => {
+    discoveryGeneration.current += 1;
+    discoveryCursor.current = 0;
+    discoveryBusy.current = false;
+    setOlderMessages([]);
+    setOlderHasMore(true);
+    setOlderLoading(false);
+  }, [userId, usersMap]);
 
   useEffect(() => {
     const userId = currentUsername ? usersMap.usernameToId.get(currentUsername) : null;
@@ -142,7 +166,7 @@ export function useChatPreviews(
       return;
     }
 
-    const rows = messagesSnapshot
+    const rows = allMessages
       .map((message) => {
         const senderId = String(message.senderId || '');
         const receiverId = String(message.receiverId || '');
@@ -187,9 +211,61 @@ export function useChatPreviews(
     );
 
     setPreviews(result);
-  }, [currentUsername, messagesSnapshot, usersMap, privateByPartner]);
+  }, [currentUsername, allMessages, usersMap, privateByPartner]);
 
   useEffect(() => rebuildPreviews(), [rebuildPreviews]);
+
+  const findOlderConversations = useCallback(async () => {
+    if (!userId || discoveryBusy.current || !olderHasMore) return;
+    discoveryBusy.current = true;
+    setOlderLoading(true);
+    const generation = discoveryGeneration.current;
+    const allPartners = Array.from(usersMap.idToUsername.keys()).filter((id) => id !== userId);
+    const start = discoveryCursor.current;
+    const batch = allPartners.slice(start, start + DISCOVERY_BATCH);
+    try {
+      const discovered = await Promise.all(
+        batch.map(async (partnerId) => {
+          const direction = (senderId: string, receiverId: string) =>
+            getDocs(
+              query(
+                collection(db, 'messages'),
+                where('senderId', '==', senderId),
+                where('receiverId', '==', receiverId),
+                orderBy('timestamp', 'desc'),
+                limit(1)
+              )
+            );
+          const [sent, received] = await Promise.all([
+            direction(userId, partnerId),
+            direction(partnerId, userId),
+          ]);
+          return [...sent.docs, ...received.docs].map((entry) => ({
+            id: entry.id,
+            ...entry.data(),
+          }));
+        })
+      );
+      // Descarta resultados que chegaram após troca de sessão/diretório.
+      if (discoveryGeneration.current !== generation) return;
+      discoveryCursor.current = start + batch.length;
+      setOlderHasMore(discoveryCursor.current < allPartners.length);
+      setOlderMessages((previous) => {
+        const merged = new Map(previous.map((message) => [message.id, message]));
+        for (const message of discovered.flat()) merged.set(message.id, message);
+        return [...merged.values()];
+      });
+    } catch (error) {
+      // Não avança o cursor: a ação poderá ser repetida sem perder contatos.
+      console.error('Falha ao procurar conversas antigas:', error);
+      throw error;
+    } finally {
+      if (discoveryGeneration.current === generation) {
+        discoveryBusy.current = false;
+        setOlderLoading(false);
+      }
+    }
+  }, [userId, usersMap, olderHasMore]);
 
   const markAsRead = useCallback(
     async (partnerUsername: string) => {
@@ -213,5 +289,5 @@ export function useChatPreviews(
     [currentUsername, usersMap, refreshCounts]
   );
 
-  return { previews, markAsRead };
+  return { previews, markAsRead, findOlderConversations, olderLoading, olderHasMore };
 }

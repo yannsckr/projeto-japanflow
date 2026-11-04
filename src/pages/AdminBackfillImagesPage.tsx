@@ -294,7 +294,7 @@ const AdminBackfillImagesPage = () => {
   if (currentUser.role !== 'admin') return <Navigate to="/board" replace />;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <div className="flex min-w-0 items-start gap-3 sm:items-center">
         <ImageIcon className="w-6 h-6" />
         <h1 className="min-w-0 break-words text-xl font-bold sm:text-2xl">

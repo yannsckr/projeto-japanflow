@@ -366,7 +366,7 @@ service cloud.firestore {
       allow read: if isActive();
       allow create: if isRyan()
         && request.resource.data.created_by == currentUserId()
-        && request.resource.data.keys().hasOnly(['title','body','created_by','created_at','image_urls','media_types','batch_id','batch_order'])
+        && request.resource.data.keys().hasOnly(['title','body','created_by','created_at','image_urls','media_types','batch_id','batch_order','target_user_ids'])
         && request.resource.data.image_urls is list
         && request.resource.data.image_urls.size() <= 5
         && request.resource.data.media_types is list
@@ -374,6 +374,10 @@ service cloud.firestore {
         && request.resource.data.media_types.hasOnly(['image', 'video'])
         && request.resource.data.batch_id is string
         && request.resource.data.batch_order is int
+        && (!('target_user_ids' in request.resource.data)
+          || (request.resource.data.target_user_ids is list
+            && request.resource.data.target_user_ids.size() >= 1
+            && request.resource.data.target_user_ids.size() <= 250))
         && request.resource.data.title is string
         && request.resource.data.title.size() <= 120
         && request.resource.data.body is string

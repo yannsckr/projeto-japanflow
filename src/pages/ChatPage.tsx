@@ -219,7 +219,8 @@ const ChatPage = () => {
     user: User;
   } | null>(null);
 
-  const { previews, markAsRead } = useChatPreviews(currentUser?.username || null, users);
+  const { previews, markAsRead, findOlderConversations, olderLoading, olderHasMore } =
+    useChatPreviews(currentUser?.username || null, users);
   const privateTypingUserIds = usePrivateTypingUsers(currentUser?.id);
   const { getPreference, updatePreference } = useChatPreferences(currentUser?.id);
 
@@ -458,14 +459,48 @@ const ChatPage = () => {
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {tab === 'conversations' ? (
             conversationUsers.length > 0 ? (
-              <div className="space-y-1">{conversationUsers.map(renderConversationRow)}</div>
+              <div className="space-y-2">
+                <div className="space-y-1">{conversationUsers.map(renderConversationRow)}</div>
+                {olderHasMore && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={olderLoading}
+                    onClick={() =>
+                      void findOlderConversations().catch(() =>
+                        toast.error('Não foi possível localizar conversas antigas.')
+                      )
+                    }
+                  >
+                    {olderLoading ? 'Procurando...' : 'Localizar conversas antigas'}
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="flex min-h-40 flex-col items-center justify-center px-5 text-center">
                 <MessageSquare className="mb-2 h-7 w-7 text-muted-foreground/30" />
                 <p className="text-xs font-medium text-foreground">Nenhuma conversa recente</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Abra Contatos para iniciar uma conversa.
+                  Abra Contatos para iniciar uma conversa ou procure no histórico.
                 </p>
+                {olderHasMore && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3"
+                    disabled={olderLoading}
+                    onClick={() =>
+                      void findOlderConversations().catch(() =>
+                        toast.error('Não foi possível localizar conversas antigas.')
+                      )
+                    }
+                  >
+                    {olderLoading ? 'Procurando...' : 'Localizar conversas antigas'}
+                  </Button>
+                )}
               </div>
             )
           ) : (

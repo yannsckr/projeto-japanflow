@@ -49,46 +49,67 @@ const NotificationBell = () => {
   const [userNotifs, setUserNotifs] = useState<BellNotification[]>([]);
 
   const prevCount = useRef(0);
-
+  // Dois formatos coexistem no banco: user_id/created_at e userId/createdAt.
+  // Cada consulta inclui o filtro do destinatário para não ler notificações de terceiros.
   useEffect(() => {
+    // Estado das duas consultas pertence a esta assinatura; o cleanup não acessa refs mutáveis.
+    const notificationSources = new Map<'snake' | 'camel', BellNotification[]>();
     if (!currentUser?.id) {
       setUserNotifs([]);
       return;
     }
 
-    const notificationsQuery = query(
-      collection(db, 'notifications'),
-      where('user_id', '==', currentUser.id)
-    );
+    let active = true;
+    const publish = () => {
+      if (!active) return;
+      const all = Array.from(notificationSources.values()).flat();
+      const unique = [
+        ...new Map(all.map((notification) => [notification.id, notification])).values(),
+      ];
+      setUserNotifs(
+        unique.sort(
+          (a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
+        )
+      );
+    };
 
-    const unsubscribe = onSnapshot(
-      notificationsQuery,
-      (snapshot) => {
-        const next = snapshot.docs
-          .map((notificationDoc) => {
-            const data = notificationDoc.data();
-
-            return {
-              id: notificationDoc.id,
-              userId: String(data.user_id || ''),
-              message: String(data.message || 'Nova notificação'),
-              type: String(data.type || 'generic'),
-              read: data.read === true,
-              timestamp: toIso(data.created_at || data.timestamp),
-            } satisfies BellNotification;
-          })
-          .sort(
-            (a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
+    const subscribe = (schema: 'snake' | 'camel') => {
+      const field = schema === 'snake' ? 'user_id' : 'userId';
+      return onSnapshot(
+        query(collection(db, 'notifications'), where(field, '==', currentUser.id)),
+        (snapshot) => {
+          notificationSources.set(
+            schema,
+            snapshot.docs.map((notificationDoc) => {
+              const data = notificationDoc.data();
+              return {
+                id: notificationDoc.id,
+                userId: String(data.user_id ?? data.userId ?? ''),
+                message: String(data.message || data.title || 'Nova notificação'),
+                type: String(data.type || 'generic'),
+                read: data.read === true,
+                timestamp: toIso(data.created_at || data.createdAt || data.timestamp),
+              } satisfies BellNotification;
+            })
           );
+          publish();
+        },
+        (error) => {
+          console.error(`Erro ao acompanhar notificações (${schema}):`, error);
+          notificationSources.set(schema, []);
+          publish();
+        }
+      );
+    };
 
-        setUserNotifs(next);
-      },
-      (error) => {
-        console.error('Erro ao acompanhar notificações do sino:', error);
-      }
-    );
-
-    return () => unsubscribe();
+    const unsubscribeSnake = subscribe('snake');
+    const unsubscribeCamel = subscribe('camel');
+    return () => {
+      active = false;
+      unsubscribeSnake();
+      unsubscribeCamel();
+      notificationSources.clear();
+    };
   }, [currentUser?.id]);
 
   const unreadCount = userNotifs.filter((notification) => !notification.read).length;

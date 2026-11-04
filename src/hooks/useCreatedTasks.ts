@@ -28,7 +28,7 @@ export function useCreatedTasks(creatorId?: string) {
           snapshots.set(field, new Map(snapshot.docs.map((d) => [d.id, mapTask(d.id, d.data())])));
           const merged = new Map<string, Task>();
           snapshots.forEach((items) => items.forEach((task, id) => merged.set(id, task)));
-          setTasks([...merged.values()].filter((task) => task.assigneeId !== creatorId));
+          setTasks([...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
           setError(null);
           setLoading(false);
         },

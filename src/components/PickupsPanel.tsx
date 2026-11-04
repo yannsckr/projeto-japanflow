@@ -15,29 +15,13 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Package, History, CheckCircle2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  canAccessPickups,
+  normalizePickupStatus,
+  toOperationalIso,
+} from '@/lib/operationalTracking';
 
-const ALLOWED_USER_IDS = ['emp-1', 'emp-2', 'emp-9', 'emp-1781181301491'];
-
-export const canSeePickups = (
-  user: {
-    id: string;
-    role: string;
-    sectors?: string[];
-    username?: string;
-  } | null
-) => {
-  if (!user) return false;
-  const username = (user.username || '').trim().toLowerCase();
-  const sectors = (user.sectors || []).map((sector) => sector.toLowerCase());
-  if (user.role === 'admin' || ['jean_', 'joe_'].includes(username)) return true;
-  if (sectors.includes('vendas') || sectors.includes('expedicao')) return true;
-
-  if ((user.sectors || []).includes('administracao')) {
-    return true;
-  }
-
-  return ALLOWED_USER_IDS.includes(user.id);
-};
+export const canSeePickups = canAccessPickups;
 
 interface PickupRow {
   id: string;
@@ -74,7 +58,10 @@ interface PickupFirestore {
   createdAt?: Timestamp;
 }
 
-const formatDate = (iso: string) => new Date(iso).toLocaleString('pt-BR');
+const formatDate = (iso: string) => {
+  const value = new Date(iso);
+  return Number.isNaN(value.getTime()) ? 'Data não informada' : value.toLocaleString('pt-BR');
+};
 
 const PickupsPanel = () => {
   const { currentUser, users } = useApp();
@@ -112,16 +99,15 @@ const PickupsPanel = () => {
 
             created_by: data.created_by || data.createdBy || '',
 
-            status: data.status || 'pending',
+            status: normalizePickupStatus(data.status),
 
-            completed_at:
-              (data.completed_at || data.completedAt)?.toDate?.()?.toISOString() || null,
+            completed_at: toOperationalIso(data.completed_at || data.completedAt) || null,
 
             completed_by: data.completed_by || data.completedBy || null,
 
             completed_by_name: data.completed_by_name || data.completedByName || null,
 
-            created_at: (data.created_at || data.createdAt)?.toDate?.()?.toISOString() || '',
+            created_at: toOperationalIso(data.created_at || data.createdAt),
           };
         });
 
@@ -151,20 +137,6 @@ const PickupsPanel = () => {
 
     const completedAt = Timestamp.now();
 
-    setPickups((prev) =>
-      prev.map((pickup) =>
-        pickup.id === id
-          ? {
-              ...pickup,
-              status: 'done',
-              completed_at: completedAt.toDate().toISOString(),
-              completed_by: currentUser.id,
-              completed_by_name: currentUser.name,
-            }
-          : pickup
-      )
-    );
-
     try {
       await updateDoc(doc(db, 'pickups', id), {
         status: 'done',
@@ -174,6 +146,7 @@ const PickupsPanel = () => {
       });
 
       toast.success('Retirada concluída');
+      setDetail(null);
     } catch (error) {
       console.error('Erro ao concluir retirada:', error);
 
@@ -363,8 +336,7 @@ const PickupsPanel = () => {
                 size="sm"
                 className="w-full mt-2"
                 onClick={() => {
-                  handleComplete(detail.id);
-                  setDetail(null);
+                  void handleComplete(detail.id);
                 }}
               >
                 <CheckCircle2 className="w-4 h-4 mr-1" />

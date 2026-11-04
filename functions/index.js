@@ -57,3 +57,6 @@ exports.receiveSiteWarranty = require('./siteWarrantyFirebase.cjs').receiveSiteW
 exports.manageWarrantyLifecycle = require('./warrantyLifecycle.cjs').manageWarrantyLifecycle;
 
 exports.motoboyDailySummary = require('./motoboyDailySummary').motoboyDailySummary;
+
+exports.deleteReferenceDiagram = require('./referenceDiagramDeletion.cjs').deleteReferenceDiagram;
+exports.createCounterOrderTask = require('./counterOrderTask.cjs').createCounterOrderTask;

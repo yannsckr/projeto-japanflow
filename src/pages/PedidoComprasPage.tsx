@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
 import {
@@ -246,6 +246,17 @@ const PedidoComprasPage = () => {
     }
   };
 
+  const handlePasteImport = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (parsing || !isAdminSector) return;
+    const image = Array.from(event.clipboardData.files).find((file) =>
+      ['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
+    );
+    if (!image) return;
+    event.preventDefault();
+    void handleFile(image);
+    toast.message('Imagem colada: iniciando a leitura do pedido.');
+  };
+
   const saveSupplierIfNeeded = async (): Promise<{ id: string | null; snapshot: Supplier }> => {
     if (!supplierData.razao_social.trim()) return { id: null, snapshot: supplierData };
     if (supplierId !== 'new') {
@@ -345,7 +356,7 @@ const PedidoComprasPage = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onPaste={handlePasteImport}>
       <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
@@ -382,6 +393,9 @@ const PedidoComprasPage = () => {
               )}
               Importar PDF/Imagem
             </Button>
+            <span className="self-center text-xs text-muted-foreground">
+              Ou cole um print com Ctrl+V nesta página
+            </span>
           </div>
         </div>
       </section>

@@ -24,6 +24,7 @@ import {
 import { cn } from '@/lib/utils';
 import TaskDetailDialog from '@/components/TaskDetailDialog';
 import { useCreatedTasks } from '@/hooks/useCreatedTasks';
+import { relatedRideToTask } from '@/lib/operationalTracking';
 
 interface MotoboyAssignment {
   id: string;
@@ -142,14 +143,9 @@ const TaskTrackingPage = () => {
     etiquetaTasks.forEach((t) => related.push({ type: 'task', item: t }));
 
     // Find rides related to this task
-    const relatedRides = rides.filter(
-      (r) => r.description.includes(task.title) || r.description.includes('Entrega')
-    );
-    // Only match rides that have a meaningful connection
-    if (task.title && relatedRides.length > 0) {
-      const exactMatches = relatedRides.filter((r) => r.description.includes(task.title));
-      exactMatches.forEach((r) => related.push({ type: 'ride', item: r }));
-    }
+    rides
+      .filter((ride) => relatedRideToTask(ride.description, task.title))
+      .forEach((ride) => related.push({ type: 'ride', item: ride }));
 
     return related;
   };
@@ -164,10 +160,12 @@ const TaskTrackingPage = () => {
     if (search) {
       const s = search.toLowerCase();
       result = result.filter((t) => {
-        const assignee = users.find((u) => u.id === t.assigneeId);
+        const assigneeNames = [t.assigneeId, ...(t.assigneeIds ?? [])]
+          .map((id) => users.find((u) => u.id === id)?.name ?? '')
+          .join(' ');
         return (
           t.title.toLowerCase().includes(s) ||
-          (assignee?.name || '').toLowerCase().includes(s) ||
+          assigneeNames.toLowerCase().includes(s) ||
           (t.sector && SECTOR_LABELS[t.sector as Sector]?.toLowerCase().includes(s))
         );
       });
@@ -330,7 +328,10 @@ const TaskTrackingPage = () => {
         )}
 
         {filteredTasks.map((task) => {
-          const assignee = users.find((u) => u.id === task.assigneeId);
+          const assigneeNames = Array.from(new Set([task.assigneeId, ...(task.assigneeIds ?? [])]))
+            .map((id) => users.find((u) => u.id === id)?.name)
+            .filter(Boolean)
+            .join(', ');
           const related = getRelatedItems(task);
           const isExpanded = expandedTasks.has(task.id);
           const hasRelated = related.length > 0;
@@ -371,13 +372,13 @@ const TaskTrackingPage = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    {assignee && (
+                    {assigneeNames && (
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
-                        {assignee.name}
+                        {assigneeNames}
                       </span>
                     )}
-                    {!assignee && task.sector && (
+                    {!assigneeNames && task.sector && (
                       <span className="flex items-center gap-1 text-warning">
                         <Clock className="w-3 h-3" />
                         Aguardando resgate

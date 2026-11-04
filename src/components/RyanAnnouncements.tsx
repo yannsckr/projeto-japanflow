@@ -10,7 +10,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { ChevronLeft, ChevronRight, Megaphone, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Megaphone, Plus, Search, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '@/contexts/AppContext';
 import { db } from '@/lib/firebase';
@@ -29,18 +29,37 @@ type Announcement = {
   created_by: string;
   batch_id?: string;
   batch_order?: number;
+  target_user_ids?: string[];
 };
 type Draft = { id: number; title: string; body: string; files: File[] };
 const empty = (id: number): Draft => ({ id, title: '', body: '', files: [] });
 
 export default function RyanAnnouncements() {
-  const { authenticatedUser } = useApp();
+  const { authenticatedUser, users } = useApp();
   const [items, setItems] = useState<Announcement[]>([]);
   const [seen, setSeen] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
   const [composer, setComposer] = useState(false);
   const [drafts, setDrafts] = useState<Draft[]>([empty(0)]);
   const [sending, setSending] = useState(false);
+  const [audience, setAudience] = useState<'all' | 'selected'>('all');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const eligibleUsers = users.filter((user) => user.active);
+  const filteredUsers = eligibleUsers.filter((user) =>
+    `${user.name} ${user.username}`
+      .toLocaleLowerCase('pt-BR')
+      .includes(recipientSearch.toLocaleLowerCase('pt-BR').trim())
+  );
+  const toggleRecipient = (userId: string) =>
+    setSelectedUserIds((previous) => {
+      if (previous.includes(userId)) return previous.filter((id) => id !== userId);
+      if (previous.length >= 250) {
+        toast.error('Selecione no máximo 250 destinatários por envio');
+        return previous;
+      }
+      return [...previous, userId];
+    });
   const [mediaIndex, setMediaIndex] = useState(0);
   const isRyan = authenticatedUser?.username?.trim().toLowerCase() === 'ryan';
   const uid = authenticatedUser?.id;
@@ -84,6 +103,11 @@ export default function RyanAnnouncements() {
               created_by: String(d.data().created_by || ''),
               batch_id: String(d.data().batch_id || ''),
               batch_order: Number(d.data().batch_order || 0),
+              target_user_ids: Array.isArray(d.data().target_user_ids)
+                ? d
+                    .data()
+                    .target_user_ids.filter((id: unknown): id is string => typeof id === 'string')
+                : undefined,
             }))
             .sort((a, b) =>
               a.batch_id && a.batch_id === b.batch_id ? a.batch_order - b.batch_order : 0
@@ -93,7 +117,14 @@ export default function RyanAnnouncements() {
     );
   }, [uid]);
 
-  const current = loaded ? items.find((x) => !seen.has(x.id)) : undefined;
+  // Avisos antigos (sem target_user_ids) continuam visíveis a toda a equipe.
+  const current = loaded
+    ? items.find(
+        (item) =>
+          !seen.has(item.id) &&
+          (!item.target_user_ids || (uid != null && item.target_user_ids.includes(uid)))
+      )
+    : undefined;
   useEffect(() => {
     setMediaIndex(0);
   }, [current?.id]);
@@ -111,6 +142,11 @@ export default function RyanAnnouncements() {
   };
   const publish = async () => {
     if (!uid || !isRyan || !valid || sending) return;
+    const recipients = selectedUserIds.filter((id) => eligibleUsers.some((user) => user.id === id));
+    if (audience === 'selected' && recipients.length === 0) {
+      toast.error('Selecione pelo menos um destinatário ativo');
+      return;
+    }
     setSending(true);
     try {
       const batch = writeBatch(db);
@@ -144,12 +180,18 @@ export default function RyanAnnouncements() {
           batch_order: index,
           created_by: uid,
           created_at: serverTimestamp(),
+          ...(audience === 'selected' ? { target_user_ids: recipients } : {}),
         });
       }
       await batch.commit();
-      toast.success(`${drafts.length} aviso(s) publicado(s) para a equipe`);
+      toast.success(
+        `${drafts.length} aviso(s) publicado(s) para ${audience === 'all' ? 'toda a equipe' : `${recipients.length} destinatário(s)`}`
+      );
       setComposer(false);
       setDrafts([empty(0)]);
+      setAudience('all');
+      setSelectedUserIds([]);
+      setRecipientSearch('');
     } catch (error) {
       console.error(error);
       toast.error('Erro ao publicar os avisos; confira os anexos');
@@ -172,12 +214,88 @@ export default function RyanAnnouncements() {
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Enviar avisos para toda a equipe</DialogTitle>
+            <DialogTitle>Enviar avisos do sistema</DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground">
             Monte vários avisos. Eles serão publicados juntos e exibidos um após o outro, com
             confirmação individual.
           </p>
+          <section
+            className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3"
+            aria-label="Destinatários dos avisos"
+          >
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <Users className="h-4 w-4" /> Quem deve receber?
+            </p>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="announcement-audience"
+                  checked={audience === 'all'}
+                  disabled={sending}
+                  onChange={() => setAudience('all')}
+                />
+                Toda a equipe
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="announcement-audience"
+                  checked={audience === 'selected'}
+                  disabled={sending}
+                  onChange={() => setAudience('selected')}
+                />
+                Selecionar pessoas
+              </label>
+            </div>
+            {audience === 'selected' && (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    aria-label="Buscar destinatário"
+                    className="pl-9"
+                    placeholder="Buscar por nome ou usuário"
+                    value={recipientSearch}
+                    disabled={sending}
+                    onChange={(event) => setRecipientSearch(event.target.value)}
+                  />
+                </div>
+                <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border bg-background p-2">
+                  {filteredUsers.map((user) => (
+                    <label
+                      key={user.id}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.includes(user.id)}
+                        disabled={sending}
+                        onChange={() => toggleRecipient(user.id)}
+                      />
+                      <span className="min-w-0 truncate">
+                        {user.name}{' '}
+                        <span className="text-xs text-muted-foreground">@{user.username}</span>
+                      </span>
+                    </label>
+                  ))}
+                  {filteredUsers.length === 0 && (
+                    <p className="p-2 text-xs text-muted-foreground">
+                      Nenhum usuário ativo encontrado.
+                    </p>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {
+                    selectedUserIds.filter((id) => eligibleUsers.some((user) => user.id === id))
+                      .length
+                  }{' '}
+                  destinatário(s) selecionado(s). A seleção vale para todos os avisos deste envio.
+                </p>
+              </div>
+            )}
+          </section>
           <div className="space-y-4">
             {drafts.map((draft, index) => (
               <div key={draft.id} className="space-y-2 rounded-lg border p-3">
@@ -259,7 +377,15 @@ export default function RyanAnnouncements() {
             >
               <Plus className="mr-1 h-4 w-4" /> Adicionar aviso
             </Button>
-            <Button disabled={sending || !valid} onClick={() => void publish()}>
+            <Button
+              disabled={
+                sending ||
+                !valid ||
+                (audience === 'selected' &&
+                  !selectedUserIds.some((id) => eligibleUsers.some((user) => user.id === id)))
+              }
+              onClick={() => void publish()}
+            >
               {sending ? 'Publicando...' : `Publicar ${drafts.length} aviso(s)`}
             </Button>
           </div>

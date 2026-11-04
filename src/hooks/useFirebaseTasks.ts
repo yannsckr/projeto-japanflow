@@ -15,6 +15,11 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '@/lib/firebase';
+import {
+  normalizeAssigneeIds,
+  singleAssigneeUpdate,
+  taskAssigneeCreateFields,
+} from '@/lib/taskAssignments';
 import { Priority, Sector, StatusHistoryEntry, Task, TaskStatus } from '@/types';
 
 interface FirestoreTaskData {
@@ -107,7 +112,9 @@ export const mapTask = (id: string, data: FirestoreTaskData): TaskWithArchive =>
     status,
     priority: String(data.priority || 'medium') as Priority,
     assigneeId: String(data.assignee_id ?? data.assigneeId ?? ''),
-    assigneeIds: Array.isArray(data.assignee_ids) ? data.assignee_ids.map(String) : undefined,
+    assigneeIds: Array.isArray(data.assignee_ids)
+      ? normalizeAssigneeIds(data.assignee_ids)
+      : undefined,
     createdBy: String(data.created_by ?? data.createdBy ?? ''),
     deadline: String(data.deadline || ''),
     sector: data.sector ? (String(data.sector) as Sector) : undefined,
@@ -225,7 +232,7 @@ export function useFirebaseTasks(
           description: task.description,
           status: task.status,
           priority: task.priority,
-          assignee_id: task.assigneeId || '',
+          ...taskAssigneeCreateFields(task.assigneeId || '', task.assigneeIds),
           created_by: task.createdBy,
           deadline: task.deadline,
           sector: task.sector || null,
@@ -257,7 +264,9 @@ export function useFirebaseTasks(
       if (updates.description !== undefined) dbUpdates.description = updates.description;
       if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
       if (updates.deadline !== undefined) dbUpdates.deadline = updates.deadline;
-      if (updates.assigneeId !== undefined) dbUpdates.assignee_id = updates.assigneeId;
+      if (updates.assigneeId !== undefined) {
+        Object.assign(dbUpdates, singleAssigneeUpdate(updates.assigneeId));
+      }
 
       await updateDoc(doc(db, 'tasks', taskId), dbUpdates);
     },
@@ -351,7 +360,7 @@ export function useFirebaseTasks(
 
   const claimSectorTask = useCallback(async (taskId: string, userId: string) => {
     await updateDoc(doc(db, 'tasks', taskId), {
-      assignee_id: userId,
+      ...singleAssigneeUpdate(userId),
       updated_at: Timestamp.now(),
     });
   }, []);

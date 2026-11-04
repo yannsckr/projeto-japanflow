@@ -62,3 +62,15 @@ qa/.auth/
 ji-garantia-config.js
 # Arquivos compactados de exportacao
 *.zip
+
+# Ambientes e credenciais locais
+.env
+.env.*
+functions/.env*
+qa/.auth/
+**/service-account*.json
+**/credentials*.json
+**/secret*.json
+
+# Arquivos compactados
+*.zip

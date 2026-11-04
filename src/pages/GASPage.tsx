@@ -260,7 +260,7 @@ export default function GASPage() {
   ];
   const peak = Math.max(...metrics.map((m) => m.value), guard.maxPercentage);
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-6 p-1 md:p-4">
+    <main className="w-full min-w-0 space-y-6 p-1 md:p-4">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground">

@@ -55,3 +55,15 @@ export function measureGpsSegment(previous: GpsSample, current: GpsSample): Segm
 }
 
 export const kilometers = (meters: number) => Math.round((meters / 1000) * 100) / 100;
+
+/** Date key shared with the São Paulo backend scheduler; independent from runtime locale. */
+export function dayInSaoPaulo(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}

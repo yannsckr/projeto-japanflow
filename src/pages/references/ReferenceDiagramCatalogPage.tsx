@@ -39,7 +39,8 @@ import {
   GripVertical,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { db, storage } from '@/lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import app, { db, storage } from '@/lib/firebase';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1559,6 +1560,7 @@ export default function ReferenceDiagramCatalogPage() {
   const [draftMarkers, setDraftMarkers] = useState<ReferenceMarker[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingDiagram, setDeletingDiagram] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [form, setForm] = useState<NewDiagram>(emptyDiagram);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -1689,8 +1691,8 @@ export default function ReferenceDiagramCatalogPage() {
     [visibleDiagrams, allDiagrams, diagramId]
   );
 
-  const markersSource = editor ? draftMarkers : (diagram?.markers ?? []);
   const markers = useMemo(() => {
+    const markersSource = editor ? draftMarkers : (diagram?.markers ?? []);
     const query = searchText.trim().toLowerCase();
     const filtered = markersSource.filter((marker) => {
       const matchesMarkerSearch =
@@ -1722,7 +1724,7 @@ export default function ReferenceDiagramCatalogPage() {
       return markerMatchesFilters(marker, filters);
     });
     return filtered;
-  }, [markersSource, searchText, filters, diagram]);
+  }, [editor, draftMarkers, searchText, filters, diagram]);
 
   useEffect(() => {
     if (markerId && !markers.some((marker) => marker.id === markerId)) {
@@ -1871,6 +1873,41 @@ export default function ReferenceDiagramCatalogPage() {
       toast.error('Não foi possível salvar as marcações.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteDiagram = async () => {
+    if (!admin || !diagram || deletingDiagram) return;
+    if (editor && dirty) {
+      toast.error('Salve ou descarte suas marcações antes de excluir o sistema.');
+      return;
+    }
+    const confirmed = window.prompt(
+      `Excluir permanentemente o sistema "${diagram.title}" e todos os pontos vinculados?\nDigite EXCLUIR para confirmar:`
+    );
+    if (confirmed !== 'EXCLUIR') return;
+    setDeletingDiagram(true);
+    try {
+      const callable = httpsCallable<{ diagramId: string }, { deleted: boolean }>(
+        getFunctions(app, 'southamerica-east1'),
+        'deleteReferenceDiagram'
+      );
+      await callable({ diagramId: diagram.id });
+      setImageUrls((current) => {
+        const next = { ...current };
+        delete next[diagram.imagePath];
+        return next;
+      });
+      setDiagramId(null);
+      setMarkerId(null);
+      setEditor(false);
+      setDirty(false);
+      toast.success('Sistema excluído com sucesso.');
+    } catch (error) {
+      console.error('Falha ao excluir sistema', error);
+      toast.error('Não foi possível excluir. Confira as permissões e as Cloud Functions.');
+    } finally {
+      setDeletingDiagram(false);
     }
   };
 
@@ -2077,6 +2114,16 @@ export default function ReferenceDiagramCatalogPage() {
             </div>
             {admin && (
               <div className="flex flex-wrap gap-2">
+                {!editor && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => void deleteDiagram()}
+                    disabled={deletingDiagram}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {deletingDiagram ? 'Excluindo...' : 'Excluir sistema'}
+                  </Button>
+                )}
                 {!editor ? (
                   <Button onClick={startEditing}>
                     <CircleDot className="mr-2 h-4 w-4" /> Editar círculos

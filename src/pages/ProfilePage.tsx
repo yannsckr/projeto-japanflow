@@ -108,7 +108,7 @@ const ProfilePage = () => {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-5">
+    <div className="w-full min-w-0 space-y-5">
       <section className="jf-diagonal-accent overflow-hidden rounded-2xl border border-border/70 bg-card p-5 shadow-card md:p-6">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Conta</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Meu Perfil</h1>

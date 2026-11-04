@@ -320,13 +320,9 @@ const AppLayout = () => {
               className={
                 isChatRoute
                   ? 'flex min-h-0 flex-1 flex-col'
-                  : isBoardRoute
-                    ? `mx-auto min-h-full w-full min-w-0 animate-fade-up transition-[max-width] duration-300 ${
-                        !isMobile && sidebarCollapsed ? 'max-w-[1760px]' : 'max-w-[1480px]'
-                      }`
-                    : isTiRoute
-                      ? 'min-h-full w-full min-w-0 animate-fade-up'
-                      : 'mx-auto min-h-full w-full min-w-0 max-w-6xl animate-fade-up'
+                  : `mx-auto min-h-full w-full min-w-0 animate-fade-up transition-[max-width] duration-300 ${
+                      !isMobile && sidebarCollapsed ? 'max-w-[1760px]' : 'max-w-[1480px]'
+                    }`
               }
             >
               <Outlet />
