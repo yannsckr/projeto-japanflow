@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 root = Path(__file__).resolve().parents[1]
-# Copiado de scripts/ para a raiz do repositório: /projeto-japanflow/scripts/arquivo.py
+# Copiado de scripts/ para a raiz do repositório: /japanflow/scripts/arquivo.py
 rules = root / 'firestore.rules'
 if not rules.is_file():
     raise SystemExit(f'firestore.rules não encontrado em {rules}. Coloque o script na pasta scripts/ do projeto.')

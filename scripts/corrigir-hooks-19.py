@@ -8,7 +8,7 @@ Se o trecho nao for encontrado de forma inequivoca, o arquivo nao e alterado.
 from pathlib import Path
 import re
 
-# Este script fica em projeto-japanflow/scripts/.
+# Este script fica em japanflow/scripts/.
 ROOT = Path(__file__).resolve().parent.parent
 
 
