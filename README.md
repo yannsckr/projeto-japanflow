@@ -76,8 +76,8 @@ O sistema possui áreas e permissões diferentes conforme o perfil e as responsa
 **Pré-requisitos:** Node.js, npm e um projeto Firebase configurado para desenvolvimento.
 
 ```bash
-git clone https://github.com/yannsckr/projeto-japanflow.git
-cd projeto-japanflow
+git clone https://github.com/yannsckr/japanflow.git
+cd japanflow
 npm install
 npm run dev
 ```
@@ -115,7 +115,7 @@ npm run qa
 ## Estrutura geral
 
 ```text
-projeto-japanflow/
+japanflow/
 ├── src/                 # Interface, páginas, componentes e funcionalidades
 ├── functions/           # Funções de backend no Firebase
 ├── tests/               # Testes automatizados de segurança e lógica

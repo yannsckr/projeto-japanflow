@@ -74,3 +74,6 @@ qa/.auth/
 
 # Arquivos compactados
 *.zip
+
+# Skills locais de ferramentas de IA
+.claude/skills/
