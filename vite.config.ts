@@ -11,7 +11,14 @@ export default defineConfig(() => ({
       overlay: false,
     },
     watch: {
-      ignored: ['**/qa-results/**', '**/qa-report/**'],
+      ignored: [
+        '**/qa-results/**',
+        '**/qa-report/**',
+        '**/src-tauri/**',
+        '**/target/**',
+        '**/android/**/build/**',
+        '**/.gradle/**',
+      ],
     },
   },
   plugins: [react()],

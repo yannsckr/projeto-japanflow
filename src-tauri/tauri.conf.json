@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "JapanFlow COSMOS",
+  "version": "0.1.0",
+  "identifier": "com.japanflow.desktop",
+  "build": {
+    "beforeDevCommand": "npm run cosmos:desktop:dev",
+    "devUrl": "http://127.0.0.1:8081/desktop.html",
+    "beforeBuildCommand": "npm run cosmos:desktop:build",
+    "frontendDist": "../dist-desktop"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "JapanFlow — COSMOS Desktop",
+        "width": 1350,
+        "height": 850,
+        "minWidth": 900,
+        "minHeight": 650,
+        "center": true
+      }
+    ],
+    "security": { "capabilities": ["default"] }
+  },
+  "bundle": { "active": true, "targets": ["nsis"], "icon": ["icons/icon.png", "icons/icon.ico"] }
+}

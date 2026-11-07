@@ -6,7 +6,22 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'qa-report', 'qa-results'],
+    ignores: [
+      'dist/**',
+      'dist-android/**',
+      'dist-desktop/**',
+      'qa-report/**',
+      'qa-results/**',
+      'coverage/**',
+
+      // Compilacao nativa Android
+      'android/**/build/**',
+      'android/.gradle/**',
+      'android/capacitor-cordova-android-plugins/**',
+
+      // Compilacao nativa Windows
+      'src-tauri/target/**',
+    ],
   },
 
   {

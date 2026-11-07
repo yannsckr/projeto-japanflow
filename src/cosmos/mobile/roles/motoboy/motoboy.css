@@ -1,0 +1,550 @@
+/* Exclusivo da experiencia Android para motoboys; nao altera o site. */
+.jf-moto-root {
+  min-height: 100dvh;
+  background: #fff;
+  color: #111;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.jf-moto-header {
+  height: calc(64px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #080808;
+  position: relative;
+  overflow: hidden;
+}
+.jf-moto-header img {
+  width: 138px;
+  max-height: 42px;
+  object-fit: contain;
+}
+.jf-moto-header-mark {
+  position: absolute;
+  width: 65px;
+  height: 65px;
+  right: -38px;
+  top: -40px;
+  border: 8px solid #ef001d;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.jf-moto-map-wrap {
+  height: min(47dvh, 440px);
+  min-height: 240px;
+  position: relative;
+  border-bottom: 3px solid #ec001b;
+  background: #ebedef;
+}
+.jf-moto-map,
+.jf-moto-map-layer {
+  height: 100%;
+  width: 100%;
+}
+.jf-moto-menu-btn,
+.jf-moto-locate {
+  position: absolute;
+  z-index: 500;
+  background: #fff;
+  color: #0c0c0c;
+  border: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  width: 49px;
+  height: 49px;
+  box-shadow: 0 5px 18px #0003;
+}
+.jf-moto-menu-btn {
+  top: 17px;
+  left: 16px;
+}
+.jf-moto-locate {
+  top: 17px;
+  right: 16px;
+  width: 42px;
+  height: 42px;
+}
+.jf-moto-map-caption {
+  position: absolute;
+  z-index: 400;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  max-width: max-content;
+  color: #252525;
+  background: #fffe;
+  padding: 6px 9px;
+  border-radius: 8px;
+  font-size: 10px;
+  box-shadow: 0 2px 9px #0001;
+}
+.jf-moto-location span {
+  display: block;
+  background: #f0001c;
+  border: 4px solid white;
+  box-shadow: 0 0 0 2px #f0001c;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+}
+.jf-moto-map-skeleton {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #555;
+}
+.jf-moto-body {
+  padding: 26px 17px 38px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.jf-moto-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+.jf-moto-section-title h2 {
+  font-size: 16px;
+  line-height: 1.15;
+  white-space: nowrap;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+.jf-moto-section-icon {
+  background: #eb001b;
+  color: white;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+}
+.jf-moto-rule {
+  height: 2px;
+  background: #ed001c;
+  flex: 1;
+  margin-left: 3px;
+}
+.jf-moto-cards {
+  display: flex;
+  gap: 11px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 3px 3px 12px;
+  margin: 0 -3px;
+  scrollbar-width: thin;
+}
+.jf-moto-card {
+  position: relative;
+  isolation: isolate;
+  scroll-snap-align: start;
+  flex: 0 0 clamp(168px, 55vw, 230px);
+  min-height: 153px;
+  text-align: left;
+  border: 1.5px solid #1e1e1e;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 5px 11px #00000012;
+  padding: 13px 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+.jf-moto-card-top {
+  display: flex;
+  justify-content: space-between;
+  color: #e6001a;
+  margin-bottom: 6px;
+}
+.jf-moto-card-top svg:last-child {
+  color: #555;
+}
+.jf-moto-card strong {
+  font-size: 19px;
+  line-height: 1.15;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.jf-moto-card-location {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #393939;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.jf-moto-card small {
+  font-size: 10px;
+  color: #d40019;
+  margin-top: auto;
+  font-weight: 700;
+}
+.jf-moto-card-accent {
+  position: absolute;
+  z-index: -1;
+  width: 75px;
+  height: 75px;
+  border: 7px solid #ed001b;
+  border-radius: 50%;
+  right: -38px;
+  bottom: -50px;
+  transform: rotate(-28deg);
+}
+.jf-moto-empty {
+  color: #727272;
+  font-size: 13px;
+  padding: 13px;
+  border: 1px dashed #d5d5d5;
+  border-radius: 12px;
+}
+.jf-moto-error {
+  font-size: 12px;
+  color: #970013;
+  background: #ffebed;
+  border-radius: 8px;
+  padding: 12px;
+}
+.jf-moto-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: #0009;
+  display: flex;
+  align-items: end;
+}
+.jf-moto-detail {
+  width: 100%;
+  background: white;
+  border-radius: 26px 26px 0 0;
+  padding: 30px 22px calc(28px + env(safe-area-inset-bottom));
+  position: relative;
+  color: #111;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.jf-moto-detail h2 {
+  font-size: 22px;
+  font-weight: 800;
+}
+.jf-moto-detail p {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.jf-moto-detail-note {
+  color: #777 !important;
+  font-size: 12px !important;
+}
+.jf-moto-pill {
+  border-radius: 100px;
+  background: #ffebeb;
+  color: #bd0013;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 11px;
+  align-self: flex-start;
+}
+.jf-moto-close {
+  position: absolute;
+  top: 16px;
+  right: 17px;
+  padding: 7px;
+}
+.jf-moto-action {
+  background: #111;
+  color: #fff;
+  border-radius: 22px;
+  padding: 13px;
+  font-weight: 700;
+  text-align: center;
+  margin-top: 8px;
+}
+.jf-moto-drawer-overlay {
+  align-items: stretch;
+}
+.jf-moto-drawer {
+  width: min(82vw, 340px);
+  background: #fafafa;
+  color: #111;
+  display: flex;
+  flex-direction: column;
+  padding: calc(38px + env(safe-area-inset-top)) 20px calc(15px + env(safe-area-inset-bottom));
+  box-shadow: 8px 0 18px #0002;
+}
+.jf-moto-drawer-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 60px;
+}
+.jf-moto-drawer-brand img:first-child {
+  width: 122px;
+  object-fit: contain;
+}
+.jf-moto-drawer-brand img:last-child {
+  width: 160px;
+  object-fit: contain;
+}
+.jf-moto-drawer nav {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.jf-moto-drawer nav button {
+  text-transform: uppercase;
+  background: #080808;
+  color: white;
+  border-radius: 100px;
+  padding: 14px 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.jf-moto-drawer-bottom {
+  margin-top: auto;
+  padding-top: 13px;
+  border-top: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.jf-moto-avatar {
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.jf-moto-avatar img {
+  width: 37px;
+}
+.jf-moto-person {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.jf-moto-person strong {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jf-moto-person small {
+  font-size: 10px;
+  color: #777;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jf-moto-drawer-bottom button {
+  padding: 6px;
+  color: #686868;
+}
+.jf-moto-login,
+.jf-moto-splash {
+  min-height: 100dvh;
+  color: #111;
+  background: #f6f6f7;
+  font-family: Inter, system-ui, sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+.jf-moto-splash {
+  display: grid;
+  place-items: center;
+}
+.jf-moto-splash-brand {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  width: 70%;
+  transform: translateY(-7vh);
+}
+.jf-moto-splash-brand img:first-child {
+  width: 180px;
+  max-width: 70%;
+}
+.jf-moto-splash-brand img:last-child {
+  width: 235px;
+  max-width: 100%;
+}
+.jf-moto-red-circle {
+  position: absolute;
+  right: -140px;
+  bottom: -175px;
+  border-radius: 50%;
+  width: 315px;
+  height: 315px;
+  background: #ee001e;
+  border: 10px double #fff;
+  box-shadow: 0 0 0 7px #ed001c;
+  pointer-events: none;
+}
+.jf-moto-login-hero {
+  height: 39dvh;
+  min-height: 260px;
+  max-height: 410px;
+  background: #050505;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  position: relative;
+}
+.jf-moto-login-hero::after {
+  content: '';
+  height: 35px;
+  background: #f6f6f7;
+  border-radius: 60% 70% 0 0 / 100% 100% 0 0;
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  bottom: -2px;
+  transform: rotate(1deg);
+}
+.jf-moto-login-hero img:first-child {
+  width: min(32vw, 130px);
+  max-height: 132px;
+  object-fit: contain;
+}
+.jf-moto-login-hero img:nth-child(2) {
+  width: min(54vw, 225px);
+  object-fit: contain;
+}
+.jf-moto-login-form {
+  padding: 45px 30px 70px;
+  position: relative;
+  z-index: 1;
+}
+.jf-moto-login-form h1 {
+  font-size: 22px;
+  font-weight: 650;
+  margin: 0 0 29px;
+}
+.jf-moto-field {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-bottom: 22px;
+}
+.jf-moto-field label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.jf-moto-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 14px;
+  background: #e8e9eb;
+  border: 1px solid #d4d6d8;
+  border-radius: 40px;
+  height: 46px;
+}
+.jf-moto-input-wrap svg {
+  color: #555;
+  flex-shrink: 0;
+}
+.jf-moto-input-wrap input {
+  background: none;
+  border: 0;
+  outline: 0;
+  width: 100%;
+  height: 100%;
+  font-size: 13px;
+  color: #111;
+}
+.jf-moto-input-wrap input::placeholder {
+  color: #929397;
+}
+.jf-moto-login-submit {
+  width: 100%;
+  height: 49px;
+  margin-top: 13px;
+  background: #e9001b;
+  color: white;
+  font-size: 15px;
+  font-weight: 750;
+  border-radius: 100px;
+  box-shadow: 0 6px 13px #e9001b25;
+}
+.jf-moto-login-submit:disabled {
+  opacity: 0.65;
+}
+.jf-moto-form-error {
+  font-size: 12px;
+  color: #bf0016;
+  margin-top: 9px;
+}
+.jf-moto-list {
+  min-height: 100dvh;
+  background: #fff;
+  color: #111;
+  font-family: Inter, system-ui;
+  padding: calc(22px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
+}
+.jf-moto-list h1 {
+  font-size: 24px;
+  font-weight: 800;
+  margin: 22px 0;
+}
+.jf-moto-back {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #e6001a;
+  font-weight: 700;
+}
+.jf-moto-list section {
+  margin-bottom: 25px;
+}
+.jf-moto-list h2 {
+  font-size: 15px;
+  text-transform: uppercase;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+@media (max-width: 355px) {
+  .jf-moto-section-title h2 {
+    font-size: 13px;
+  }
+  .jf-moto-card {
+    flex-basis: 165px;
+  }
+  .jf-moto-login-form {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jf-moto-root *,
+  .jf-moto-login * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

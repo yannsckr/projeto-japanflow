@@ -26,9 +26,16 @@
     "qa:batch3": "playwright test qa/tests/crud-controlled.spec.ts --project=desktop-chromium",
     "qa:gate": "tsc --noEmit && vite build && playwright test qa/tests/smoke.spec.ts qa/tests/functional-core.spec.ts qa/tests/navigation.spec.ts qa/tests/crud-controlled.spec.ts --project=desktop-chromium && playwright test qa/tests/responsive.spec.ts qa/tests/mobile-full.spec.ts --project=mobile-chromium",
     "validar": "npm run format && npm run format:check && npm run typecheck && npm run lint && npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "native:build": "vite build --base ./ && node scripts/write-version.mjs",
+    "cosmos:desktop:dev": "vite --config vite.native.config.ts --port 8081",
+    "cosmos:desktop:build": "vite build --config vite.native.config.ts && node scripts/finalize-cosmos-build.mjs",
+    "cosmos:android:build": "cross-env JAPANFLOW_NATIVE_TARGET=android vite build --config vite.native.config.ts && node scripts/finalize-cosmos-build.mjs --android",
+    "cosmos:android:sync": "npm run cosmos:android:build && cap sync android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -107,10 +114,12 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@eslint/js": "^9.32.0",
     "@firebase/rules-unit-testing": "5.0.2",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/typography": "^0.5.16",
+    "@tauri-apps/cli": "^2.12.4",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",
     "@types/leaflet": "^1.9.22",
@@ -121,6 +130,7 @@
     "@types/three": "^0.172.0",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
+    "cross-env": "^7.0.3",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",

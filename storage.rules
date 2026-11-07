@@ -188,6 +188,38 @@ service firebase.storage {
       allow delete: if salesAccess();
     }
 
+
+    // COSMOS Drive: uploads imutaveis, autorizacao por auth_links e metadados.
+    // v0.1: funcionarios ativos leem, apenas administradores criam/excluem.
+    function driveFilePath(fileId) {
+      return /databases/(default)/documents/cosmos_drive_files/$(fileId);
+    }
+
+    function driveValidUpload() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 30 * 1024 * 1024
+        && request.resource.contentType.matches('^(image/.*|application/pdf|application/octet-stream|text/plain|text/csv|application/zip|application/vnd[.].*|application/msword|application/postscript)$');
+    }
+
+    match /cosmos_drive/{fileId}/{fileName} {
+      allow get: if activeUser()
+        && firestore.exists(driveFilePath(fileId))
+        && firestore.get(driveFilePath(fileId)).data.status == 'ready';
+      allow list: if false;
+      allow create: if adminUser()
+        && resource == null
+        && firestore.exists(driveFilePath(fileId))
+        && firestore.get(driveFilePath(fileId)).data.status == 'pending'
+        && firestore.get(driveFilePath(fileId)).data.created_by == currentUserId()
+        && firestore.get(driveFilePath(fileId)).data.storage_path == 'cosmos_drive/' + fileId + '/' + fileName
+        && firestore.get(driveFilePath(fileId)).data.size == request.resource.size
+        && driveValidUpload();
+      allow update: if false;
+      allow delete: if adminUser()
+        && firestore.exists(driveFilePath(fileId));
+    }
+
     // ========================================
     // BLOQUEIO PADRÃO
     // ========================================

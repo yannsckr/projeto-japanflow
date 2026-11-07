@@ -724,9 +724,57 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+
+    // COSMOS Drive v0.1: biblioteca corporativa, escrita somente por administradores.
+    // NUNCA deixar essas colecoes cairem na regra generica abaixo.
+    match /cosmos_drive_folders/{folderId} {
+      allow get, list: if isActive();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'parent_id', 'created_by', 'created_at'])
+        && request.resource.data.keys().hasAll(['name', 'parent_id', 'created_by', 'created_at'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.parent_id is string
+        && request.resource.data.parent_id.size() <= 128
+        && request.resource.data.created_by == currentUserId()
+        && request.resource.data.created_at == request.time;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /cosmos_drive_files/{fileId} {
+      allow get, list: if isActive();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name','folder_id','storage_path','content_type','size','status','created_by','created_at'])
+        && request.resource.data.keys().hasAll(['name','folder_id','storage_path','content_type','size','status','created_by','created_at'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 180
+        && request.resource.data.folder_id is string
+        && request.resource.data.folder_id.size() <= 128
+        && request.resource.data.storage_path is string
+        && request.resource.data.storage_path.matches('^cosmos_drive/' + fileId + '/[A-Za-z0-9_.-]{1,160}$')
+        && request.resource.data.content_type is string
+        && request.resource.data.content_type.size() <= 128
+        && request.resource.data.size is number
+        && request.resource.data.size > 0
+        && request.resource.data.size <= 30 * 1024 * 1024
+        && request.resource.data.status == 'pending'
+        && request.resource.data.created_by == currentUserId()
+        && request.resource.data.created_at == request.time;
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status == 'ready';
+      allow delete: if isAdmin();
+    }
+
     // Colecoes operacionais nao cobertas pelas regras especificas.
     match /{collection}/{document=**} {
       allow read, write: if isActive()
+        && collection != 'cosmos_drive_folders'
+        && collection != 'cosmos_drive_files'
         && collection != 'site_warranty_receipts'
         && collection != 'warranty_claims'
         && collection != 'warranty_updates'

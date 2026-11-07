@@ -77,3 +77,44 @@ qa/.auth/
 
 # Skills locais de ferramentas de IA
 .claude/skills/
+
+# COSMOS - builds
+/dist-desktop/
+/dist-android/
+/src-tauri/target/
+
+# Android - arquivos gerados
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+
+# Metadados locais do Windows Explorer
+desktop.ini
+
+# Dependencias e builds
+node_modules/
+dist/
+dist-android/
+dist-desktop/
+src-tauri/target/
+android/.gradle/
+android/build/
+android/app/build/
+
+# Configuracoes locais
+.env
+.env.*
+!.env.example
+android/local.properties
+desktop.ini
+
+# Credenciais Android e Firebase
+*.keystore
+*.jks
+*.pem
+*.p12
+*.pfx
+*service-account*.json
+*serviceAccount*.json
+google-services.json
